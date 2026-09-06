@@ -21,14 +21,17 @@ import type {
   ManifestPath,
   ManifestPosition,
 } from "../domain/manifest-location.js";
+import { expandIncludes, type SourceDocument } from "./manifest-include.js";
 
-// The manifest, as the file on disk states it, before any decoding. A data
+// The manifest, as the files on disk state it, before any decoding. A data
 // file — YAML, or JSON, which YAML 1.2 contains — is what any host in any
 // language can read, and is the form the docs are written in. A JavaScript
 // module is the escape hatch a Node host alone honours: for a manifest
 // generated from other data, and for what the ecosystem expects of a config
-// file. Whichever it is, what comes out is one `unknown` value for the decoder,
-// and, from the data formats, a way to turn a path in it back into a line.
+// file. Either may `include` further data files, so a monorepo's policy can
+// live beside the packages it governs. Whichever it is, what comes out is one
+// `unknown` value for the decoder, and, from the data formats, a way to turn
+// a path in it back into a file and a line.
 
 // In discovery order. A repository with none of these is told all four; one
 // with more than one is refused, so nobody edits the wrong file for a week.
@@ -42,8 +45,12 @@ export const MANIFEST_FILENAMES = [
 export type ManifestFile = {
   readonly configPath: string;
   readonly manifest: unknown;
-  // Absent for a JavaScript module, which has no positions to give.
+  // Absent for a JavaScript module that includes nothing, which has no
+  // positions to give.
   readonly locate: ManifestLocator | undefined;
+  // Every file the manifest was read from, the root first: what a host that
+  // caches or watches the policy has to look at.
+  readonly files: ReadonlyArray<string>;
 };
 
 export const findManifestFile = (repoRoot: string): string => {
@@ -76,24 +83,38 @@ const isDataManifest = (configPath: string): boolean =>
 const isModuleManifest = (configPath: string): boolean =>
   [".mjs", ".js", ".cjs"].includes(extensionOf(configPath));
 
+// Whichever form the root takes, an `include` in it names a data file, read
+// by the same parser; the locator that comes back answers across every file.
 export const readManifestFile = async (configPath: string): Promise<ManifestFile> => {
-  if (isDataManifest(configPath)) return readDataManifest(configPath);
-  if (isModuleManifest(configPath)) return readModuleManifest(configPath);
-  throw new ConfigInvalid({
+  const root = isDataManifest(configPath)
+    ? parseDataFile(configPath)
+    : isModuleManifest(configPath)
+      ? await readModule(configPath)
+      : undefined;
+  if (root === undefined) {
+    throw new ConfigInvalid({
+      configPath,
+      detail:
+        "a manifest is a .yaml, .yml or .json file, or a .mjs/.js module — " +
+        `not ${JSON.stringify(path.basename(configPath))}.`,
+    });
+  }
+  const assembled = expandIncludes(configPath, root, { exists: existsSync, read: parseDataFile });
+  return {
     configPath,
-    detail:
-      "a manifest is a .yaml, .yml or .json file, or a .mjs/.js module — " +
-      `not ${JSON.stringify(path.basename(configPath))}.`,
-  });
+    manifest: assembled.value,
+    locate: assembled.locate,
+    files: assembled.files,
+  };
 };
 
-const readModuleManifest = async (configPath: string): Promise<ManifestFile> => {
+const readModule = async (configPath: string): Promise<SourceDocument> => {
   const module: unknown = await import(pathToFileURL(configPath).href).catch((cause: unknown) => {
     throw new ConfigInvalid({ configPath, detail: String(cause) });
   });
-  const manifest =
+  const value =
     typeof module === "object" && module !== null && "default" in module ? module.default : module;
-  return { configPath, manifest, locate: undefined };
+  return { value, locate: undefined };
 };
 
 // YAML 1.2 core schema, which is what a reader without a YAML background
@@ -102,7 +123,7 @@ const readModuleManifest = async (configPath: string): Promise<ManifestFile> => 
 // duplicate keys are refused rather than last-one-wins. A tag the parser does
 // not know is refused too — a manifest is data, and a `!!js/function` in it
 // would be a manifest only one runtime could read.
-const readDataManifest = (configPath: string): ManifestFile => {
+const parseDataFile = (configPath: string): SourceDocument => {
   let text: string;
   try {
     text = readFileSync(configPath, "utf8");
@@ -140,8 +161,7 @@ const readDataManifest = (configPath: string): ManifestFile => {
   }
 
   return {
-    configPath,
-    manifest: document.toJS({ mapAsMap: false }) as unknown,
+    value: document.toJS({ mapAsMap: false }) as unknown,
     locate: makeLocator(document, lines),
   };
 };

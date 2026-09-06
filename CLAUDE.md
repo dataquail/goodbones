@@ -108,7 +108,8 @@ Changing `paths` in one file and not the other is how rules silently stop resolv
 **Adding a layer means adding a node to `architecture.yaml`, and so does adding a package.** A
 new folder under a `src/` that no node governs trips the taxonomy-root catch-all rather than being
 quietly unpoliced; a new package under `packages/` is a new `~/<name>/` node with its own import
-allowlist, plus a `paths` pair in `tsconfig.base.json` and `tsconfig.resolve.json`, an entry in
+allowlist (written in `packages/<name>/architecture.yaml` and included from the root, like the
+four that exist), plus a `paths` pair in `tsconfig.base.json` and `tsconfig.resolve.json`, an entry in
 `vitest.workspace.ts`, and a reference in the root `tsconfig.json` and `tsconfig.build.json`. Before
 trusting a rule you just wrote, plant the violation it exists to catch and watch `pnpm lint` fail — the
 probe check proves a rule _can_ fire, not that it fires on what you meant.
@@ -118,10 +119,20 @@ its codec.** `readManifestFile` reads `architecture.yaml`/`.yml`/`.json` through
 (YAML 1.2 core schema, merge keys on, unknown tags refused) and `.mjs` through `import()`; both
 hosts discover the file by name in that order and refuse a repository holding two. `defs`/`use`
 are expanded on the raw value before decoding (`manifest/expand.ts`), so they work in every form.
-The JSON Schema is emitted by `pnpm run schema:manifest` and `manifest/json-schema.test.ts` fails
-when the committed file is behind the codec — so a change to the manifest schema is followed by
-regenerating it, and the docs site copies it to `/schema/` at build. Decode errors name a line
-through the locator the YAML reader hands `loadPolicy`; a module manifest gets the path only.
+The JSON Schemas (the manifest's, and `architecture-node.schema.json` for an included file) are
+emitted by `pnpm run schema:manifest` and `manifest/json-schema.test.ts` fails when a committed
+file is behind the codec — so a change to the manifest schema is followed by regenerating them,
+and the docs site copies both to `/schema/` at build. Decode errors name a line through the
+locator the YAML reader hands `loadPolicy`; a module manifest gets the path only.
+
+**The manifest may be split with `include`, and this repository's is.** `{ include: <path> }`
+anywhere in the manifest is replaced by that file's value before `defs`/`use` expand
+(`infrastructure/manifest-include.ts`); the path is relative to the file that wrote it, an
+included file is YAML/JSON only, nothing may stand beside `include`, and a list item naming a
+list is spliced. The root `architecture.yaml` includes `packages/<name>/architecture.yaml` for
+each package's tree node — so a package's layering rules are edited in the package, and the
+root stays the index. A position inside an included file carries the file
+(`ManifestPosition.file`), which is how an error names `packages/core/architecture.yaml:12:5`.
 
 **Imports use explicit `.js` extensions.** `moduleResolution` is `NodeNext` and the package is ESM —
 `import { x } from "./thing.js"` referring to `thing.ts` is correct, not a mistake to "fix".
@@ -131,6 +142,14 @@ and that patch targets one exact oxlint version, so a bump is the pair (`1.81.0`
 `^0.40.0`). Do not go below 1.78.0: 1.77.0's language server panics building the "disable this rule"
 quick-fix for any JS-plugin diagnostic (oxc #25278), so the architecture rules ran in CI and never
 surfaced in the editor. `.vscode/` points the editor at `oxc.oxc-vscode` for the same reason.
+
+**Every package builds with the workspace's `tsc`, which is tsgo.** The root's `typescript` is
+`@typescript/native` (7.x), so `tsc` resolves to it in every package but one: `packages/typescript`
+depends on real `typescript` 5.x for its parser API, and that package's bin shadows the root's. Its
+`build` and `check` scripts therefore name `../../node_modules/.bin/tsc` explicitly. Letting it build
+with 5.x is what made CI flaky: `tsc -b` in `cli` and `oxlint`, each seeing the pack's outputs "generated
+with a different version", re-emitted them in parallel, and one read the other's half-written
+declaration file ("`index.d.ts` is not a module").
 
 **`no-redeclare` is off on purpose.** From oxlint 1.79.0 the rule reports TypeScript declaration
 merging — `export const X = Schema.Struct(…)` beside `export type X = …`, which is how every schema in

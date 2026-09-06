@@ -40,6 +40,10 @@ tree: {} # the repository
 | `defs`     | named fragments, used anywhere below as `{ use: <name> }` — [Reuse](#reuse-defs-and-use)                                         |
 | `tree`     | the manifest proper                                                                                                              |
 
+Any of these, or any node or list inside them, may be `{ include: <path> }` — another file
+that holds it — so a monorepo's policy can live beside its packages:
+[Splitting the manifest](#splitting-the-manifest-include).
+
 `deny`, `exports`, `graph` and `limits` sit above the tree because they are statements about
 the whole repository rather than about a tier. A rule like _"this SQL driver is imported from one
 package"_ put on every tree root would be six copies and a seventh forgotten.
@@ -113,7 +117,8 @@ on every key, and a misspelled one flagged before the loader runs.
 A JSON manifest says the same with a `$schema` key, which the loader strips. The schema is
 generated from the codec that decodes the manifest, so the two cannot disagree, and it ships
 inside `@goodbones/core` as `schema/architecture.schema.json` for an editor that would rather
-not fetch it.
+not fetch it. A file the manifest [includes](#splitting-the-manifest-include) names
+`architecture-node.schema.json` instead, beside it.
 
 What the schema does not catch, the loader does, naming the file, the line and the column —
 and every issue, not the first:
@@ -164,8 +169,56 @@ JavaScript module. YAML anchors and merge keys (`&floor`, `<<: *floor`) work too
 parser resolves them before the manifest is read; but JSON has no such thing, and an error
 inside a merged key cannot name its line, so `defs` is the one the docs use.
 
-There is no interpolation, no include, and no deep merge. A manifest that needs those needs a
-generator, and a generator can emit YAML.
+There is no interpolation and no deep merge. A manifest that needs those needs a generator,
+and a generator can emit YAML.
+
+## Splitting the manifest: `include`
+
+A monorepo's manifest grows with the monorepo, and one file of two thousand lines is a file
+nobody reads. `{ include: <path> }` standing anywhere in the manifest — a node under `tree`, a
+whole section, one entry of a list — is replaced by the value of the file it names, so each
+package's node can live beside the package it governs:
+
+```yaml
+# architecture.yaml
+tree:
+  "packages/contracts/": { include: packages/contracts/architecture.yaml }
+  "packages/server/": { include: packages/server/architecture.yaml }
+graph: { include: architecture/graph.yaml }
+```
+
+```yaml
+# packages/server/architecture.yaml
+# yaml-language-server: $schema=https://dataquail.github.io/goodbones/schema/architecture-node.schema.json
+message: "The server is a hexagon: domain, ports, adapters."
+layout: open
+imports: { use: package-floor }
+children:
+  "src/domain/": { members: [{ use: no-file-system-calls }], children: {} }
+```
+
+The path is relative to the file that wrote it, so a package moves with its manifest, and the
+root stays the one index of the policy: read it and you have seen every file that takes part.
+An included file is YAML or JSON only — a module would leave the manifest readable by one
+runtime — and it is replaced whole: nothing may be written beside `include`, and there is no
+merge. A list item naming a file that holds a list is spliced in, so `exports` or a `graph`
+family can be split across files too.
+
+Patterns in an included file are what they are everywhere: repo-relative, with the `aliases`
+the root declares. `defs` are one namespace across every file — a fragment the root defines is
+there for every included file to `use`, an included file may carry a top-level `defs` of its
+own, and a name defined twice is refused, naming both files. A file that includes itself, at
+any distance, is refused with the chain.
+
+Every error names the file it is in. A decode issue inside an included file reports as
+`packages/server/architecture.yaml:12:5`, relative to the root manifest; a reference that
+names a missing file reports at the line that wrote it. The schema for a per-package file is
+`architecture-node.schema.json`, beside the manifest's: one node of the tree, with the
+`$schema` and `defs` keys a file of its own may carry at the top.
+
+This works the same in YAML, in JSON, and from a JavaScript module. Rules, probes, the
+baseline and `limits` are all computed on the assembled manifest, so a rule that has drifted
+into matching nothing fails at load whichever file it was written in.
 
 ## What it compiles to
 

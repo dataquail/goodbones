@@ -1,14 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dataquail.github.io/goodbones/schema/architecture.schema.json",
-  "title": "Architecture manifest",
-  "description": "One manifest of a repository's architecture, read by @goodbones/cli and @goodbones/oxlint. See https://dataquail.github.io/goodbones/architecture-rules/manifest/.",
+  "$id": "https://dataquail.github.io/goodbones/schema/architecture-node.schema.json",
+  "title": "Architecture manifest node",
+  "description": "One node of an architecture manifest's tree, as a file the manifest includes. See https://dataquail.github.io/goodbones/architecture-rules/manifest/#splitting-the-manifest-include.",
   "type": "object",
-  "required": [
-    "resolve",
-    "tree"
-  ],
-  "additionalProperties": false,
   "properties": {
     "$schema": {
       "type": "string",
@@ -19,7 +14,82 @@
       "description": "Named fragments, referenced elsewhere in the manifest as `{ use: \"<name>\" }`. A fragment may itself contain `use`. Every file's `defs` share one namespace.",
       "additionalProperties": true
     },
-    "resolve": {
+    "message": {
+      "type": "string"
+    },
+    "partial": {
+      "type": "boolean"
+    },
+    "layout": {
+      "type": "string",
+      "enum": [
+        "open"
+      ]
+    },
+    "name": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "kebab-case",
+            "camelCase",
+            "PascalCase",
+            "snake_case"
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Use"
+            },
+            {
+              "$ref": "#/$defs/Include"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "regex": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "regex"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Use"
+            },
+            {
+              "$ref": "#/$defs/Include"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "like": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "like"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      ]
+    },
+    "imports": {
       "anyOf": [
         {
           "$ref": "#/$defs/Use"
@@ -30,7 +100,43 @@
         {
           "type": "object",
           "properties": {
-            "scopes": {
+            "message": {
+              "type": "string"
+            },
+            "allow": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/Include"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "external": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Include"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "deny": {
               "anyOf": [
                 {
                   "$ref": "#/$defs/Include"
@@ -48,17 +154,73 @@
                       {
                         "type": "object",
                         "properties": {
-                          "files": {
-                            "type": "string"
+                          "match": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "anyOf": [
+                                  {
+                                    "$ref": "#/$defs/Include"
+                                  },
+                                  {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
                           },
-                          "language": {
-                            "type": "string"
+                          "matchNot": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "anyOf": [
+                                  {
+                                    "$ref": "#/$defs/Include"
+                                  },
+                                  {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
                           },
-                          "options": {}
+                          "except": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "anyOf": [
+                                  {
+                                    "$ref": "#/$defs/Include"
+                                  },
+                                  {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          "message": {
+                            "type": "string"
+                          }
                         },
                         "required": [
-                          "files",
-                          "language"
+                          "match",
+                          "message"
                         ],
                         "additionalProperties": false
                       }
@@ -67,38 +229,81 @@
                 }
               ]
             },
-            "unresolved": {
-              "type": "string",
-              "enum": [
-                "error",
-                "off"
-              ]
+            "reset": {
+              "type": "boolean"
             },
-            "ignoreUnresolved": {
+            "unrestricted": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "importedBy": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Use"
+        },
+        {
+          "$ref": "#/$defs/Include"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "message": {
+              "type": "string"
+            },
+            "allow": {
               "anyOf": [
                 {
-                  "$ref": "#/$defs/Include"
+                  "type": "string"
                 },
                 {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/Include"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "matchNot": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/Include"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
                 }
               ]
             }
           },
           "required": [
-            "scopes"
+            "message",
+            "allow"
           ],
           "additionalProperties": false
         }
       ]
     },
-    "baseline": {
-      "type": "string"
-    },
-    "deny": {
+    "members": {
       "anyOf": [
         {
           "$ref": "#/$defs/Include"
@@ -116,6 +321,59 @@
               {
                 "type": "object",
                 "properties": {
+                  "message": {
+                    "type": "string"
+                  },
+                  "subject": {
+                    "type": "string",
+                    "enum": [
+                      "members",
+                      "calls"
+                    ]
+                  },
+                  "in": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/Include"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "declares": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/Include"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "function",
+                            "class",
+                            "variable",
+                            "type",
+                            "interface",
+                            "enum",
+                            "expression",
+                            "other"
+                          ]
+                        }
+                      }
+                    ]
+                  },
                   "match": {
                     "anyOf": [
                       {
@@ -156,7 +414,7 @@
                       }
                     ]
                   },
-                  "except": {
+                  "allow": {
                     "anyOf": [
                       {
                         "type": "string"
@@ -176,13 +434,36 @@
                       }
                     ]
                   },
-                  "message": {
-                    "type": "string"
+                  "probe": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/Use"
+                      },
+                      {
+                        "$ref": "#/$defs/Include"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "source": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "source",
+                          "name"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
                   }
                 },
                 "required": [
-                  "match",
-                  "message"
+                  "message",
+                  "subject"
                 ],
                 "additionalProperties": false
               }
@@ -191,7 +472,7 @@
         }
       ]
     },
-    "exports": {
+    "surface": {
       "anyOf": [
         {
           "$ref": "#/$defs/Include"
@@ -209,44 +490,8 @@
               {
                 "type": "object",
                 "properties": {
-                  "name": {
-                    "type": "string"
-                  },
                   "message": {
                     "type": "string"
-                  },
-                  "module": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "anyOf": [
-                          {
-                            "$ref": "#/$defs/Include"
-                          },
-                          {
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            }
-                          }
-                        ]
-                      }
-                    ]
-                  },
-                  "symbols": {
-                    "anyOf": [
-                      {
-                        "$ref": "#/$defs/Include"
-                      },
-                      {
-                        "type": "array",
-                        "items": {
-                          "type": "string"
-                        }
-                      }
-                    ]
                   },
                   "kinds": {
                     "anyOf": [
@@ -266,6 +511,152 @@
                       }
                     ]
                   },
+                  "declares": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/Include"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "function",
+                            "class",
+                            "variable",
+                            "type",
+                            "interface",
+                            "enum",
+                            "expression",
+                            "other"
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  "reexport": {
+                    "type": "boolean"
+                  },
+                  "match": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/Include"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "matchNot": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/Include"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "forbid": {
+                    "type": "boolean"
+                  },
+                  "allow": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/Include"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "convention": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "kebab-case",
+                          "camelCase",
+                          "PascalCase",
+                          "snake_case"
+                        ]
+                      },
+                      {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/Use"
+                          },
+                          {
+                            "$ref": "#/$defs/Include"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "regex": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "regex"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "count": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/Use"
+                      },
+                      {
+                        "$ref": "#/$defs/Include"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "min": {
+                            "type": "number"
+                          },
+                          "max": {
+                            "type": "number"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
                   "except": {
                     "anyOf": [
                       {
@@ -286,12 +677,6 @@
                       }
                     ]
                   },
-                  "fix": {
-                    "type": "string",
-                    "enum": [
-                      "subpath-namespace-import"
-                    ]
-                  },
                   "probe": {
                     "anyOf": [
                       {
@@ -305,14 +690,10 @@
                         "properties": {
                           "source": {
                             "type": "string"
-                          },
-                          "symbol": {
-                            "type": "string"
                           }
                         },
                         "required": [
-                          "source",
-                          "symbol"
+                          "source"
                         ],
                         "additionalProperties": false
                       }
@@ -320,9 +701,7 @@
                   }
                 },
                 "required": [
-                  "name",
-                  "message",
-                  "module"
+                  "message"
                 ],
                 "additionalProperties": false
               }
@@ -331,401 +710,40 @@
         }
       ]
     },
-    "graph": {
+    "requires": {
       "anyOf": [
-        {
-          "$ref": "#/$defs/Use"
-        },
         {
           "$ref": "#/$defs/Include"
         },
         {
-          "type": "object",
-          "properties": {
-            "cycles": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Include"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "anyOf": [
-                      {
-                        "$ref": "#/$defs/Use"
-                      },
-                      {
-                        "$ref": "#/$defs/Include"
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "name": {
-                            "type": "string"
-                          },
-                          "message": {
-                            "type": "string"
-                          },
-                          "within": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "anyOf": [
-                                  {
-                                    "$ref": "#/$defs/Include"
-                                  },
-                                  {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    }
-                                  }
-                                ]
-                              }
-                            ]
-                          },
-                          "withinNot": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "anyOf": [
-                                  {
-                                    "$ref": "#/$defs/Include"
-                                  },
-                                  {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    }
-                                  }
-                                ]
-                              }
-                            ]
-                          }
-                        },
-                        "required": [
-                          "name",
-                          "message",
-                          "within"
-                        ],
-                        "additionalProperties": false
-                      }
-                    ]
-                  }
-                }
-              ]
-            },
-            "orphans": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Include"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "anyOf": [
-                      {
-                        "$ref": "#/$defs/Use"
-                      },
-                      {
-                        "$ref": "#/$defs/Include"
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "name": {
-                            "type": "string"
-                          },
-                          "message": {
-                            "type": "string"
-                          },
-                          "within": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "anyOf": [
-                                  {
-                                    "$ref": "#/$defs/Include"
-                                  },
-                                  {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    }
-                                  }
-                                ]
-                              }
-                            ]
-                          },
-                          "withinNot": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "anyOf": [
-                                  {
-                                    "$ref": "#/$defs/Include"
-                                  },
-                                  {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    }
-                                  }
-                                ]
-                              }
-                            ]
-                          },
-                          "entry": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "anyOf": [
-                                  {
-                                    "$ref": "#/$defs/Include"
-                                  },
-                                  {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    }
-                                  }
-                                ]
-                              }
-                            ]
-                          }
-                        },
-                        "required": [
-                          "name",
-                          "message",
-                          "within",
-                          "entry"
-                        ],
-                        "additionalProperties": false
-                      }
-                    ]
-                  }
-                }
-              ]
-            },
-            "reach": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Include"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "anyOf": [
-                      {
-                        "$ref": "#/$defs/Use"
-                      },
-                      {
-                        "$ref": "#/$defs/Include"
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "name": {
-                            "type": "string"
-                          },
-                          "message": {
-                            "type": "string"
-                          },
-                          "from": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "anyOf": [
-                                  {
-                                    "$ref": "#/$defs/Include"
-                                  },
-                                  {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    }
-                                  }
-                                ]
-                              }
-                            ]
-                          },
-                          "fromNot": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "anyOf": [
-                                  {
-                                    "$ref": "#/$defs/Include"
-                                  },
-                                  {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    }
-                                  }
-                                ]
-                              }
-                            ]
-                          },
-                          "to": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "anyOf": [
-                                  {
-                                    "$ref": "#/$defs/Include"
-                                  },
-                                  {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    }
-                                  }
-                                ]
-                              }
-                            ]
-                          },
-                          "toNot": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "anyOf": [
-                                  {
-                                    "$ref": "#/$defs/Include"
-                                  },
-                                  {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    }
-                                  }
-                                ]
-                              }
-                            ]
-                          },
-                          "via": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "anyOf": [
-                                  {
-                                    "$ref": "#/$defs/Include"
-                                  },
-                                  {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    }
-                                  }
-                                ]
-                              }
-                            ]
-                          }
-                        },
-                        "required": [
-                          "name",
-                          "message",
-                          "from",
-                          "to"
-                        ],
-                        "additionalProperties": false
-                      }
-                    ]
-                  }
-                }
-              ]
-            }
-          },
-          "additionalProperties": false
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       ]
     },
-    "limits": {
+    "requiresNot": {
       "anyOf": [
-        {
-          "$ref": "#/$defs/Use"
-        },
         {
           "$ref": "#/$defs/Include"
         },
         {
-          "type": "object",
-          "properties": {
-            "unrestricted": {
-              "type": "number"
-            },
-            "partial": {
-              "type": "number"
-            },
-            "coverage": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Use"
-                },
-                {
-                  "$ref": "#/$defs/Include"
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "imports": {
-                      "type": "number"
-                    },
-                    "structure": {
-                      "type": "number"
-                    },
-                    "members": {
-                      "type": "number"
-                    },
-                    "surface": {
-                      "type": "number"
-                    },
-                    "graph": {
-                      "type": "number"
-                    }
-                  },
-                  "additionalProperties": false
-                }
-              ]
-            }
-          },
-          "additionalProperties": false
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       ]
     },
-    "aliases": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string"
-      }
-    },
-    "tree": {
+    "children": {
       "type": "object",
       "additionalProperties": {
         "$ref": "#/$defs/ManifestNode"
       }
     }
   },
+  "additionalProperties": false,
   "$defs": {
     "ManifestNode": {
       "anyOf": [

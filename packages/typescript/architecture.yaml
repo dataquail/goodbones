@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://dataquail.github.io/goodbones/schema/architecture-node.schema.json
+#
+# The @goodbones/typescript node of the repository's architecture policy. The root
+# architecture.yaml includes this file at `~/typescript/`; the globals it shares —
+# the aliases, the `defs` it uses, the graph rules — are written there.
+message: "@goodbones/typescript implements the core's ports for one language: facts through the TypeScript parser, resolution through unrs-resolver, assembled into one Language. It depends on the core and on nothing else in the repository."
+layout: open
+imports:
+  message: "The pack reaches the core's barrels, the compiler, the resolver, and its own siblings. It is the only package that may name TypeScript."
+  # The floor, then this package's own.
+  external: [effect, vitest, typescript, unrs-resolver]
+  allow: ["node:**", vitest.shared.ts, "@core/index.ts", "@core/testing.ts", "@ts/**"]
+children:
+  "src/":
+    layout: open
+    children: {}
+    surface:
+      - use: no-default-exports
+      - use: named-reexports-only
+  "**/": { layout: open, children: {} }

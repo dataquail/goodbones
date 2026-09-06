@@ -1,3 +1,6 @@
-COMMIT_LOCATION="${PWD}/.git/COMMIT_EDITMSG"
+# Git hands the hook the message file's path. In a linked worktree `.git` is
+# a file, so the path is not `.git/COMMIT_EDITMSG`; fall back to it only when
+# the hook is run by hand with no argument.
+COMMIT_LOCATION="${1:-${PWD}/.git/COMMIT_EDITMSG}"
 
 npx --no-install commitlint --edit "${COMMIT_LOCATION}"

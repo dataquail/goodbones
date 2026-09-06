@@ -105,11 +105,11 @@ limits:
   partial: 0
   # Every folder here is `layout: open`, so structure is 0% enumerated and
   # states no floor. The rest are the numbers on the day they were written:
-  # 2026-09-05, after the manifest became this file — members is 29/84 (the
-  # core's domain, ports, core and load tiers), surface 80/84 (every file
-  # under a `src/`; the four `vitest.config.ts` are the remainder), graph
-  # 50/84 (every non-test file under a `src/`).
-  coverage: { imports: 1, members: 0.34, surface: 0.95, graph: 0.59 }
+  # 2026-09-06, after the tree moved beside the packages — members is 52/86
+  # (every file under the core's `src/`, which prints nothing), surface 82/86
+  # (every file under a `src/`; the four `vitest.config.ts` are the
+  # remainder), graph 51/86 (every non-test file under a `src/`).
+  coverage: { imports: 1, members: 0.6, surface: 0.95, graph: 0.59 }
 
 # The shape of the whole graph — evaluated by `architecture check`, which
 # is the one adapter that sees every file at once.
@@ -207,168 +207,12 @@ defs:
 # A package boundary is its barrel. Another package is reached by its published
 # name, which resolves to `index.ts` (or `testing.ts`); a deep import into a
 # sibling's `src/` is refused, as it would be for a consumer outside the repo.
+#
+# Each package's node is written beside the package it governs, and included
+# here; this file stays the one index of what the policy reaches. Everything a
+# node shares — the aliases, the `defs` it uses, the graph rules — is above.
 tree:
-  "~/core/":
-    message: "@goodbones/core is a hexagon: a pure domain and core, ports for the things a language must provide, a fake per port, and the loader that turns a manifest into a policy. It names no language and no host."
-    layout: open
-    imports:
-      use: package-floor
-      message: "This import is not on this package's allowlist."
-      # The floor, and the YAML parser the manifest reader needs. `ajv` checks
-      # the published JSON Schema in one test.
-      external: [effect, vitest, yaml, ajv]
-    children:
-      "src/":
-        layout: open
-        surface:
-          - use: no-default-exports
-          - use: named-reexports-only
-        children:
-          "domain/":
-            message: "domain/ is the model: the manifest schema, the error types, and the Violation with its line-independent fingerprint. No I/O, and nothing above it."
-            layout: open
-            children: {}
-            members:
-              - use: no-file-system-calls
-            imports:
-              message: "domain/ is the bottom of the graph. It reaches itself and the runtime, and nothing else in the package."
-              allow: ["@core/domain/**"]
-
-          "ports/":
-            message: "ports/ declares the things a policy must be given — a file system, a module resolver, a parser, a language — as interfaces, so the core can be tested without any of them."
-            layout: open
-            children: {}
-            members:
-              - message: 'A port member is a verb in camelCase: "{name}" is not. The port is the vocabulary every adapter must speak, and its case is part of the contract.'
-                subject: members
-                declares: [type, interface]
-                allow: "[a-z]*"
-                probe:
-                  source: "export type FileSystem = { readonly Exists: (path: string) => boolean };"
-                  name: Exists
-            imports:
-              message: "A port is a declaration. It may name the domain types that appear in its signatures, and nothing else."
-              allow: ["@core/domain/**", "@core/ports/**"]
-
-          "core/":
-            message: "core/ holds the pure evaluators — imports, exports, members, surface, structure, graph, coverage, baseline, patterns. Given facts, they return violations; they never read a file."
-            layout: open
-            children: {}
-            members:
-              - use: no-file-system-calls
-            imports:
-              message: "core/ evaluates. It reaches the domain, the ports it is given, and its own siblings — never a live adapter, which is what lets every rule here be tested against a fake."
-              allow:
-                - "@core/domain/**"
-                - "@core/ports/**"
-                - "@core/core/**"
-                # A core test drives the fakes, which is the whole point of
-                # the ports. The pattern names the fakes specifically, so a
-                # test reaching a *live* adapter is still refused.
-                - "@core/infrastructure/*-fake.ts"
-
-          "manifest/":
-            message: "manifest/ compiles the authored manifest tree down to the flat, resolved rules the core evaluates, expands the fragments it reuses, and generates each rule's probe while it does."
-            layout: open
-            children: {}
-            imports:
-              message: "Lowering is a transformation of the domain types. It reaches the domain and its own siblings; it does not evaluate, and it does not resolve."
-              allow: ["@core/domain/**", "@core/manifest/**"]
-
-          "load/":
-            message: "load/ turns a manifest into a policy: decode, lower, compile, and probe every rule, with whatever language packs the host hands in. It composes the pure tiers and names no language and no live adapter."
-            layout: open
-            children: {}
-            members:
-              - use: no-file-system-calls
-            imports:
-              message: "load/ composes the pure tiers. It reaches the domain, the ports, the core, the manifest compiler and its own siblings; a live adapter or a language pack reaches it only as an argument."
-              allow:
-                - "@core/domain/**"
-                - "@core/ports/**"
-                - "@core/core/**"
-                - "@core/manifest/**"
-                - "@core/load/**"
-                - "@core/infrastructure/*-fake.ts"
-
-          "infrastructure/":
-            message: "infrastructure/ holds a fake per port, and the three things the core does on this host without a language: the live file system, the walker, and reading the manifest file. The language-specific adapters live in their packs."
-            layout: open
-            children: {}
-            imports:
-              message: "An adapter implements a port. It reaches the port it satisfies, the domain types in that signature, and its own siblings — and, in this package, no third-party code beyond the runtime and the YAML parser."
-              allow: ["@core/domain/**", "@core/ports/**", "@core/infrastructure/**"]
-
-          # The two barrels: the public surface, and the fakes.
-          "*.ts":
-            imports:
-              message: "A barrel re-exports the package's surface, so it names every tier."
-              allow: ["@core/**"]
-
-      "**/": { layout: open, children: {} }
-
-  "~/typescript/":
-    message: "@goodbones/typescript implements the core's ports for one language: facts through the TypeScript parser, resolution through unrs-resolver, assembled into one Language. It depends on the core and on nothing else in the repository."
-    layout: open
-    imports:
-      message: "The pack reaches the core's barrels, the compiler, the resolver, and its own siblings. It is the only package that may name TypeScript."
-      # The floor, then this package's own.
-      external: [effect, vitest, typescript, unrs-resolver]
-      allow: ["node:**", vitest.shared.ts, "@core/index.ts", "@core/testing.ts", "@ts/**"]
-    children:
-      "src/":
-        layout: open
-        children: {}
-        surface:
-          - use: no-default-exports
-          - use: named-reexports-only
-      "**/": { layout: open, children: {} }
-
-  "~/cli/":
-    message: "@goodbones/cli is one host: it reads the manifest file, constructs the language packs, and evaluates every family — including the graph family, which only an adapter seeing every file at once can — with no linter in the loop."
-    layout: open
-    imports:
-      message: "A host composes the package. It reaches the core's barrels and the language pack's, and its own siblings — never the other host."
-      # The floor, then this package's own.
-      external: [effect, vitest]
-      allow:
-        - "node:**"
-        - vitest.shared.ts
-        - "@core/index.ts"
-        - "@core/testing.ts"
-        - "@ts/index.ts"
-        - "@cli/**"
-    children:
-      "src/":
-        layout: open
-        children: {}
-        surface:
-          - use: no-default-exports
-          - use: named-reexports-only
-      "**/": { layout: open, children: {} }
-
-  "~/oxlint/":
-    message: "@goodbones/oxlint is the other host: five oxlint rules over the same manifest, evaluated one file at a time in the editor and in CI. It answers to the core, never to the CLI."
-    layout: open
-    imports:
-      message: "A host composes the package. It reaches the core's barrels and the language pack's, the linter, and its own siblings — never the other host."
-      # The floor, then this package's own.
-      external: [effect, vitest, oxlint]
-      allow:
-        - "node:**"
-        - vitest.shared.ts
-        - "@core/index.ts"
-        - "@core/testing.ts"
-        - "@ts/index.ts"
-        - "@ox/**"
-    children:
-      # The plugin entry is the one default export: oxlint reads a plugin
-      # as a module's default. Everything else has a name to grep for.
-      "src/":
-        layout: open
-        children: {}
-        surface:
-          - use: no-default-exports
-            except: ["@ox/plugin.ts"]
-          - use: named-reexports-only
-      "**/": { layout: open, children: {} }
+  "~/core/": { include: packages/core/architecture.yaml }
+  "~/typescript/": { include: packages/typescript/architecture.yaml }
+  "~/cli/": { include: packages/cli/architecture.yaml }
+  "~/oxlint/": { include: packages/oxlint/architecture.yaml }

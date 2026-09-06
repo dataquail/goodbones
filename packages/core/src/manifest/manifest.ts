@@ -4,7 +4,11 @@ import * as SchemaIssue from "effect/SchemaIssue";
 
 import { DeclarationKind, ResolveConfig } from "../domain/architecture-config.js";
 import { ConfigInvalid } from "../domain/architecture-error.js";
-import type { ManifestLocator, ManifestPath } from "../domain/manifest-location.js";
+import {
+  type ManifestLocator,
+  type ManifestPath,
+  renderManifestPath,
+} from "../domain/manifest-location.js";
 import { expandManifest, originOf, type Substitution } from "./expand.js";
 
 // A manifest is a tree of nodes keyed by path pattern, where everything the
@@ -406,32 +410,19 @@ export type DecodeManifestOptions = {
   readonly locate?: ManifestLocator | undefined;
 };
 
-const isIdentifier = (key: string): boolean => /^[A-Za-z_$][\w$]*$/.test(key);
-
-// `tree["~/core/"].members[0].subject` — dotted where a key reads as a name,
-// bracketed where it does not, so a node key that is a path pattern stays
-// legible.
-const renderPath = (path: ManifestPath): string =>
-  path.length === 0
-    ? "(root)"
-    : path
-        .map((segment, index) => {
-          if (typeof segment === "number") return `[${String(segment)}]`;
-          const key = String(segment);
-          if (isIdentifier(key)) return index === 0 ? key : `.${key}`;
-          return `[${JSON.stringify(key)}]`;
-        })
-        .join("");
-
 const fileLabelOf = (configPath: string): string => configPath.split(/[\\/]/).at(-1) ?? configPath;
 
+// A position carries its own file when the value was written in a file the
+// manifest `include`d; otherwise it is in the manifest file itself.
 const positionOf = (
   file: string,
   locate: ManifestLocator | undefined,
   path: ManifestPath,
 ): string | null => {
   const found = locate?.(path) ?? null;
-  return found === null ? null : `${file}:${String(found.line)}:${String(found.column)}`;
+  return found === null
+    ? null
+    : `${found.file ?? file}:${String(found.line)}:${String(found.column)}`;
 };
 
 // One line per issue: where in the file, which path, what was wrong — and,
@@ -452,7 +443,7 @@ const describeIssue = (
     return `via \`use: ${JSON.stringify(name)}\`${position === null ? "" : ` at ${position}`}`;
   });
   return (
-    `  ${at === null ? "" : `${at}  `}${renderPath(origin.path)}: ${detail}` +
+    `  ${at === null ? "" : `${at}  `}${renderManifestPath(origin.path)}: ${detail}` +
     (via.length === 0 ? "" : ` (${via.join(", ")})`)
   );
 };

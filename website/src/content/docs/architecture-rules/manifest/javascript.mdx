@@ -4,7 +4,9 @@ description: The .mjs form of the manifest — what it is for, and what it gives
 ---
 
 `architecture.config.mjs` is read too. Its default export — or, failing that, the module
-namespace — is the manifest, decoded exactly as a YAML one is, `defs` and `use` included.
+namespace — is the manifest, decoded exactly as a YAML one is, `defs`, `use` and `include`
+included: a module may `include` YAML or JSON files, and an error inside one still names its
+line.
 
 ```js
 // architecture.config.mjs

@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://dataquail.github.io/goodbones/schema/architecture-node.schema.json
+#
+# The @goodbones/oxlint node of the repository's architecture policy. The root
+# architecture.yaml includes this file at `~/oxlint/`; the globals it shares —
+# the aliases, the `defs` it uses, the graph rules — are written there.
+message: "@goodbones/oxlint is the other host: five oxlint rules over the same manifest, evaluated one file at a time in the editor and in CI. It answers to the core, never to the CLI."
+layout: open
+imports:
+  message: "A host composes the package. It reaches the core's barrels and the language pack's, the linter, and its own siblings — never the other host."
+  # The floor, then this package's own.
+  external: [effect, vitest, oxlint]
+  allow:
+    - "node:**"
+    - vitest.shared.ts
+    - "@core/index.ts"
+    - "@core/testing.ts"
+    - "@ts/index.ts"
+    - "@ox/**"
+children:
+  # The plugin entry is the one default export: oxlint reads a plugin
+  # as a module's default. Everything else has a name to grep for.
+  "src/":
+    layout: open
+    children: {}
+    surface:
+      - use: no-default-exports
+        except: ["@ox/plugin.ts"]
+      - use: named-reexports-only
+  "**/": { layout: open, children: {} }

@@ -112,6 +112,7 @@ export {
   type ManifestLocator,
   type ManifestPath,
   type ManifestPosition,
+  renderManifestPath,
 } from "./domain/manifest-location.js";
 export {
   fingerprintOf,
@@ -127,6 +128,12 @@ export {
   type ManifestFile,
   readManifestFile,
 } from "./infrastructure/manifest-file.js";
+export {
+  expandIncludes,
+  type IncludedManifest,
+  type IncludeReader,
+  type SourceDocument,
+} from "./infrastructure/manifest-include.js";
 export { listSourceFiles, type WalkedLanguage } from "./infrastructure/walk.js";
 export { type LoadedPolicy, loadPolicy, type LoadPolicyInput } from "./load/policy.js";
 export { type LoweredRules, lowerManifest, type ProbeLanguage } from "./manifest/compile.js";
@@ -138,7 +145,12 @@ export {
   originOf,
   type Substitution,
 } from "./manifest/expand.js";
-export { MANIFEST_SCHEMA_ID, manifestJsonSchema } from "./manifest/json-schema.js";
+export {
+  MANIFEST_NODE_SCHEMA_ID,
+  MANIFEST_SCHEMA_ID,
+  manifestJsonSchema,
+  manifestNodeJsonSchema,
+} from "./manifest/json-schema.js";
 export {
   type DecodedManifest,
   decodeManifest,

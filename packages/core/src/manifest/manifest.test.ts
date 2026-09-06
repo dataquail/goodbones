@@ -64,6 +64,23 @@ describe("decodeManifest", () => {
     expect(error.message).toMatch(/^\/repo\/architecture\.yaml: the manifest does not decode:/);
   });
 
+  it("names the file a position carries, for a value the manifest included", () => {
+    const acrossFiles: ManifestLocator = (path) =>
+      path[1] === "src/"
+        ? { line: path.length, column: 1, file: "packages/src/architecture.yaml" }
+        : { line: path.length, column: 1 };
+    const detail = failure(
+      decodeManifest(
+        "/repo/architecture.yaml",
+        { ...VALID, tree: { "src/": { children: {}, layout: "closed" } } },
+        { locate: acrossFiles },
+      ),
+    ).detail;
+    expect(detail).toContain(
+      '  packages/src/architecture.yaml:3:1  tree["src/"].layout: Expected "open"',
+    );
+  });
+
   it("reports an issue inside a fragment at the fragment, via the use that pulled it in", () => {
     const detail = failure(
       decodeManifest(

@@ -39,8 +39,8 @@
     "!src/**/*.test.ts"
   ],
   "scripts": {
-    "build": "tsc -b tsconfig.build.json",
-    "check": "tsc -b tsconfig.json",
+    "build": "../../node_modules/.bin/tsc -b tsconfig.build.json",
+    "check": "../../node_modules/.bin/tsc -b tsconfig.json",
     "clean": "rm -rf build .tsbuildinfo",
     "test": "vitest run",
     "coverage": "vitest run --coverage"

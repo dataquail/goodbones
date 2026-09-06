@@ -143,6 +143,14 @@ and that patch targets one exact oxlint version, so a bump is the pair (`1.81.0`
 quick-fix for any JS-plugin diagnostic (oxc #25278), so the architecture rules ran in CI and never
 surfaced in the editor. `.vscode/` points the editor at `oxc.oxc-vscode` for the same reason.
 
+**Every package builds with the workspace's `tsc`, which is tsgo.** The root's `typescript` is
+`@typescript/native` (7.x), so `tsc` resolves to it in every package but one: `packages/typescript`
+depends on real `typescript` 5.x for its parser API, and that package's bin shadows the root's. Its
+`build` and `check` scripts therefore name `../../node_modules/.bin/tsc` explicitly. Letting it build
+with 5.x is what made CI flaky: `tsc -b` in `cli` and `oxlint`, each seeing the pack's outputs "generated
+with a different version", re-emitted them in parallel, and one read the other's half-written
+declaration file ("`index.d.ts` is not a module").
+
 **`no-redeclare` is off on purpose.** From oxlint 1.79.0 the rule reports TypeScript declaration
 merging — `export const X = Schema.Struct(…)` beside `export type X = …`, which is how every schema in
 `src/domain/` is written. Upstream closed it as not planned (oxc #25936). A real redeclaration is

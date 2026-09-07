@@ -43,6 +43,7 @@ import {
   type SourceFacts,
   staleEntriesOf,
   surfaceRulesSelecting,
+  vacancyOf,
   type Violation,
 } from "@goodbones/core";
 import * as Effect from "effect/Effect";
@@ -443,6 +444,11 @@ export const snapshotOf = (
     return byHeight !== 0 ? byHeight : left.fingerprint.localeCompare(right.fingerprint);
   });
 
+  // Slack is measured over the walked files as well as the edges: an
+  // allowlist that selects no file is vacant, and its entries are reported as
+  // that rather than as lines nobody needs.
+  const { concentration, slack } = slackOf(policy.importRules, findings.edges, files);
+
   return {
     version: SNAPSHOT_VERSION,
     manifest: report_.manifest,
@@ -451,12 +457,14 @@ export const snapshotOf = (
     ok: report_.ok,
     coverage: report_.coverage,
     residue: residueOf(policy, files),
+    vacant: vacancyOf(policy.importRules, files),
     violations,
     unresolved: report_.unresolved,
     stale: report_.stale,
     baseline: { size: readBaseline(policy).entries.length },
     cycles: cyclesIn(graph).length,
-    slack: slackOf(policy.importRules, findings.edges),
+    slack,
+    concentration,
     adoption: report_.adoption,
   };
 };
@@ -482,6 +490,10 @@ const renderSnapshot = (snapshot: Snapshot): ReadonlyArray<string> => {
     title,
     ...lines,
   ];
+  const vacantWidth = Math.max(0, ...snapshot.vacant.map((one) => one.node.length));
+  // The document carries every partly-used fragment entry; the text shows
+  // the ones concentrated enough to read as a per-file rule written wide.
+  const concentrated = snapshot.concentration.filter((one) => one.usedAt * 2 < one.of);
 
   return [
     `${String(snapshot.files)} files under ${snapshot.roots.join(", ")}, against ${snapshot.manifest.path}`,
@@ -501,6 +513,12 @@ const renderSnapshot = (snapshot: Snapshot): ReadonlyArray<string> => {
       ],
     ),
     ...section(
+      `vacant: ${count(snapshot.vacant.length, "node")} ${snapshot.vacant.length === 1 ? "selects" : "select"} no file`,
+      snapshot.vacant.map(
+        (one) => `  ${one.node.padEnd(vacantWidth)}  ${count(one.allowances, "allowance")}`,
+      ),
+    ),
+    ...section(
       `violations: ${count(reportable.length, "reportable")}` +
         (carried > 0 ? `, ${String(carried)} carried by the baseline` : "") +
         (snapshot.stale.length > 0
@@ -517,8 +535,21 @@ const renderSnapshot = (snapshot: Snapshot): ReadonlyArray<string> => {
         )),
     ...section(
       `slack: ${count(snapshot.slack.length, "allowance")} nothing imports through`,
-      snapshot.slack.map((one) => `  ${one.node}: ${one.kind} ${JSON.stringify(one.entry)}`),
+      snapshot.slack.map(
+        (one) =>
+          `  ${one.node}: ${one.kind} ${JSON.stringify(one.entry)}` +
+          (one.of === undefined ? "" : `  (via use, at ${count(one.of, "node")})`),
+      ),
     ),
+    ...(concentrated.length === 0
+      ? []
+      : section(
+          `concentrated: ${count(concentrated.length, "allowance")} used at fewer than half the nodes granted`,
+          concentrated.map(
+            (one) =>
+              `  ${one.fragment}: ${one.kind} ${JSON.stringify(one.entry)}  used at ${String(one.usedAt)} of ${count(one.of, "node")}`,
+          ),
+        )),
     "",
     `cycles: ${String(snapshot.cycles)}`,
     `baseline: ${count(snapshot.baseline.size, "entry", "entries")}`,

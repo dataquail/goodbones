@@ -1,5 +1,6 @@
 import type { Allowance } from "../domain/architecture-config.js";
 import type { ResolvedTarget } from "../ports/module-resolver.js";
+import { vacantNodesOf } from "./coverage.js";
 import type { CompiledImportRule } from "./imports.js";
 import { firstFromMatch, matchesAny } from "./patterns.js";
 
@@ -17,10 +18,31 @@ export type ObservedEdge = {
 };
 
 // An allowance no observed edge uses. The same shape the lowering recorded,
-// minus the compiled pattern nobody wrote.
-export type Slack = Pick<Allowance, "node" | "kind" | "entry">;
+// minus the compiled pattern nobody wrote. When the entry arrived through
+// `use`, `node` is the fragment's name — the line to delete is in `defs` —
+// and `of` says how many nodes wrote the reference that carried it.
+export type Slack = Pick<Allowance, "node" | "kind" | "entry"> & {
+  readonly fragment?: string;
+  readonly of?: number;
+};
 
-const keyOf = (one: Slack): string => `${one.node} ${one.kind} ${one.entry}`;
+// A fragment entry used at some of the nodes it was granted to and not the
+// rest. At the fragment level it is not slack — there is no line nobody
+// needs — but it is a per-file permission written as a many-node allowance,
+// which is what an allowlist widened to make one build green looks like.
+export type Concentration = Pick<Allowance, "kind" | "entry"> & {
+  readonly fragment: string;
+  readonly usedAt: number;
+  readonly of: number;
+};
+
+export type SlackReport = {
+  readonly slack: ReadonlyArray<Slack>;
+  readonly concentration: ReadonlyArray<Concentration>;
+};
+
+const keyOf = (one: Pick<Allowance, "node" | "kind" | "entry">): string =>
+  `${one.node} ${one.kind} ${one.entry}`;
 
 // Whether one edge, from a file this rule selects, passes through this entry.
 const uses = (allowance: Allowance, captures: RegExpExecArray, target: ResolvedTarget): boolean => {
@@ -30,22 +52,57 @@ const uses = (allowance: Allowance, captures: RegExpExecArray, target: ResolvedT
   return allowance.pattern !== undefined && matchesAny([allowance.pattern], captures, target.path);
 };
 
+// One entry as one place wrote it: a node that wrote the line, or a fragment
+// that N nodes pulled in with `use`. Keyed by that place, so a fragment's
+// entry is reported once however many nodes reference it.
+type Declared = {
+  readonly node: string;
+  readonly kind: Allowance["kind"];
+  readonly entry: string;
+  readonly fragment: string | undefined;
+  // The nodes that declared it, vacant ones excluded — every allowance on a
+  // vacant node is unused by construction, and is vacancy, not slack.
+  readonly at: Set<string>;
+};
+
+const groupKeyOf = (one: Allowance): string =>
+  one.fragment === undefined
+    ? `node ${one.node} ${one.kind} ${one.entry}`
+    : `use ${one.fragment} ${one.kind} ${one.entry}`;
+
 // Every allowance the rules carry that no edge uses, in the order the manifest
 // declared them. An entry is inherited by every descendant's rule and written
 // once, so it is keyed by where it was written: an import anywhere under the
-// declaring node is a use.
+// declaring node is a use. An entry that arrived through `use` is keyed by
+// the fragment, and is slack only when no node it was granted to uses it;
+// used at some and not others, it is reported as concentration instead. A
+// vacant node — one whose allowlist selects no walked file — contributes
+// nothing to either.
 export const slackOf = (
   rules: ReadonlyArray<CompiledImportRule>,
   edges: ReadonlyArray<ObservedEdge>,
-): ReadonlyArray<Slack> => {
-  const declared = new Map<string, Slack>();
+  files: ReadonlyArray<string>,
+): SlackReport => {
+  const vacant = vacantNodesOf(rules, files);
+
+  const declared = new Map<string, Declared>();
   for (const rule of rules) {
-    for (const { entry, kind, node } of rule.allowances) {
-      const one = { node, kind, entry };
-      if (!declared.has(keyOf(one))) declared.set(keyOf(one), one);
+    for (const allowance of rule.allowances) {
+      if (vacant.has(allowance.node)) continue;
+      const key = groupKeyOf(allowance);
+      const group = declared.get(key) ?? {
+        node: allowance.fragment ?? allowance.node,
+        kind: allowance.kind,
+        entry: allowance.entry,
+        fragment: allowance.fragment,
+        at: new Set<string>(),
+      };
+      group.at.add(allowance.node);
+      declared.set(key, group);
     }
   }
 
+  // Which (node, kind, entry) some edge passes through.
   const used = new Set<string>();
   for (const edge of edges) {
     for (const rule of rules) {
@@ -58,5 +115,21 @@ export const slackOf = (
     }
   }
 
-  return [...declared.values()].filter((one) => !used.has(keyOf(one)));
+  const slack: Array<Slack> = [];
+  const concentration: Array<Concentration> = [];
+  for (const group of declared.values()) {
+    const { entry, kind } = group;
+    const usedAt = [...group.at].filter((node) => used.has(keyOf({ node, kind, entry }))).length;
+    if (group.fragment === undefined) {
+      if (usedAt === 0) slack.push({ node: group.node, kind, entry });
+      continue;
+    }
+    const of = group.at.size;
+    if (usedAt === 0) {
+      slack.push({ node: group.node, kind, entry, fragment: group.fragment, of });
+    } else if (usedAt < of) {
+      concentration.push({ fragment: group.fragment, kind, entry, usedAt, of });
+    }
+  }
+  return { slack, concentration };
 };

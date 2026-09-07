@@ -172,3 +172,12 @@ export const originOf = (
     via: [...outer, { at: innermost.ref, name: innermost.name }],
   };
 };
+
+// The fragment a path in the expanded document was written in, when it was:
+// the innermost `use` the path crossed, or nothing when the value at that path
+// was authored where it sits — including a key written beside `use`, which
+// belongs to the reference site.
+export const fragmentOf = (
+  substitutions: ReadonlyArray<Substitution>,
+  path: ManifestPath,
+): string | undefined => originOf(substitutions, path).via.at(-1)?.name;

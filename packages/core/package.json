@@ -1,6 +1,6 @@
 {
   "name": "@goodbones/core",
-  "version": "0.1.0-beta.3",
+  "version": "0.1.0-beta.4",
   "type": "module",
   "license": "MIT",
   "description": "Architecture policy as one manifest of your repository, language-agnostic: the manifest schema, the evaluators for imports, exports, members, surface, structure and the import graph, the ports a language pack implements, and the loader that turns a manifest into a policy every rule of which has proven it can fire.",

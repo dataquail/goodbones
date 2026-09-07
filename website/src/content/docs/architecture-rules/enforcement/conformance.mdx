@@ -1,6 +1,6 @@
 ---
 title: Conformance
-description: architecture conformance measures the distance between the tree and the manifest — residue, violations and slack — and emits it as one snapshot document.
+description: architecture conformance measures the distance between the tree and the manifest — residue, vacancy, violations and slack — and emits it as one snapshot document.
 ---
 
 `check` answers one question: does the tree pass the policy? `conformance` answers a
@@ -14,13 +14,34 @@ architecture conformance --json [roots…]              # the snapshot document
 architecture conformance --against target.yaml [roots…]
 ```
 
-## The three parts
+## The four parts
 
 **Residue** is what the policy has nothing to say about: the files no family reaches, and
 the folders made only of them. `coverage` counts these; `conformance` names them. A file
 in a folder that is `layout: open`, under no import allowlist, selected by no `members`
 or `surface` rule and in no graph scope is claimed by the manifest and policed by
 nothing, and it is residue.
+
+**Vacancy** is the same question from the other end: residue is files no node reaches,
+vacancy is nodes no file reaches. A node that states an import allowlist and selects no
+walked file grants permission to nothing, so every entry on it is unused by construction.
+That is not slack — there is no line to delete — and it is not counted as slack. It is
+either a tier declared ahead of its first file (an `event-handlers/` folder the second
+module will fill) or a pattern that no longer matches anything (`**/*.test.ts` in a
+package whose tests moved one folder deeper), and only a reader can say which, so the
+report names the node and how many entries it wrote and leaves the verdict to them:
+
+```
+vacant: 2 nodes select no file
+  components/primitives/**/*.test.ts  14 allowances
+  modules/{module}/event-handlers     10 allowances
+```
+
+A node whose own rule steps aside for an overriding child is not vacant while the child
+has files: its allowlist is inherited there, and a node that grants permission to some
+file grants permission. A `children` entry with nothing under it and no allowlist is not
+vacant either; a taxonomy admitting a stereotype nobody has written yet is what a
+taxonomy is for.
 
 **Violations** are what `check` reports, keyed by fingerprint and marked baselined or not,
 ordered so the ones cheapest to fix come first. A violation about an edge names a target,
@@ -46,8 +67,32 @@ slack: 2 allowances nothing imports through
   cli: allow "packages/core/src/testing.ts"
 ```
 
-Only `imports.allow` and `imports.external` are measured. An `importedBy` allowlist is
-inbound, and an `importedBy` entry nothing uses is not yet reported.
+An entry that arrived through [`use`](/goodbones/architecture-rules/manifest/#reuse-defs-and-use) was
+not written by the node that carries it — the node wrote one word, and the line is in
+`defs`. Such an entry is reported once, against the fragment, and only when no node
+granted it uses it: twenty-four test nodes that each say `use: test-file` and a `stripe`
+nothing imports is one line of slack, not twenty-four, and it says how many nodes were
+granted it. A fragment entry used at some of those nodes and not the rest is not slack —
+the line is needed somewhere — but it is a per-file permission written as a many-node
+allowance, which is what an allowlist widened to make one build green looks like, so it
+is reported beside the slack as **concentration**, with the count. The document carries
+every partly-used fragment entry; the text shows the ones used at fewer than half the
+nodes granted:
+
+```
+slack: 3 allowances nothing imports through
+  modules/{module}/commands: allow "packages/server/src/platform/notifications/**"
+  contracts: external "@effect/vitest"
+  test-file: external "stripe"  (via use, at 24 nodes)
+
+concentrated: 1 allowance used at fewer than half the nodes granted
+  test-file: external "@effect/sql-pg"  used at 1 of 24 nodes
+```
+
+A vacant node's entries are neither slack nor concentration, and a vacant node is not
+among the nodes a fragment entry counts. Only `imports.allow` and `imports.external` are
+measured. An `importedBy` allowlist is inbound, and an `importedBy` entry nothing uses is
+not yet reported.
 
 ## `--against`
 
@@ -85,6 +130,7 @@ carries a description in the schema.
     "graph": { "covered": 55, "total": 94, "floor": 0.57 }
   },
   "residue": { "files": [], "folders": [] },
+  "vacant": [],
   "violations": [],
   "unresolved": [],
   "stale": [],
@@ -94,6 +140,7 @@ carries a description in the schema.
     { "node": "typescript", "kind": "allow", "entry": "packages/core/src/testing.ts" },
     { "node": "cli", "kind": "allow", "entry": "packages/core/src/testing.ts" }
   ],
+  "concentration": [],
   "adoption": { "unrestricted": [], "partial": [] }
 }
 ```
@@ -105,11 +152,17 @@ would have exited with. The rest is the measurement:
 
 - `residue` — the files no family reaches, sorted, and the topmost folders wholly made of
   them.
+- `vacant` — the nodes with an import allowlist and no walked file under them, each with
+  how many entries it wrote, in manifest order.
 - `violations` — every finding, baselined ones included, in the order above rather than
   the order they were found.
 - `baseline.size` — the entries in the baseline file: the debt the policy is carrying.
 - `cycles` — every cycle in the walked graph, inside a `cycles` rule's scope or not.
-- `slack` — every allowance nothing uses, in manifest order.
+- `slack` — every allowance nothing uses, in manifest order, vacant nodes excluded. An
+  entry that came through `use` carries `fragment` and `of`, and its `node` is the
+  fragment's name.
+- `concentration` — every fragment entry used at some of the nodes granted it and not
+  the rest, with `usedAt` and `of`. Not counted as slack.
 
 Two things make a snapshot comparable across commits. `manifest.sha256` says whether the
 policy changed between them, so a coverage drop is attributable to the tree or to the
@@ -120,5 +173,6 @@ key the shape does not declare.
 
 ## Done when
 
-The repository's own policy holds itself to this report: its residue is empty, and the
-two slack entries above are real. `pnpm run architecture:conformance` prints it.
+The repository's own policy holds itself to this report: its residue is empty, no node is
+vacant, and the two slack entries above are real. `pnpm run architecture:conformance`
+prints it.

@@ -25,6 +25,8 @@ export {
   reachOf,
   type Residue,
   residueOf,
+  type Vacancy,
+  vacancyOf,
 } from "./core/coverage.js";
 export {
   type BindingEdge,
@@ -69,7 +71,13 @@ export {
   memberRulesFailingTheirProbe,
   memberRulesSelecting,
 } from "./core/members.js";
-export { type ObservedEdge, type Slack, slackOf } from "./core/slack.js";
+export {
+  type Concentration,
+  type ObservedEdge,
+  type Slack,
+  slackOf,
+  type SlackReport,
+} from "./core/slack.js";
 export {
   type CompiledStructure,
   compileStructure,
@@ -128,9 +136,11 @@ export {
   type Snapshot,
   SNAPSHOT_SCHEMA_ID,
   SNAPSHOT_VERSION,
+  type SnapshotConcentration,
   snapshotJsonSchema,
   Snapshot as SnapshotSchema,
   type SnapshotSlack,
+  type SnapshotVacancy,
   type SnapshotViolation,
 } from "./domain/snapshot.js";
 export {
@@ -161,7 +171,12 @@ export {
   type WalkedLanguage,
 } from "./infrastructure/walk.js";
 export { type LoadedPolicy, loadPolicy, type LoadPolicyInput } from "./load/policy.js";
-export { type LoweredRules, lowerManifest, type ProbeLanguage } from "./manifest/compile.js";
+export {
+  type LoweredRules,
+  lowerManifest,
+  type LowerOptions,
+  type ProbeLanguage,
+} from "./manifest/compile.js";
 export {
   type ExpandedManifest,
   type ExpandIssue,

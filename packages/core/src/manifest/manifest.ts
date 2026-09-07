@@ -305,6 +305,9 @@ export type DecodedManifest = {
   // Things the manifest said in a form that still loads but is on its way out.
   // The host prints them; nothing else acts on them.
   readonly notices: ReadonlyArray<string>;
+  // Every `use` the expansion replaced. Lowering reads them to say which
+  // fragment an allowance came through; nothing else needs them.
+  readonly substitutions: ReadonlyArray<Substitution>;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -496,5 +499,6 @@ export const decodeManifest = (
   return Result.succeed({
     manifest: decoded.success,
     notices: [...resolve.notices, ...members.notices],
+    substitutions,
   });
 };

@@ -85,6 +85,13 @@ const MANIFEST = `export default {
             },
           ],
         },
+        // A tier declared ahead of its first file: no walked file is under it,
+        // so its allowlist is vacant rather than slack.
+        "ghost/": {
+          layout: "open",
+          imports: { message: "ghost/ may reach lib/.", allow: ["lib/**"] },
+          children: {},
+        },
       },
     },
   },
@@ -487,6 +494,17 @@ describe.sequential("conformance", () => {
     expect(snapshot.residue).toEqual({ files: ["etc/stray.ts"], folders: ["etc"] });
   });
 
+  it("names the vacant node: an allowlist that selects no file, and leaves it out of the slack", async () => {
+    const snapshot = snapshotOf(
+      await loadPolicy(repoRoot),
+      ROOTS,
+      path.join(repoRoot, "architecture.config.mjs"),
+    );
+
+    expect(snapshot.vacant).toEqual([{ node: "src/ghost", allowances: 1 }]);
+    expect(snapshot.slack).not.toContainEqual(expect.objectContaining({ node: "src/ghost" }));
+  });
+
   it("reports an allowance nothing imports through as slack", async () => {
     const snapshot = snapshotOf(
       await loadPolicy(repoRoot),
@@ -496,6 +514,7 @@ describe.sequential("conformance", () => {
 
     // src/ allows `src/**`, and no file in src/ imports another.
     expect(snapshot.slack).toEqual([{ node: "src", kind: "allow", entry: "src/**" }]);
+    expect(snapshot.concentration).toEqual([]);
   });
 
   it("drops the slack once an import uses the allowance", async () => {
@@ -556,6 +575,8 @@ describe.sequential("conformance", () => {
     expect(output).toContain("coverage");
     expect(output).toContain("residue: 1 file no family reaches, 1 folder wholly");
     expect(output).toContain("  etc/");
+    expect(output).toContain("vacant: 1 node selects no file");
+    expect(output).toContain("  src/ghost  1 allowance");
     expect(output).toContain("violations: ");
     expect(output).toContain("nearest the ground first");
     expect(output).toContain("slack: 1 allowance nothing imports through");

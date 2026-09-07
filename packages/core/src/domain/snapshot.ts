@@ -65,13 +65,48 @@ export const SnapshotViolation = Schema.Struct({
   baselined: describe(Schema.Boolean, "Carried by the baseline, so `check` does not fail on it."),
 });
 
+const AllowanceKind = describe(
+  Schema.Literals(["allow", "external"]),
+  "`allow` is a path glob under `imports.allow`; `external` a package name under `imports.external`.",
+);
+
+const Entry = describe(Schema.String, "The entry as written, after alias expansion.");
+
 export const SnapshotSlack = Schema.Struct({
-  node: describe(Schema.String, "The manifest node that wrote the entry."),
-  kind: describe(
-    Schema.Literals(["allow", "external"]),
-    "`allow` is a path glob under `imports.allow`; `external` a package name under `imports.external`.",
+  node: describe(
+    Schema.String,
+    "The manifest node that wrote the entry — or, when `fragment` is set, the `defs` fragment it was written in.",
   ),
-  entry: describe(Schema.String, "The entry as written, after alias expansion."),
+  kind: AllowanceKind,
+  entry: Entry,
+  fragment: Schema.optionalKey(
+    describe(
+      Schema.String,
+      "Present when the entry arrived through `use`. The nodes that referenced the fragment wrote one word, so the entry is reported once, against the fragment, rather than once per node.",
+    ),
+  ),
+  of: Schema.optionalKey(
+    describe(
+      Schema.Finite,
+      "With `fragment`: how many non-vacant nodes were granted the entry through it. None of them uses it.",
+    ),
+  ),
+});
+
+export const SnapshotConcentration = Schema.Struct({
+  fragment: describe(Schema.String, "The `defs` fragment the entry was written in."),
+  kind: AllowanceKind,
+  entry: Entry,
+  usedAt: describe(Schema.Finite, "Nodes granted the entry through the fragment that use it."),
+  of: describe(Schema.Finite, "Non-vacant nodes granted the entry through the fragment."),
+});
+
+export const SnapshotVacancy = Schema.Struct({
+  node: describe(Schema.String, "The manifest node."),
+  allowances: describe(
+    Schema.Finite,
+    "Distinct entries the node wrote, `allow` and `external` together.",
+  ),
 });
 
 export const Snapshot = Schema.Struct({
@@ -114,6 +149,10 @@ export const Snapshot = Schema.Struct({
     }),
     "What the policy has nothing to say about. A file in an open folder under no allowlist is claimed, not policed, and counts.",
   ),
+  vacant: describe(
+    Schema.Array(SnapshotVacancy),
+    "Nodes that state an import allowlist and select no walked file, in manifest order. Every allowance on one is unused by construction, so none is counted as slack; the node is a tier declared ahead of its first file, or a pattern that no longer matches. Residue is files no node reaches; this is nodes no file reaches.",
+  ),
   violations: describe(
     Schema.Array(SnapshotViolation),
     "Every finding, baselined ones included, ordered so the ones cheapest to fix come first: by the height of the violated target in the import graph, leaves first.",
@@ -135,7 +174,11 @@ export const Snapshot = Schema.Struct({
   ),
   slack: describe(
     Schema.Array(SnapshotSlack),
-    "Allowances no observed import uses, in manifest order. A manifest inferred from the tree has none on the day it is written; every entry here is permission nothing needs.",
+    "Allowances no observed import uses, in manifest order, vacant nodes excluded. A manifest inferred from the tree has none on the day it is written; every entry here is permission nothing needs. An entry that arrived through `use` is reported once, against the fragment, and only when no node granted it uses it.",
+  ),
+  concentration: describe(
+    Schema.Array(SnapshotConcentration),
+    "Fragment entries used at some of the nodes granted them and not the rest. Not slack — the fragment's line is needed somewhere — but a per-file permission written as a many-node allowance, which is what an allowlist widened to make one build green looks like.",
   ),
   adoption: describe(
     Schema.Struct({
@@ -149,6 +192,8 @@ export const Snapshot = Schema.Struct({
 export type Snapshot = typeof Snapshot.Type;
 export type SnapshotViolation = typeof SnapshotViolation.Type;
 export type SnapshotSlack = typeof SnapshotSlack.Type;
+export type SnapshotConcentration = typeof SnapshotConcentration.Type;
+export type SnapshotVacancy = typeof SnapshotVacancy.Type;
 
 // Decodes a document some other run wrote — the base of a pull request, a
 // stored one — refusing a key the shape does not declare, so a consumer never

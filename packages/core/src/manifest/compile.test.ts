@@ -1,7 +1,9 @@
+import * as Result from "effect/Result";
 import { describe, expect, it } from "vitest";
 
+import type { ImportRule } from "../domain/architecture-config.js";
 import { lowerManifest as lowerWith, type ProbeLanguage } from "./compile.js";
-import type { Manifest } from "./manifest.js";
+import { decodeManifest, type Manifest } from "./manifest.js";
 
 // Every manifest below is a TypeScript one, so its synthetic probes are `.ts`
 // files. The language is what says so; lowering itself never assumes it.
@@ -965,6 +967,103 @@ describe("probe files and the language", () => {
     expect(one.graph.reach?.[0]?.probe.edges[0]).toEqual([
       "pkg/src/a/zz-origin.root.ts",
       "pkg/src/b/deep/zz-target.ts",
+    ]);
+  });
+});
+
+describe("allowance provenance", () => {
+  // Through the decoder, since the substitutions it records are what say
+  // which `use` carried a value — lowering the decoded tree alone would read
+  // every entry as authored where it sits. Raw input, as a file would give it.
+  const lowerRaw = (raw: Record<string, unknown>) => {
+    const decoded = decodeManifest("architecture.yaml", raw);
+    if (Result.isFailure(decoded)) throw new Error(decoded.failure.detail);
+    return lowerWith(decoded.success.manifest, TYPESCRIPT, {
+      substitutions: decoded.success.substitutions,
+    });
+  };
+  const rawBase = (tree: Record<string, unknown>, defs?: Record<string, unknown>) => ({
+    resolve: {
+      scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.json" } }],
+    },
+    aliases: { "@": "pkg/src" },
+    tree,
+    ...(defs === undefined ? {} : { defs }),
+  });
+  // The allowances of one rule, minus the compiled pattern nobody wrote.
+  const provenanceOf = (rules: ReadonlyArray<ImportRule>, suffix: string) =>
+    (ruleNamed(rules, suffix).allowances ?? []).map(({ entry, fragment, kind, node }) => ({
+      node,
+      kind,
+      entry,
+      ...(fragment === undefined ? {} : { fragment }),
+    }));
+
+  it("stamps an entry that arrived through `use` with the fragment, and one written by hand with none", () => {
+    const lowered = lowerRaw(
+      rawBase(
+        {
+          "@/a/": { imports: { use: "shared" }, children: { "*.ts": {} } },
+          "@/b/": {
+            imports: { message: "own", allow: ["@/b/**"], external: ["pg"] },
+            children: { "*.ts": {} },
+          },
+        },
+        { shared: { message: "m", allow: ["@/a/**"], external: ["effect"] } },
+      ),
+    );
+    expect(provenanceOf(lowered.imports, "a/imports")).toEqual([
+      { node: "a", kind: "allow", entry: "pkg/src/a/**", fragment: "shared" },
+      { node: "a", kind: "external", entry: "effect", fragment: "shared" },
+    ]);
+    expect(provenanceOf(lowered.imports, "b/imports")).toEqual([
+      { node: "b", kind: "allow", entry: "pkg/src/b/**" },
+      { node: "b", kind: "external", entry: "pg" },
+    ]);
+  });
+
+  it("names the innermost fragment through nested `use`", () => {
+    const lowered = lowerRaw(
+      rawBase(
+        { "@/a/": { use: "tier" } },
+        {
+          tier: { imports: { use: "shared" }, children: { "*.ts": {} } },
+          shared: { message: "m", allow: ["@/a/**"] },
+        },
+      ),
+    );
+    expect(provenanceOf(lowered.imports, "a/imports")).toEqual([
+      { node: "a", kind: "allow", entry: "pkg/src/a/**", fragment: "shared" },
+    ]);
+  });
+
+  // `imports: { use: x, allow: […] }` takes `allow` from the reference site,
+  // so those entries are the node's own; `external` still came through.
+  it("attributes an override written beside `use` to the node", () => {
+    const lowered = lowerRaw(
+      rawBase(
+        {
+          "@/a/": {
+            imports: { use: "shared", allow: ["@/a/**", "@/lib/**"] },
+            children: { "*.ts": {} },
+          },
+        },
+        { shared: { message: "m", allow: ["@/a/**"], external: ["effect"] } },
+      ),
+    );
+    expect(provenanceOf(lowered.imports, "a/imports")).toEqual([
+      { node: "a", kind: "allow", entry: "pkg/src/a/**" },
+      { node: "a", kind: "allow", entry: "pkg/src/lib/**" },
+      { node: "a", kind: "external", entry: "effect", fragment: "shared" },
+    ]);
+  });
+
+  it("stamps nothing when lowered without substitutions", () => {
+    const lowered = lowerManifest(
+      base({ "@/a/": { imports: { message: "m", allow: ["@/a/**"] }, children: { "*.ts": {} } } }),
+    );
+    expect(provenanceOf(lowered.imports, "a/imports")).toEqual([
+      { node: "a", kind: "allow", entry: "pkg/src/a/**" },
     ]);
   });
 });

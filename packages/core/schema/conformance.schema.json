@@ -262,6 +262,32 @@
       "additionalProperties": false,
       "description": "What the policy has nothing to say about. A file in an open folder under no allowlist is claimed, not policed, and counts."
     },
+    "vacant": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "type": "string",
+            "description": "The manifest node."
+          },
+          "allowances": {
+            "type": "number",
+            "allOf": [
+              {
+                "description": "Distinct entries the node wrote, `allow` and `external` together."
+              }
+            ]
+          }
+        },
+        "required": [
+          "node",
+          "allowances"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Nodes that state an import allowlist and select no walked file, in manifest order. Every allowance on one is unused by construction, so none is counted as slack; the node is a tier declared ahead of its first file, or a pattern that no longer matches. Residue is files no node reaches; this is nodes no file reaches."
+    },
     "violations": {
       "type": "array",
       "items": {
@@ -387,7 +413,7 @@
         "properties": {
           "node": {
             "type": "string",
-            "description": "The manifest node that wrote the entry."
+            "description": "The manifest node that wrote the entry — or, when `fragment` is set, the `defs` fragment it was written in."
           },
           "kind": {
             "type": "string",
@@ -400,6 +426,18 @@
           "entry": {
             "type": "string",
             "description": "The entry as written, after alias expansion."
+          },
+          "fragment": {
+            "type": "string",
+            "description": "Present when the entry arrived through `use`. The nodes that referenced the fragment wrote one word, so the entry is reported once, against the fragment, rather than once per node."
+          },
+          "of": {
+            "type": "number",
+            "allOf": [
+              {
+                "description": "With `fragment`: how many non-vacant nodes were granted the entry through it. None of them uses it."
+              }
+            ]
           }
         },
         "required": [
@@ -409,7 +447,56 @@
         ],
         "additionalProperties": false
       },
-      "description": "Allowances no observed import uses, in manifest order. A manifest inferred from the tree has none on the day it is written; every entry here is permission nothing needs."
+      "description": "Allowances no observed import uses, in manifest order, vacant nodes excluded. A manifest inferred from the tree has none on the day it is written; every entry here is permission nothing needs. An entry that arrived through `use` is reported once, against the fragment, and only when no node granted it uses it."
+    },
+    "concentration": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "fragment": {
+            "type": "string",
+            "description": "The `defs` fragment the entry was written in."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "allow",
+              "external"
+            ],
+            "description": "`allow` is a path glob under `imports.allow`; `external` a package name under `imports.external`."
+          },
+          "entry": {
+            "type": "string",
+            "description": "The entry as written, after alias expansion."
+          },
+          "usedAt": {
+            "type": "number",
+            "allOf": [
+              {
+                "description": "Nodes granted the entry through the fragment that use it."
+              }
+            ]
+          },
+          "of": {
+            "type": "number",
+            "allOf": [
+              {
+                "description": "Non-vacant nodes granted the entry through the fragment."
+              }
+            ]
+          }
+        },
+        "required": [
+          "fragment",
+          "kind",
+          "entry",
+          "usedAt",
+          "of"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Fragment entries used at some of the nodes granted them and not the rest. Not slack — the fragment's line is needed somewhere — but a per-file permission written as a many-node allowance, which is what an allowlist widened to make one build green looks like."
     },
     "adoption": {
       "type": "object",
@@ -445,12 +532,14 @@
     "ok",
     "coverage",
     "residue",
+    "vacant",
     "violations",
     "unresolved",
     "stale",
     "baseline",
     "cycles",
     "slack",
+    "concentration",
     "adoption"
   ],
   "additionalProperties": false

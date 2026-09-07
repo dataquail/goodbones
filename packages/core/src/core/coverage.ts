@@ -194,6 +194,59 @@ export type CoverageFloors = {
 
 export type CoverageFamily = keyof CoverageFloors;
 
+// Residue is files no node reaches; this is nodes no file reaches. A node
+// that states an import allowlist and selects no walked file grants
+// permission to nothing: every allowance on it is unused by construction,
+// which is not slack — there is no line to delete, only a node that is a
+// tier declared ahead of its first file, or a pattern that no longer
+// matches. Which of the two, the reader decides; the report tells both
+// apart from slack so nothing has to be read twice.
+export type Vacancy = ReadonlyArray<{
+  readonly node: string;
+  // Distinct entries the node wrote, `allow` and `external` together.
+  readonly allowances: number;
+}>;
+
+// The nodes whose allowances no live rule carries. A node's allowlist is
+// inherited by every descendant's rule until one `reset`s, so a node whose
+// own rule steps aside for an overriding child still reaches that child's
+// files through the child's rule — and is not vacant while the child has any.
+export const vacantNodesOf = (
+  rules: ReadonlyArray<CompiledImportRule>,
+  files: ReadonlyArray<string>,
+): ReadonlySet<string> => {
+  const declaring = new Set<string>();
+  const reached = new Set<string>();
+  for (const rule of rules) {
+    if (rule.allowances.length === 0) continue;
+    const live = files.some((file) => selects(rule, file));
+    for (const { node } of rule.allowances) {
+      declaring.add(node);
+      if (live) reached.add(node);
+    }
+  }
+  return new Set([...declaring].filter((node) => !reached.has(node)));
+};
+
+// Every vacant node with how many entries it wrote, in the order the
+// allowlists declared them.
+export const vacancyOf = (
+  rules: ReadonlyArray<CompiledImportRule>,
+  files: ReadonlyArray<string>,
+): Vacancy => {
+  const vacant = vacantNodesOf(rules, files);
+  const entries = new Map<string, Set<string>>();
+  for (const rule of rules) {
+    for (const { entry, kind, node } of rule.allowances) {
+      if (!vacant.has(node)) continue;
+      const written = entries.get(node) ?? new Set<string>();
+      written.add(`${kind} ${entry}`);
+      entries.set(node, written);
+    }
+  }
+  return [...entries.entries()].map(([node, written]) => ({ node, allowances: written.size }));
+};
+
 export const fractionOf = (covered: number, total: number): number =>
   total === 0 ? 1 : covered / total;
 

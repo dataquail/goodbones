@@ -20,6 +20,7 @@
     "lint:all": "nx run-many --target=lint",
     "lint:packages": "nx run-many --target=lint --projects=packages/*",
     "check:all": "nx run-many --target=check",
+    "e2e": "nx run @goodbones/e2e:e2e",
     "watch:packages": "pnpm run build:packages && nx watch --projects=packages/* -- pnpm run build:packages",
     "dev:all": "pnpm run watch:packages",
     "lint": "pnpm run build:packages && oxlint --type-aware --quiet packages",

@@ -1,4 +1,5 @@
 import {
+  type Allowance,
   type ExportRule,
   type GraphConfig,
   type ImportRule,
@@ -84,12 +85,11 @@ type Frame = {
   readonly pathGlob: string;
   readonly captures: CaptureIndex;
   readonly nextGroup: number;
-  // Accumulated down the tree. `reset` is the only thing that clears it.
-  readonly allow: ReadonlyArray<string>;
-  // Third-party packages, by name, accumulated and reset the same way. Kept
-  // apart from `allow` because a package is judged by its name and never by
-  // where the language's resolver found it.
-  readonly externals: ReadonlyArray<string>;
+  // The allowlist in force, accumulated down the tree; `reset` is the only
+  // thing that clears it. Each entry remembers the node that wrote it. A path
+  // glob is compiled to a target pattern; a package is judged by its name and
+  // never by where the language's resolver found it, so it carries none.
+  readonly allowances: ReadonlyArray<Allowance>;
   readonly importsMessage: string;
   // Inherited like the allowlist: a tier states its naming convention once.
   readonly naming: NamingSpec | undefined;
@@ -231,16 +231,12 @@ const mergeImports = (
   aliases: Readonly<Record<string, string>>,
   captures: CaptureIndex,
   nextGroup: number,
-): Pick<Frame, "allow" | "externals" | "importsMessage"> & {
+  node: string,
+): Pick<Frame, "allowances" | "importsMessage"> & {
   readonly deny: ReadonlyArray<Denial>;
 } => {
   if (spec === undefined) {
-    return {
-      allow: frame.allow,
-      externals: frame.externals,
-      deny: [],
-      importsMessage: frame.importsMessage,
-    };
+    return { allowances: frame.allowances, deny: [], importsMessage: frame.importsMessage };
   }
 
   const compileAllow = (glob: string): string =>
@@ -249,8 +245,15 @@ const mergeImports = (
         .source,
     );
 
-  const own = globsOf(spec.allow ?? []).map(compileAllow);
-  const external = spec.external ?? [];
+  const own: ReadonlyArray<Allowance> = [
+    ...globsOf(spec.allow ?? []).map((glob) => ({
+      node,
+      kind: "allow" as const,
+      entry: expandAliases(glob, aliases),
+      pattern: compileAllow(glob),
+    })),
+    ...(spec.external ?? []).map((name) => ({ node, kind: "external" as const, entry: name })),
+  ];
   const deny = (spec.deny ?? []).flatMap((entry) =>
     globsOf(entry.match).map((glob) => ({
       match: compileAllow(glob),
@@ -266,8 +269,7 @@ const mergeImports = (
   // a mistake here would be dangerous in.
   const dropping = spec.reset === true || spec.unrestricted === true;
   return {
-    allow: dropping ? own : [...frame.allow, ...own],
-    externals: dropping ? external : [...frame.externals, ...external],
+    allowances: dropping ? own : [...frame.allowances, ...own],
     // Only what this node declares. A prohibition is emitted once, over its whole
     // subtree, so descendants neither re-emit it nor can escape it — which is
     // what makes `reset` structurally unable to make a subtree quieter.
@@ -392,15 +394,14 @@ export const lowerManifest = (
       parent.nextGroup +
       (Object.keys(compiled.captures).length - Object.keys(parent.captures).length);
 
-    const merged = mergeImports(parent, node.imports, aliases, compiled.captures, nextGroup);
+    const merged = mergeImports(parent, node.imports, aliases, compiled.captures, nextGroup, name);
     const ownDenials = merged.deny;
     const frame: Frame = {
       pathSource,
       pathGlob: joinedGlob,
       captures: compiled.captures,
       nextGroup,
-      allow: merged.allow,
-      externals: merged.externals,
+      allowances: merged.allowances,
       importsMessage: merged.importsMessage,
       naming: node.name ?? parent.naming,
     };
@@ -608,9 +609,14 @@ export const lowerManifest = (
       ? probePathOf(joinedGlob, "")
       : probePathOf(joinedGlob, "").replace(/\/[^/]*$/, "");
 
-    const admitsEverything = frame.allow.some((pattern) => pattern === "^.*" || pattern === "^");
-    const hasAllowlist =
-      (frame.allow.length > 0 || frame.externals.length > 0) && !admitsEverything;
+    const allow = frame.allowances.flatMap((one) =>
+      one.pattern === undefined ? [] : [one.pattern],
+    );
+    const externals = frame.allowances
+      .filter((one) => one.kind === "external")
+      .map((one) => one.entry);
+    const admitsEverything = allow.some((pattern) => pattern === "^.*" || pattern === "^");
+    const hasAllowlist = frame.allowances.length > 0 && !admitsEverything;
 
     if (emitsOwnImports && node.imports?.unrestricted !== true && !hasAllowlist) {
       throw new Error(
@@ -630,8 +636,9 @@ export const lowerManifest = (
           probe: { from: scopeProbe, to: probeOutside("nowhere", ownFolder) },
           from: scope,
           ...exemptions,
-          toNot: [...frame.allow],
-          ...(frame.externals.length > 0 ? { externals: [...frame.externals] } : {}),
+          toNot: allow,
+          ...(externals.length > 0 ? { externals } : {}),
+          allowances: frame.allowances,
         });
       }
     }
@@ -841,8 +848,7 @@ export const lowerManifest = (
     pathGlob: "",
     captures: {},
     nextGroup: 1,
-    allow: [],
-    externals: [],
+    allowances: [],
     importsMessage: "This import is not on this folder's allowlist.",
     naming: undefined,
   };
@@ -856,6 +862,7 @@ export const lowerManifest = (
     aliases,
     {},
     1,
+    "repo",
   ).deny.entries()) {
     imports.push({
       name: `repo/deny-${String(index)}`,

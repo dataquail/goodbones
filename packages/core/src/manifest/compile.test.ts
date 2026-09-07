@@ -215,6 +215,32 @@ describe("external", () => {
     expect(ruleNamed(lowered.imports, "domain/pure/imports").externals).toBeUndefined();
   });
 
+  // Each entry remembers where it was written, so a report can point at the
+  // line no import uses. Aliases are expanded, the pattern is the `toNot`.
+  it("records every allowance with the node that declared it", () => {
+    const rule = ruleNamed(lowered.imports, "domain/adapters/imports");
+    expect(rule.allowances).toEqual([
+      { node: "domain", kind: "allow", entry: "pkg/src/domain/**", pattern: rule.toNot?.[0] },
+      { node: "domain", kind: "external", entry: "effect" },
+      { node: "domain", kind: "external", entry: "@scope/name" },
+      {
+        node: "domain/adapters",
+        kind: "allow",
+        entry: "pkg/src/domain/**",
+        pattern: rule.toNot?.[1],
+      },
+      { node: "domain/adapters", kind: "external", entry: "pg" },
+    ]);
+    expect(ruleNamed(lowered.imports, "domain/pure/imports").allowances).toEqual([
+      {
+        node: "domain/pure",
+        kind: "allow",
+        entry: "pkg/src/domain/pure/**",
+        pattern: expect.any(String) as string,
+      },
+    ]);
+  });
+
   // A tier that names only its runtime has an allowlist — one that admits no
   // repository file at all.
   it("counts a node with externals and no allow as having an allowlist", () => {

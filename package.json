@@ -29,6 +29,7 @@
     "architecture:baseline": "pnpm run build:packages && node packages/cli/build/esm/main.js baseline packages",
     "architecture:explain": "pnpm run build:packages && node packages/cli/build/esm/main.js explain",
     "architecture:coverage": "pnpm run build:packages && node packages/cli/build/esm/main.js coverage packages",
+    "architecture:conformance": "pnpm run build:packages && node packages/cli/build/esm/main.js conformance packages",
     "architecture:facts": "pnpm run build:packages && node packages/cli/build/esm/main.js facts",
     "schema:manifest": "pnpm run build:packages && node scripts/emit-manifest-schema.mjs",
     "check": "tsc -b tsconfig.json",

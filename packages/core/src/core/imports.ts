@@ -1,6 +1,11 @@
 import * as Result from "effect/Result";
 
-import type { ImportProbe, ImportProbeTarget, ImportRule } from "../domain/architecture-config.js";
+import type {
+  Allowance,
+  ImportProbe,
+  ImportProbeTarget,
+  ImportRule,
+} from "../domain/architecture-config.js";
 import type { ImportUnresolved, PatternInvalid } from "../domain/architecture-error.js";
 import type { Violation } from "../domain/violation.js";
 import type { DependencyKind, ModuleResolver, ResolvedTarget } from "../ports/module-resolver.js";
@@ -25,6 +30,9 @@ export type CompiledImportRule = {
   // Third-party packages the rule permits, by name. Judged before the path
   // patterns, so where a language keeps its packages never reaches a rule.
   readonly externals: ReadonlySet<string>;
+  // Where each `toNot` and external came from, when lowered from a manifest;
+  // empty for a hand-written rule. What `slackOf` reads.
+  readonly allowances: ReadonlyArray<Allowance>;
   readonly dependencyKind: DependencyKind | null;
   readonly probe: ImportProbe;
 };
@@ -52,6 +60,7 @@ export const compileImportRule = (
     to: sourcesOf(rule.to),
     toNot: sourcesOf(rule.toNot),
     externals: new Set(rule.externals ?? []),
+    allowances: rule.allowances ?? [],
     dependencyKind: rule.dependencyKind ?? null,
   });
 };
@@ -105,6 +114,28 @@ const reports = (rule: CompiledImportRule, captures: RegExpExecArray, target: Re
   return targetAllowed(rule, captures, target.path);
 };
 
+// The same judgement over a target the host has already resolved — for a host
+// that resolves each edge once and wants the target for something else too.
+export const evaluateResolvedEdge = (
+  selected: ReadonlyArray<SelectedRule>,
+  importer: string,
+  target: ResolvedTarget,
+): ReadonlyArray<Violation> => {
+  const violations: Array<Violation> = [];
+  for (const [rule, captures] of selected) {
+    if (reports(rule, captures, target)) {
+      violations.push({
+        kind: "import",
+        ruleName: rule.name,
+        message: rule.message,
+        file: importer,
+        subject: target.path,
+      });
+    }
+  }
+  return violations;
+};
+
 export const evaluateSelectedEdge = (
   selected: ReadonlyArray<SelectedRule>,
   resolver: ModuleResolver,
@@ -114,22 +145,7 @@ export const evaluateSelectedEdge = (
 
   const resolved = resolver.resolve(edge.importer, edge.specifier);
   if (Result.isFailure(resolved)) return Result.fail(resolved.failure);
-  const target = resolved.success;
-
-  const violations: Array<Violation> = [];
-  for (const [rule, captures] of selected) {
-    if (reports(rule, captures, target)) {
-      violations.push({
-        kind: "import",
-        ruleName: rule.name,
-        message: rule.message,
-        file: edge.importer,
-        subject: target.path,
-      });
-    }
-  }
-
-  return Result.succeed(violations);
+  return Result.succeed(evaluateResolvedEdge(selected, edge.importer, resolved.success));
 };
 
 export const evaluateImportEdge = (

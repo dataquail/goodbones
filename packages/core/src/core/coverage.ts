@@ -59,50 +59,127 @@ const selects = (
   file: string,
 ) => firstFromMatch(rule, file) !== null;
 
-export const coverageOf = (policy: CoverageInputs, files: ReadonlyArray<string>): Coverage => {
+// Which families reach one file. The one loop both `coverageOf` and
+// `residueOf` run: the first counts, the second keeps the names.
+export type Reach = {
+  readonly file: string;
+  readonly imports: boolean;
+  // Enumerated and open are told apart, as `coverageOf` counts them.
+  readonly structure: "enumerated" | "open" | null;
+  readonly members: boolean;
+  readonly surface: boolean;
+  readonly graph: boolean;
+};
+
+export const reachOf = (
+  policy: CoverageInputs,
+  files: ReadonlyArray<string>,
+): ReadonlyArray<Reach> => {
   const allowlists = policy.importRules.filter(isAllowlist);
-  let imports = 0;
-  let enumerated = 0;
-  let open = 0;
-  let members = 0;
-  let surface = 0;
-  let graph = 0;
-
-  for (const file of files) {
-    if (allowlists.some((rule) => selects(rule, file))) imports += 1;
-
+  return files.map((file) => {
     const folder = dirnameOf(file);
     const governing = policy.structure.folders.filter((rule) =>
       rule.folder.some((pattern) => pattern.test(folder)),
     );
-    if (governing.length > 0) {
-      if (governing.every((rule) => rule.files.some((pattern) => pattern.source === OPEN_LAYOUT))) {
-        open += 1;
-      } else {
-        enumerated += 1;
-      }
-    }
+    const structure =
+      governing.length === 0
+        ? null
+        : governing.every((rule) => rule.files.some((pattern) => pattern.source === OPEN_LAYOUT))
+          ? "open"
+          : "enumerated";
+    return {
+      file,
+      imports: allowlists.some((rule) => selects(rule, file)),
+      structure,
+      members: policy.memberRules.some((rule) => selects(rule, file)),
+      surface: policy.surfaceRules.some((rule) => selects(rule, file)),
+      graph: [...policy.graph.cycles, ...policy.graph.orphans].some(
+        (rule) =>
+          rule.within.some((pattern) => pattern.test(file)) &&
+          !rule.withinNot.some((pattern) => pattern.test(file)),
+      ),
+    };
+  });
+};
 
-    if (policy.memberRules.some((rule) => selects(rule, file))) members += 1;
-    if (policy.surfaceRules.some((rule) => selects(rule, file))) surface += 1;
-
-    const scoped = [...policy.graph.cycles, ...policy.graph.orphans].some(
-      (rule) =>
-        rule.within.some((pattern) => pattern.test(file)) &&
-        !rule.withinNot.some((pattern) => pattern.test(file)),
-    );
-    if (scoped) graph += 1;
-  }
-
+export const coverageOf = (policy: CoverageInputs, files: ReadonlyArray<string>): Coverage => {
+  const reach = reachOf(policy, files);
+  const count = (is: (one: Reach) => boolean): number => reach.filter(is).length;
   const total = files.length;
   return {
     files: total,
-    imports: { covered: imports, total },
-    structure: { enumerated, open, total },
-    members: { covered: members, total },
-    surface: { covered: surface, total },
-    graph: { covered: graph, total },
+    imports: { covered: count((one) => one.imports), total },
+    structure: {
+      enumerated: count((one) => one.structure === "enumerated"),
+      open: count((one) => one.structure === "open"),
+      total,
+    },
+    members: { covered: count((one) => one.members), total },
+    surface: { covered: count((one) => one.surface), total },
+    graph: { covered: count((one) => one.graph), total },
   };
+};
+
+// The files no family reaches — counted by no family's coverage, so a file in
+// an open folder under no allowlist is residue: claimed, not policed — and
+// the folders wholly made of them, each the topmost such folder. A policy
+// that is 40% silence looks exactly like one that is 100% enforced, until
+// counted; this is what the silence is made of.
+export type Residue = {
+  readonly files: ReadonlyArray<string>;
+  readonly folders: ReadonlyArray<string>;
+};
+
+export const residueOf = (policy: CoverageInputs, files: ReadonlyArray<string>): Residue => {
+  const unreached = reachOf(policy, files)
+    .filter(
+      (one) =>
+        !one.imports &&
+        one.structure !== "enumerated" &&
+        !one.members &&
+        !one.surface &&
+        !one.graph,
+    )
+    .map((one) => one.file)
+    .sort();
+  return { files: unreached, folders: foldersWhollyIn(unreached, files) };
+};
+
+// Every ancestor folder of a file, nearest first, the root (`""`) excluded.
+const ancestorsOf = (file: string): ReadonlyArray<string> => {
+  const folders: Array<string> = [];
+  let folder = dirnameOf(file);
+  while (folder !== "") {
+    folders.push(folder);
+    folder = dirnameOf(folder);
+  }
+  return folders;
+};
+
+// The topmost folders every walked file of which is in `subset`. Each is
+// reported once, with none of its subfolders, and a lone file's folder counts
+// — a folder with one file the policy ignores is a folder the policy ignores.
+const foldersWhollyIn = (
+  subset: ReadonlyArray<string>,
+  files: ReadonlyArray<string>,
+): ReadonlyArray<string> => {
+  const walked = new Map<string, number>();
+  for (const file of files) {
+    for (const folder of ancestorsOf(file)) walked.set(folder, (walked.get(folder) ?? 0) + 1);
+  }
+  const inSubset = new Map<string, number>();
+  for (const file of subset) {
+    for (const folder of ancestorsOf(file)) {
+      inSubset.set(folder, (inSubset.get(folder) ?? 0) + 1);
+    }
+  }
+  const whole = [...inSubset.entries()]
+    .filter(([folder, count]) => walked.get(folder) === count)
+    .map(([folder]) => folder)
+    .sort();
+  return whole.filter(
+    (folder) => !whole.some((other) => other !== folder && folder.startsWith(`${other}/`)),
+  );
 };
 
 // A floor the policy states for itself, per family, as a fraction. Structure

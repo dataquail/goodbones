@@ -27,6 +27,23 @@ const ImportProbe = Schema.Struct({
   to: ImportProbeTarget,
 });
 
+// One entry of an `imports` allowlist, as the author wrote it and where. An
+// allowlist rule compiles its entries into `toNot` patterns and `externals`
+// names, which is all evaluation needs; this is the other direction — from a
+// pattern back to the line in the manifest that put it there — so a report
+// can say which line no import uses. Slack is the signature of an allowlist
+// widened to make a build green, and it is only visible with the entry kept.
+export const Allowance = Schema.Struct({
+  // The manifest node that declared the entry, as rule names name nodes.
+  node: Schema.String,
+  // `allow` is a path glob; `external` is a package name.
+  kind: Schema.Literals(["allow", "external"]),
+  // The entry as written, after alias expansion.
+  entry: Schema.String,
+  // For an `allow`: the compiled target pattern, as `toNot` carries it.
+  pattern: Schema.optionalKey(Schema.String),
+});
+
 export const ImportRule = Schema.Struct({
   name: Schema.String,
   message: Schema.String,
@@ -35,6 +52,9 @@ export const ImportRule = Schema.Struct({
   fromNot: Schema.optionalKey(PatternList),
   to: Schema.optionalKey(PatternList),
   toNot: Schema.optionalKey(PatternList),
+  // Where each `toNot` pattern and `externals` name came from, for an
+  // allowlist lowered from a manifest. A hand-written rule carries none.
+  allowances: Schema.optionalKey(Schema.Array(Allowance)),
   // Third-party packages this rule permits, by package name. An external
   // target is judged by its package, never by where the language's resolver
   // happened to find it on disk — `to`/`toNot` patterns are for the
@@ -336,6 +356,7 @@ const StructureConfig = Schema.Struct({
   naming: Schema.optionalKey(Schema.Array(StructureNaming)),
 });
 
+export type Allowance = (typeof Allowance)["Type"];
 export type ImportRule = (typeof ImportRule)["Type"];
 export type ResolveConfig = (typeof ResolveConfig)["Type"];
 export type ResolveScope = (typeof ResolveScope)["Type"];

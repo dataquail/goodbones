@@ -8,6 +8,7 @@ import {
   type Graph,
   graphOf,
   graphRulesFailingTheirProbe,
+  heightOf,
 } from "./graph.js";
 
 const compile = (config: GraphConfig) => {
@@ -234,5 +235,41 @@ describe("compileGraphRules", () => {
       orphans: [],
       reach: [],
     });
+  });
+});
+
+describe("heightOf", () => {
+  it("measures each file's distance above a leaf", () => {
+    const heights = heightOf(
+      graph(
+        [
+          ["src/app.ts", "src/service.ts"],
+          ["src/app.ts", "src/util.ts"],
+          ["src/service.ts", "src/util.ts"],
+        ],
+        ["src/lone.ts"],
+      ),
+    );
+    expect([...heights.entries()].sort()).toEqual([
+      ["src/app.ts", 2],
+      ["src/lone.ts", 0],
+      ["src/service.ts", 1],
+      ["src/util.ts", 0],
+    ]);
+  });
+
+  it("gives the members of a cycle one height, and the file above it one more", () => {
+    const cyclic = graph([
+      ["src/a.ts", "src/b.ts"],
+      ["src/b.ts", "src/a.ts"],
+      ["src/b.ts", "src/leaf.ts"],
+      ["src/c.ts", "src/a.ts"],
+    ]);
+    expect([...heightOf(cyclic).entries()].sort()).toEqual([
+      ["src/a.ts", 1],
+      ["src/b.ts", 1],
+      ["src/c.ts", 2],
+      ["src/leaf.ts", 0],
+    ]);
   });
 });

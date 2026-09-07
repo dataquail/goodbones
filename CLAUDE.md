@@ -15,9 +15,10 @@ all under `packages/`:
 - **`@goodbones/typescript`** (`packages/typescript`) — the TypeScript language pack: facts read
   through the TypeScript parser, specifiers resolved through `unrs-resolver`, behind the core's
   `Language` port.
-- **`@goodbones/cli`** (`packages/cli`) — the `architecture` bin: `check`, `baseline`, `coverage`,
-  `explain`, `facts`, `init`, `infer`, `migrate`. Being the one host that sees every file at once, it is where the graph family
-  is evaluated.
+- **`@goodbones/cli`** (`packages/cli`) — the `architecture` bin: `check`, `conformance`, `baseline`,
+  `coverage`, `explain`, `facts`, `init`, `infer`, `migrate`. Being the one host that sees every file at
+  once, it is where the graph family is evaluated, and where the conformance snapshot (residue, slack,
+  cycle count, leaf-first violations; schema in `packages/core/schema/conformance.schema.json`) is built.
 - **`@goodbones/oxlint`** (`packages/oxlint`) — the plugin: five oxlint rules over the same manifest.
 
 Both hosts depend on the core and the pack and never on each other. `website/` is an Astro + Starlight

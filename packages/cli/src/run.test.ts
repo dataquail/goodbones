@@ -8,7 +8,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { loadPolicyFromFile as loadPolicy } from "./config-loader.js";
 import {
-  check,
+  check as checkWith,
+  type CheckReport,
   type CliFailure,
   collectFindings,
   coverage,
@@ -20,6 +21,17 @@ import {
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../.tmp-cli-tests");
+
+// Every fixture repository below keeps its manifest under the module name.
+const check = (
+  policy: Parameters<typeof checkWith>[0],
+  roots: ReadonlyArray<string>,
+  format: "text" | "json" = "text",
+) =>
+  checkWith(policy, roots, {
+    format,
+    manifestPath: path.join(policy.repoRoot, "architecture.config.mjs"),
+  });
 
 // A tiny repository with a policy of its own, so the CLI is exercised end to end
 // — walker, parser, resolver, all four evaluators — without asserting anything
@@ -167,6 +179,65 @@ describe.sequential("check", () => {
     expect(output).toContain("5 files, ");
   });
 
+  it("prints one JSON object with --json, and nothing else on stdout", async () => {
+    const { exit, output } = await captureReport(
+      check(await loadPolicy(repoRoot), ["src", "lib"], "json"),
+    );
+    const report = JSON.parse(output) as CheckReport;
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(report.version).toBe(1);
+    expect(report.ok).toBe(false);
+    expect(report.files).toBe(5);
+    expect(report.roots).toEqual(["src", "lib"]);
+    expect(report.manifest.path).toBe("architecture.config.mjs");
+    expect(report.manifest.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(report.unresolved).toEqual([]);
+    expect(report.stale).toEqual([]);
+    expect(report.adoption).toEqual({ unrestricted: [], partial: [] });
+    // Every finding carries its fingerprint, which is the baseline's key.
+    expect(report.violations).toContainEqual(
+      expect.objectContaining({
+        kind: "import",
+        ruleName: "src/imports",
+        file: "src/thing.repository.ts",
+        subject: "lib/bus.ts",
+        fingerprint: "import|src/imports|src/thing.repository.ts|lib/bus.ts",
+        baselined: false,
+      }),
+    );
+    expect([...new Set(report.violations.map((one) => one.kind))].sort()).toEqual([
+      "export",
+      "graph",
+      "import",
+      "member",
+      "structure",
+      "surface",
+    ]);
+    // Coverage is always carried, floors beside the families that state one.
+    expect(report.coverage.imports).toEqual({ covered: 2, total: 5 });
+    expect(Object.keys(report.coverage)).toEqual([
+      "imports",
+      "structure",
+      "members",
+      "surface",
+      "graph",
+    ]);
+  });
+
+  it("carries the floor in the JSON coverage, and is not ok under it", async () => {
+    const policy = await loadPolicy(repoRoot);
+    const floored = {
+      ...policy,
+      config: { ...policy.config, limits: { coverage: { imports: 0.5 } } },
+    };
+    const { output } = await captureReport(check(floored, ["src", "lib"], "json"));
+    const report = JSON.parse(output) as CheckReport;
+
+    expect(report.coverage.imports).toEqual({ covered: 2, total: 5, floor: 0.5 });
+    expect(report.ok).toBe(false);
+  });
+
   it("refuses to write a baseline when the policy declares nowhere to put one", async () => {
     const { exit } = await captureReport(writeBaseline(await loadPolicy(repoRoot), ["src"]));
 
@@ -298,6 +369,15 @@ describe.sequential("run", () => {
     expect(Exit.isFailure(exit)).toBe(true);
   });
 
+  it("routes check with --json anywhere in the arguments", async () => {
+    const { exit, output } = await captureReport(run(repoRoot, ["check", "src", "--json", "lib"]));
+    const report = JSON.parse(output) as CheckReport;
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(report.roots).toEqual(["src", "lib"]);
+    expect(report.manifest.path).toBe("architecture.config.mjs");
+  });
+
   it("routes coverage", async () => {
     const { exit } = await captureReport(run(repoRoot, ["coverage", "src", "lib"]));
 
@@ -374,6 +454,19 @@ describe.sequential("baseline", () => {
     expect(output).toContain("carried by the baseline");
   });
 
+  it("is ok in JSON with every finding marked baselined", async () => {
+    const { exit, output } = await captureReport(
+      check(await loadPolicy(baselineRoot), ["src", "lib"], "json"),
+    );
+    const report = JSON.parse(output) as CheckReport;
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(report.ok).toBe(true);
+    expect(report.violations.length).toBeGreaterThan(0);
+    expect(report.violations.every((one) => one.baselined)).toBe(true);
+    expect(report.stale).toEqual([]);
+  });
+
   // The ratchet's teeth. A baseline that keeps entries the code no longer
   // produces stops being a record of debt and becomes a place to hide.
   it("fails on an entry that no longer fires, and says how to prune it", async () => {
@@ -388,6 +481,17 @@ describe.sequential("baseline", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     expect(output).toContain("no longer fire");
     expect(output).toContain("architecture baseline");
+  });
+
+  it("lists the stale entry under `stale` in JSON, and is not ok", async () => {
+    const { exit, output } = await captureReport(
+      check(await loadPolicy(baselineRoot), ["src", "lib"], "json"),
+    );
+    const report = JSON.parse(output) as CheckReport;
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(report.ok).toBe(false);
+    expect(report.stale).toEqual(["import|src/imports|src/gone.ts|lib/bus.ts"]);
   });
 });
 

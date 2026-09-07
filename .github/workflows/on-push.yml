@@ -81,8 +81,35 @@ jobs:
       - name: Typecheck affected projects
         run: pnpm exec nx affected -t check --base=origin/main --head=${{ github.event.pull_request.head.sha || github.sha }}
 
+  # The end-to-end suite: generated repositories run through the built bin and
+  # through oxlint loading the built plugin. It runs here, on main, and not on
+  # pull requests — it takes several minutes, and what it catches (a plugin
+  # loaded by a dynamic `import()` is not an edge Nx sees) is caught before
+  # anything ships: `release` needs it, so a red suite is a release that does
+  # not happen. Never `nx affected`, and it builds everything first.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run the end-to-end suite
+        run: pnpm exec nx run @goodbones/e2e:e2e
+
   release:
-    needs: [lint, test, check]
+    needs: [lint, test, check, e2e]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/create-github-app-token@v1

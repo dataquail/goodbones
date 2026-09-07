@@ -1,0 +1,35 @@
+{
+  "name": "@goodbones/e2e",
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "e2e/src",
+  "projectType": "application",
+  "targets": {
+    "e2e": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["^build", { "projects": ["@goodbones/oxlint"], "target": "build" }],
+      "options": {
+        "command": "pnpm run e2e",
+        "cwd": "e2e"
+      }
+    },
+    "check": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "outputs": ["{projectRoot}/.tsbuildinfo"],
+      "options": {
+        "command": "pnpm run check",
+        "cwd": "e2e"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "pnpm exec oxlint --type-aware --quiet e2e",
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  },
+  "tags": []
+}

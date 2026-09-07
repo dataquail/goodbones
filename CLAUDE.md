@@ -16,7 +16,7 @@ all under `packages/`:
   through the TypeScript parser, specifiers resolved through `unrs-resolver`, behind the core's
   `Language` port.
 - **`@goodbones/cli`** (`packages/cli`) — the `architecture` bin: `check`, `baseline`, `coverage`,
-  `explain`, `facts`. Being the one host that sees every file at once, it is where the graph family
+  `explain`, `facts`, `init`, `infer`, `migrate`. Being the one host that sees every file at once, it is where the graph family
   is evaluated.
 - **`@goodbones/oxlint`** (`packages/oxlint`) — the plugin: five oxlint rules over the same manifest.
 
@@ -66,6 +66,11 @@ pnpm run architecture:coverage                                                  
 
 # Everything, as the pre-commit hook runs it
 pnpm run precommit
+
+# The end-to-end suite: generated repositories through the built bin and oxlint (not in precommit)
+pnpm run e2e
+FC_NUM_RUNS=3 FC_END_ON_FAILURE=1 pnpm run e2e   # the property tier, quickly
+FC_SEED=<n> FC_NUM_RUNS=1 pnpm run e2e           # replay one property failure
 
 # Docs site
 pnpm run dev:website
@@ -133,6 +138,26 @@ list is spliced. The root `architecture.yaml` includes `packages/<name>/architec
 each package's tree node — so a package's layering rules are edited in the package, and the
 root stays the index. A position inside an included file carries the file
 (`ManifestPosition.file`), which is how an error names `packages/core/architecture.yaml:12:5`.
+
+**`e2e/` is the suite that runs what a user installs, and it lives outside `packages/` on
+purpose.** The root policy's scope is `^packages/` and its walker roots are `packages`, so the
+harness and its generated fixtures are governed by no rule and seen by no walk — a fixture under
+`packages/cli/` raced the self-hosting `infer` test once. Every fixture is written to a
+realpath'd temp directory (macOS's `/var` is a symlink, and the resolver realpaths its answers)
+with its externals stubbed under the fixture's own `node_modules/`. The harness never imports
+`@goodbones/*` source: `e2e/src/cli.ts` spawns `packages/cli/build/esm/main.js`, `e2e/src/oxlint.ts`
+runs the `oxlint` binary with `packages/oxlint/build/esm/plugin.js` named by absolute path, and
+`e2e/src/install.ts` extracts `pnpm pack` tarballs into the fixture. Assertions are on
+`check --json`, never on the prose. The `e2e` Nx target depends on every build and is never
+cached or affected-filtered. It runs in CI on push to `main` only — it takes several minutes,
+so it is not on pull requests and not in `precommit` — and `release` needs it, so a red suite
+blocks the publish. Run `pnpm run e2e` locally before merging anything that touches a build.
+`e2e/src/profile.ts` is the seam a second language fills — a profile and a `resolve.scopes`
+entry; the scenarios do not change. The property tier (`e2e/src/properties/`) is metamorphic
+only — never a model of the evaluators — and a failing seed shrinks for a long time, so
+`FC_END_ON_FAILURE=1` is how to see the failure first. Running `oxlint` from inside `e2e/`
+fails to load the plugin: the plugin reads the manifest from the working directory, so lint
+from the repository root.
 
 **Imports use explicit `.js` extensions.** `moduleResolution` is `NodeNext` and the package is ESM —
 `import { x } from "./thing.js"` referring to `thing.ts` is correct, not a mistake to "fix".

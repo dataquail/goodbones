@@ -18,6 +18,10 @@ export const typescriptLanguage = (): Language => ({
   // A declaration file states types, not code; no linter visits one and no
   // policy is written about one.
   ignoredFiles: [/\.d\.[cm]?ts$/],
+  // A folder holding a `package.json` is a package, and its source is under
+  // `src` when it has one — the convention `infer` counts its depth from.
+  packageMarkers: ["package.json"],
+  sourceRoots: ["src"],
   extractor: makeFactExtractorLive(),
   fixes: ["subpath-namespace-import"],
   makeResolver: (repoRoot, scope) => makeModuleResolverLive(repoRoot, { scopes: [scope] }),

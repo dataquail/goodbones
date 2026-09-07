@@ -21,6 +21,17 @@ export type Language = {
   // Files carrying one of those extensions that are not source — for
   // TypeScript, a declaration file states types and no linter visits one.
   readonly ignoredFiles: ReadonlyArray<RegExp>;
+  // The files whose presence makes a folder a package of this language —
+  // `package.json`, `go.mod`, `Cargo.toml`. `infer` counts its depth from a
+  // package rather than from the repository root, so a monorepo of twenty
+  // packages is described one package at a time. Empty if the ecosystem has no
+  // such marker.
+  readonly packageMarkers: ReadonlyArray<string>;
+  // The folder names a package of this language keeps its source under, in
+  // order of preference — `src` for TypeScript, nothing for Go, where source
+  // sits at the package root. The first one that exists is where `infer`
+  // starts counting.
+  readonly sourceRoots: ReadonlyArray<string>;
   // Reads the facts out of one source text. The CLI reads every file through
   // it, and a probe carrying a `source` snippet is parsed by it at load.
   readonly extractor: FactExtractor;

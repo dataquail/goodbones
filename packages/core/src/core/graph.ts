@@ -215,6 +215,18 @@ const stronglyConnected = (
   return components;
 };
 
+// Every cycle in the graph, each as its sorted member set. What `infer` asks
+// before it writes a no-cycles rule: a rule the tree fails on day one is a
+// baseline entry, not a description of the tree.
+export const cyclesIn = (graph: Graph): ReadonlyArray<ReadonlyArray<string>> =>
+  stronglyConnected(graph.files, graph).filter((component) => {
+    const [first] = component;
+    return (
+      first !== undefined &&
+      (component.length > 1 || (graph.edges.get(first) ?? []).includes(first))
+    );
+  });
+
 const evaluateCycles = (rule: CompiledGraphCycleRule, graph: Graph): ReadonlyArray<Violation> => {
   const nodes = graph.files.filter((file) => inScope(rule, file));
   const violations: Array<Violation> = [];

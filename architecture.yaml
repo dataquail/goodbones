@@ -105,11 +105,11 @@ limits:
   partial: 0
   # Every folder here is `layout: open`, so structure is 0% enumerated and
   # states no floor. The rest are the numbers on the day they were written:
-  # 2026-09-06, after the tree moved beside the packages — members is 52/86
-  # (every file under the core's `src/`, which prints nothing), surface 82/86
-  # (every file under a `src/`; the four `vitest.config.ts` are the
-  # remainder), graph 51/86 (every non-test file under a `src/`).
-  coverage: { imports: 1, members: 0.6, surface: 0.95, graph: 0.59 }
+  # 2026-09-07, after `infer` arrived — members is 54/90 (every file under
+  # the core's `src/`, which prints nothing), surface 86/90 (every file under
+  # a `src/`; the four `vitest.config.ts` are the remainder), graph 53/90
+  # (every non-test file under a `src/`; two new test files moved it from 59%).
+  coverage: { imports: 1, members: 0.6, surface: 0.95, graph: 0.58 }
 
 # The shape of the whole graph — evaluated by `architecture check`, which
 # is the one adapter that sees every file at once.

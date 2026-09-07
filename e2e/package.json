@@ -1,0 +1,27 @@
+{
+  "name": "@goodbones/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "The end-to-end suite: generated repositories run through the built `architecture` bin and through oxlint loading the built plugin, asserting on `check --json`. Never published.",
+  "scripts": {
+    "e2e": "vitest run",
+    "check": "tsc -b tsconfig.json",
+    "clean": "rm -rf build .tsbuildinfo"
+  },
+  "devDependencies": {
+    "@goodbones/cli": "workspace:*",
+    "@goodbones/core": "workspace:*",
+    "@goodbones/oxlint": "workspace:*",
+    "@goodbones/typescript": "workspace:*",
+    "@types/node": "^25.9.4",
+    "fast-check": "^4.9.0",
+    "oxlint": "1.81.0",
+    "vitest": "^3.2.7",
+    "yaml": "^2.9.0"
+  },
+  "nx": {
+    "includedScripts": []
+  }
+}

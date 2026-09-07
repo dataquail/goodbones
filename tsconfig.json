@@ -6,6 +6,7 @@
     { "path": "packages/core" },
     { "path": "packages/typescript" },
     { "path": "packages/cli" },
-    { "path": "packages/oxlint" }
+    { "path": "packages/oxlint" },
+    { "path": "e2e" }
   ]
 }

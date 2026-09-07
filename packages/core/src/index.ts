@@ -37,6 +37,7 @@ export {
 export {
   type CompiledGraph,
   compileGraphRules,
+  cyclesIn,
   EMPTY_GRAPH_RULES,
   evaluateGraph,
   type Graph,
@@ -134,7 +135,13 @@ export {
   type IncludeReader,
   type SourceDocument,
 } from "./infrastructure/manifest-include.js";
-export { listSourceFiles, type WalkedLanguage } from "./infrastructure/walk.js";
+export {
+  listPackageRoots,
+  listSourceFiles,
+  type PackagedLanguage,
+  type PackageRoot,
+  type WalkedLanguage,
+} from "./infrastructure/walk.js";
 export { type LoadedPolicy, loadPolicy, type LoadPolicyInput } from "./load/policy.js";
 export { type LoweredRules, lowerManifest, type ProbeLanguage } from "./manifest/compile.js";
 export {
@@ -145,6 +152,18 @@ export {
   originOf,
   type Substitution,
 } from "./manifest/expand.js";
+export {
+  type Candidate,
+  candidatesOf,
+  type Generalization,
+  type InferInput,
+  inferManifest,
+  type InferOptions,
+  type InferPackage,
+  type Inferred,
+  type InferredTarget,
+  singularOf,
+} from "./manifest/infer.js";
 export {
   MANIFEST_NODE_SCHEMA_ID,
   MANIFEST_SCHEMA_ID,

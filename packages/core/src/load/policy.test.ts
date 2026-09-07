@@ -16,6 +16,8 @@ const go = (facts: Parameters<typeof makeFactExtractorFake>[0] = {}): Language =
   id: "go",
   extensions: [".go"],
   ignoredFiles: [/_test\.go$/],
+  packageMarkers: ["go.mod"],
+  sourceRoots: [],
   extractor: makeFactExtractorFake(facts),
   fixes: [],
   makeResolver: () =>

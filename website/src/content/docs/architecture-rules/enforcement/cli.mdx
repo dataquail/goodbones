@@ -1,6 +1,6 @@
 ---
 title: The CLI
-description: check, baseline, coverage, explain, facts, init and migrate — the same policy with no linter in the loop.
+description: check, baseline, coverage, explain, facts, init, infer and migrate — the same policy with no linter in the loop.
 ---
 
 The package ships a second way to ask the same question.
@@ -12,6 +12,7 @@ architecture coverage [roots…]   # how much of the tree the policy reaches
 architecture explain <file>      # what governs this file, and why
 architecture facts <file>        # what the parser read out of this file
 architecture init                # write a starter architecture.yaml
+architecture infer               # describe what the tree does today, as a manifest
 architecture migrate             # rewrite a JavaScript manifest as architecture.yaml
 ```
 
@@ -169,6 +170,48 @@ open root that reaches itself and the runtime, both adoption ceilings at zero, a
 per section naming the page that explains it. It refuses to overwrite a manifest in any of
 the four names. The starter is tight enough to fire on the first external import, which is
 the moment to run `check`, read what the tree reaches, and write that down by name.
+
+## `infer`
+
+The other way to start: from the tree rather than from a blank page. `infer` walks the
+roots, resolves every import, and prints a manifest that describes what the repository does
+today — one open node per folder to a depth, every node `unrestricted: true`, each
+`imports.allow` filled from the edges its files actually have, externals and builtins listed
+from what is actually imported. `check` accepts it with zero violations, by construction;
+every entry a reader deletes is a decision. The walkthrough is
+[Starting from the tree](/goodbones/architecture-rules/getting-started/infer/).
+
+```bash
+architecture infer [--depth N] [--root DIR]... [--tsconfig PATH] [--write]
+                   [--yes | --exhaustive] [--collapse]
+```
+
+- `--depth N` — how many folders below a package's source root become nodes of their own
+  (default 2). A folder holding a `package.json` is a package, and its `src/` is where
+  counting starts, so a monorepo is described one package at a time whatever its nesting.
+  Deeper folders are governed by the node above them and admitted by a `**/` catch-all.
+- `--root DIR` — a folder to walk and a top-level key of the tree; repeatable. With a
+  manifest present the roots are its top-level keys; without one, `src/` if it exists,
+  otherwise every top-level folder holding a source file.
+- `--tsconfig PATH` — the tsconfig to resolve through when there is no manifest to take a
+  `resolve` block from (default `tsconfig.json`). With a manifest present, its `resolve` block
+  and `aliases` are reused and carried into the output.
+- `--write` — save as `architecture.yaml` instead of printing. Refuses to overwrite a
+  manifest in any of the four names; leave it off to print beside an existing one.
+- `--yes` / `--exhaustive` — answer the questions below all yes, or do not ask them. Off a
+  terminal, `infer` asks nothing and says so.
+- `--collapse` — fold a node's children into it when every child reaches the same things.
+
+Sibling folders that share a shape — the same subfolders, or the same kinds of file — are
+offered as one wildcarded node, `modules/{module}/`, instead of one node each; and when every
+import between them lands on one place, such as `index.ts`, the tightening to
+`modules/*/index.ts` is offered next. Both are questions, each answered once; the default is
+to describe every folder on its own.
+
+The output carries the floors `check` will hold it to: `limits.unrestricted` is the number of
+nodes nobody has reviewed, and `limits.coverage` is what the manifest reaches on the day it
+was written. An import nothing can resolve is in no allowlist, and is listed on stderr for the
+same reason `check` reports it.
 
 ## `migrate`
 

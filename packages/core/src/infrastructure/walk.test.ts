@@ -1,11 +1,16 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { listSourceFiles, type WalkedLanguage } from "./walk.js";
+import {
+  listPackageRoots,
+  listSourceFiles,
+  type PackagedLanguage,
+  type WalkedLanguage,
+} from "./walk.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 
@@ -71,5 +76,65 @@ describe("roots", () => {
     expect(listSourceFiles(repoRoot, ["packages/core/src/core/baseline.ts"], TYPESCRIPT)).toEqual([
       "packages/core/src/core/baseline.ts",
     ]);
+  });
+});
+
+describe("listPackageRoots", () => {
+  const NODE: PackagedLanguage = { packageMarkers: ["package.json"], sourceRoots: ["src"] };
+  const GO_MODULES: PackagedLanguage = { packageMarkers: ["go.mod"], sourceRoots: [] };
+
+  const nested = (files: ReadonlyArray<string>, run: (root: string) => void): void => {
+    const root = mkdtempSync(path.join(tmpdir(), "architecture-packages-"));
+    try {
+      for (const file of files) {
+        mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+        writeFileSync(path.join(root, file), "");
+      }
+      run(root);
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  };
+
+  const TREE = [
+    "package.json",
+    "src/a.ts",
+    "packages/x/package.json",
+    "packages/x/src/b.ts",
+    "packages/y/go.mod",
+    "packages/y/c.go",
+    "packages/z/node_modules/dep/package.json",
+    "packages/z/d.ts",
+  ];
+
+  it("finds every folder holding a marker, the walk root's ancestors included", () => {
+    nested(TREE, (root) => {
+      expect(listPackageRoots(root, ["packages"], [NODE])).toEqual([
+        { root: "", source: "src" },
+        { root: "packages/x", source: "packages/x/src" },
+      ]);
+      expect(listPackageRoots(root, ["src"], [NODE])).toEqual([{ root: "", source: "src" }]);
+    });
+  });
+
+  it("marks a package by whichever language's file it holds, and its source by the language's convention", () => {
+    nested(TREE, (root) => {
+      expect(listPackageRoots(root, ["packages"], [NODE, GO_MODULES])).toEqual([
+        { root: "", source: "src" },
+        { root: "packages/x", source: "packages/x/src" },
+        { root: "packages/y", source: null },
+      ]);
+      expect(listPackageRoots(root, ["packages"], [])).toEqual([]);
+    });
+  });
+
+  it("skips the folders the walker skips", () => {
+    nested(TREE, (root) => {
+      expect(
+        listPackageRoots(root, ["packages"], [NODE]).some((one) =>
+          one.root.includes("node_modules"),
+        ),
+      ).toBe(false);
+    });
   });
 });

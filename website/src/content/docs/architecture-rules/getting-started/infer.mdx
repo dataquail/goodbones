@@ -1,0 +1,89 @@
+---
+title: Starting from the tree
+description: architecture infer writes the manifest a repository already obeys, so adopting a policy is deleting from it rather than writing it.
+---
+
+Most repositories have an architecture nobody wrote down. Writing the manifest from a blank
+page means recalling every boundary at once, and the first `check` against a guess reports
+hundreds of violations that are really disagreements between the guess and the tree. `infer`
+starts from the other end: it walks the tree, resolves every import, and writes the manifest
+the repository already obeys.
+
+```bash
+pnpm exec architecture infer            # print it
+pnpm exec architecture infer --write    # save it as architecture.yaml
+```
+
+## What it writes
+
+A manifest in the policy's own vocabulary, describing what the tree does today:
+
+- **One open node per folder**, to a depth. Every folder is `layout: open`, so it admits
+  any file name; the tree of folders is what is enumerated. Depth is counted from a package's
+  source root — a folder holding a `package.json` is a package, and its `src/` is where the
+  count starts — so a monorepo is described one package at a time. Folders beyond the depth
+  are governed by the node above them, which admits them with a `**/` catch-all.
+- **An allowlist per node, filled from the edges its files have.** A target inside another
+  node is written as that node — `src/platform/**`, or `src/*` for a file directly in a node
+  with children, which is how a barrel is named without naming the barrel. A file outside
+  every root is written by its path. Builtins are listed by name (`node:fs`), packages under
+  `external`.
+- **`unrestricted: true` on every node.** The allowlist is enforced from the first `check`,
+  but the flag says nobody has reviewed it yet, and `limits.unrestricted` counts how many
+  remain. Lower the number as you review, and the policy refuses to drift back.
+- **The floors.** `limits.coverage` is what the manifest reaches on the day it was written,
+  so a rule that quietly stops covering files fails the build.
+- **A no-cycles rule**, if the graph has no cycle today. A rule the tree fails on day one is
+  a baseline entry, not a description, so `infer` writes it only when it holds.
+
+The output is dated: every node's `message` says when it was inferred and how many files and
+edges it stood for, so a reader a year later knows how old the description is.
+
+With a manifest already present, `infer` reads its `resolve` block and `aliases` and prints
+beside it, which is how to see what a tier has grown to reach. Without one, it resolves
+through `tsconfig.json` (or `--tsconfig`) and walks `src/`, or every top-level folder that
+holds a source file, or the roots `--root` names.
+
+## The questions
+
+Sibling folders that look like members of one layer are offered as one node. Two siblings
+qualify when they share at least two subfolders, or half of their kinds of file
+(`*.handler.ts`, `index.ts`):
+
+```
+src/modules/: auth, billing, orders each have commands/, domain/, queries/, index.ts.
+  Describe them as one node, src/modules/{module}/? [Y/n]
+  All 12 imports between them land on index.ts.
+  Restrict what one may reach in another to src/modules/*/index.ts? [Y/n]
+```
+
+Yes to the first replaces three nodes with `{module}/`, whose allowlist is the union of
+theirs: a module's own edges keep the capture (`src/modules/{module}/**`), and an edge into a
+sibling becomes `src/modules/*/**`, which is honest about today and the first line to
+tighten. Yes to the second writes that tightening now, because every cross-module import
+already lands on the barrel. Each question is asked once; a declined group stays as it was.
+
+`--yes` accepts every offer, `--exhaustive` asks nothing, and off a terminal `infer` asks
+nothing and says so. The default with no flags is one node per folder — the manifest that
+needs editing whenever a folder is added, at the cost of nothing generalized by mistake.
+
+## Then
+
+```bash
+pnpm exec architecture check       # clean: the manifest describes today
+pnpm exec architecture coverage    # every node unrestricted; the review list
+```
+
+The manifest now constrains nothing the tree does not already do, which is the point: from
+here every edit is a decision. Delete an `allow` entry and `check` reports the imports that
+depended on it; that is the boundary you meant, and the files on the wrong side of it. Replace
+`src/modules/*/**` with `src/modules/*/index.ts`; rename a node's `message` to say what the
+tier is for; drop `unrestricted` from a node you have read, and lower `limits.unrestricted` by
+one. An import nothing could resolve is listed when `infer` runs and reported by every
+`check` until the resolver can see it or `ignoreUnresolved` names it, with a reason.
+
+What `infer` cannot know is what the folders mean. It writes `src/platform/**` because
+`src/modules/billing/` reaches it, not because the platform is meant to be reached; the
+[manifest reference](/goodbones/architecture-rules/manifest/) is what the intended version
+reads like, and [adoption](/goodbones/architecture-rules/enforcement/adoption/) is how the gap
+between the two is kept visible.

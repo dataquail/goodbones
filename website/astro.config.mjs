@@ -25,6 +25,7 @@ export default defineConfig({
               items: [
                 { slug: "architecture-rules/getting-started/introduction" },
                 { slug: "architecture-rules/getting-started/installation" },
+                { slug: "architecture-rules/getting-started/infer" },
               ],
             },
             {

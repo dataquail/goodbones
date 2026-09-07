@@ -41,6 +41,7 @@ import * as Result from "effect/Result";
 
 import { type LoadedPolicy, loadPolicyFromFile } from "./config-loader.js";
 import { buildGraph } from "./graph.js";
+import { infer } from "./infer.js";
 import { sourceFactsOf } from "./source-facts.js";
 
 // The policy, run with no linter in the loop.
@@ -585,9 +586,13 @@ export const run = (
   Effect.gen(function* () {
     const [command = "check", ...rest] = argv;
 
-    // The two commands that write a manifest rather than read one.
+    // The three commands that write a manifest rather than read one.
     if (command === "init") return yield* init(repoRoot);
     if (command === "migrate") return yield* migrate(repoRoot, configFilename);
+    if (command === "infer") {
+      yield* infer(repoRoot, rest, configFilename);
+      return;
+    }
 
     const policy = yield* Effect.tryPromise({
       try: () => loadPolicyFromFile(repoRoot, configFilename),
@@ -619,7 +624,7 @@ export const run = (
       default:
         return yield* Effect.fail(
           fail(
-            `unknown command "${command}". Try: check | baseline | coverage | explain <file> | facts <file> [--json] | init | migrate`,
+            `unknown command "${command}". Try: check | baseline | coverage | explain <file> | facts <file> [--json] | init | infer | migrate`,
           ),
         );
     }

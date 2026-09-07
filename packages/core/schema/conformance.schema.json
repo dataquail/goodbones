@@ -1,0 +1,457 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dataquail.github.io/goodbones/schema/conformance.schema.json",
+  "title": "Conformance snapshot",
+  "description": "How far a repository's tree is from its architecture manifest, as `architecture conformance --json` reports it. See https://dataquail.github.io/goodbones/architecture-rules/enforcement/conformance/.",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "number",
+      "enum": [
+        1
+      ],
+      "description": "The shape of this document."
+    },
+    "manifest": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "The file the policy was read from — the root file, when split with `include`."
+        },
+        "sha256": {
+          "type": "string",
+          "description": "A hash of that file's bytes, so two snapshots can say whether the policy changed between them."
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "additionalProperties": false,
+      "description": "The policy this snapshot was taken against — the repository's own, or the one `--against` named."
+    },
+    "roots": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "description": "Repo-relative, with forward slashes."
+      },
+      "description": "The directories walked."
+    },
+    "files": {
+      "type": "number",
+      "allOf": [
+        {
+          "description": "Files walked."
+        }
+      ]
+    },
+    "ok": {
+      "type": "boolean",
+      "description": "What `check` would exit with: true when no reportable violation, unresolved import, stale baseline entry or coverage shortfall exists."
+    },
+    "coverage": {
+      "type": "object",
+      "properties": {
+        "imports": {
+          "type": "object",
+          "properties": {
+            "covered": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "Files this family reaches."
+                }
+              ]
+            },
+            "total": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "Files walked."
+                }
+              ]
+            },
+            "floor": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "The fraction the manifest's `limits.coverage` states for this family, when it states one."
+                }
+              ]
+            }
+          },
+          "required": [
+            "covered",
+            "total"
+          ],
+          "additionalProperties": false
+        },
+        "structure": {
+          "type": "object",
+          "properties": {
+            "covered": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "Files this family reaches."
+                }
+              ]
+            },
+            "total": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "Files walked."
+                }
+              ]
+            },
+            "floor": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "The fraction the manifest's `limits.coverage` states for this family, when it states one."
+                }
+              ]
+            }
+          },
+          "required": [
+            "covered",
+            "total"
+          ],
+          "additionalProperties": false
+        },
+        "members": {
+          "type": "object",
+          "properties": {
+            "covered": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "Files this family reaches."
+                }
+              ]
+            },
+            "total": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "Files walked."
+                }
+              ]
+            },
+            "floor": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "The fraction the manifest's `limits.coverage` states for this family, when it states one."
+                }
+              ]
+            }
+          },
+          "required": [
+            "covered",
+            "total"
+          ],
+          "additionalProperties": false
+        },
+        "surface": {
+          "type": "object",
+          "properties": {
+            "covered": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "Files this family reaches."
+                }
+              ]
+            },
+            "total": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "Files walked."
+                }
+              ]
+            },
+            "floor": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "The fraction the manifest's `limits.coverage` states for this family, when it states one."
+                }
+              ]
+            }
+          },
+          "required": [
+            "covered",
+            "total"
+          ],
+          "additionalProperties": false
+        },
+        "graph": {
+          "type": "object",
+          "properties": {
+            "covered": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "Files this family reaches."
+                }
+              ]
+            },
+            "total": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "Files walked."
+                }
+              ]
+            },
+            "floor": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "The fraction the manifest's `limits.coverage` states for this family, when it states one."
+                }
+              ]
+            }
+          },
+          "required": [
+            "covered",
+            "total"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "imports",
+        "structure",
+        "members",
+        "surface",
+        "graph"
+      ],
+      "additionalProperties": false,
+      "description": "Per family, how many walked files it reaches. Structure counts enumerated folders only."
+    },
+    "residue": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": "Repo-relative, with forward slashes."
+          },
+          "description": "Files no family reaches, sorted."
+        },
+        "folders": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": "Repo-relative, with forward slashes."
+          },
+          "description": "Folders every walked file of which is residue, each the topmost such folder."
+        }
+      },
+      "required": [
+        "files",
+        "folders"
+      ],
+      "additionalProperties": false,
+      "description": "What the policy has nothing to say about. A file in an open folder under no allowlist is claimed, not policed, and counts."
+    },
+    "violations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "fingerprint": {
+            "type": "string",
+            "description": "kind|rule|file|subject — line-independent, so it survives edits to the file it names; the baseline's key."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "import",
+              "export",
+              "structure",
+              "member",
+              "surface",
+              "graph"
+            ]
+          },
+          "ruleName": {
+            "type": "string",
+            "description": "The manifest node path the rule was lowered from."
+          },
+          "file": {
+            "type": "string",
+            "description": "Repo-relative, with forward slashes."
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The other end of the violated relationship — the resolved target, the restricted symbol, the missing sibling — or null when the file alone is the violation."
+          },
+          "message": {
+            "type": "string"
+          },
+          "baselined": {
+            "type": "boolean",
+            "description": "Carried by the baseline, so `check` does not fail on it."
+          }
+        },
+        "required": [
+          "fingerprint",
+          "kind",
+          "ruleName",
+          "file",
+          "subject",
+          "message",
+          "baselined"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Every finding, baselined ones included, ordered so the ones cheapest to fix come first: by the height of the violated target in the import graph, leaves first."
+    },
+    "unresolved": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "Repo-relative, with forward slashes."
+          },
+          "specifier": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "specifier",
+          "detail"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Imports the resolver could not turn into a file. Every rule about one enforces nothing."
+    },
+    "stale": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Baseline entries the code no longer produces."
+    },
+    "baseline": {
+      "type": "object",
+      "properties": {
+        "size": {
+          "type": "number",
+          "allOf": [
+            {
+              "description": "Entries in the baseline file."
+            }
+          ]
+        }
+      },
+      "required": [
+        "size"
+      ],
+      "additionalProperties": false,
+      "description": "The debt the policy is carrying. The ratchet: it may only shrink."
+    },
+    "cycles": {
+      "type": "number",
+      "allOf": [
+        {
+          "description": "Strongly connected components of more than one file, or a file importing itself, anywhere in the walked graph — in a cycles rule's scope or not."
+        }
+      ]
+    },
+    "slack": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "type": "string",
+            "description": "The manifest node that wrote the entry."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "allow",
+              "external"
+            ],
+            "description": "`allow` is a path glob under `imports.allow`; `external` a package name under `imports.external`."
+          },
+          "entry": {
+            "type": "string",
+            "description": "The entry as written, after alias expansion."
+          }
+        },
+        "required": [
+          "node",
+          "kind",
+          "entry"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Allowances no observed import uses, in manifest order. A manifest inferred from the tree has none on the day it is written; every entry here is permission nothing needs."
+    },
+    "adoption": {
+      "type": "object",
+      "properties": {
+        "unrestricted": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Nodes that say `unrestricted: true`."
+        },
+        "partial": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Nodes that say `partial: true`."
+        }
+      },
+      "required": [
+        "unrestricted",
+        "partial"
+      ],
+      "additionalProperties": false,
+      "description": "The tiers that said \"not tightened yet\", by name; `limits` caps how many may."
+    }
+  },
+  "required": [
+    "version",
+    "manifest",
+    "roots",
+    "files",
+    "ok",
+    "coverage",
+    "residue",
+    "violations",
+    "unresolved",
+    "stale",
+    "baseline",
+    "cycles",
+    "slack",
+    "adoption"
+  ],
+  "additionalProperties": false
+}

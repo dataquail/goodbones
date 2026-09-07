@@ -1,0 +1,124 @@
+---
+title: Conformance
+description: architecture conformance measures the distance between the tree and the manifest — residue, violations and slack — and emits it as one snapshot document.
+---
+
+`check` answers one question: does the tree pass the policy? `conformance` answers a
+different one: how far is the tree from the policy, and in which direction? It is a
+measurement rather than a gate, so it never fails, and it can measure against a manifest
+the tree was never expected to satisfy yet.
+
+```bash
+architecture conformance [roots…]                     # the report, as text
+architecture conformance --json [roots…]              # the snapshot document
+architecture conformance --against target.yaml [roots…]
+```
+
+## The three parts
+
+**Residue** is what the policy has nothing to say about: the files no family reaches, and
+the folders made only of them. `coverage` counts these; `conformance` names them. A file
+in a folder that is `layout: open`, under no import allowlist, selected by no `members`
+or `surface` rule and in no graph scope is claimed by the manifest and policed by
+nothing, and it is residue.
+
+**Violations** are what `check` reports, keyed by fingerprint and marked baselined or not,
+ordered so the ones cheapest to fix come first. A violation about an edge names a target,
+and the cost of fixing it is roughly how much of the import graph stands beneath that
+target: an edge to a leaf can be cut without moving anything else, while an edge to a
+module that half the repository imports through cannot. The list starts at the ground.
+
+**Slack** is the opposite of a violation: an entry in an `imports.allow` or
+`imports.external` list that no import in the tree uses. It is the number that tells an
+enforced manifest from a permissive one. A manifest [inferred from the tree](/goodbones/architecture-rules/getting-started/infer/)
+reaches every file and constrains nothing, so its coverage reads as complete; its slack
+is zero on the day it is written and grows with every entry a reader should have deleted.
+Slack is also the signature of an allowlist widened to make a build green — an agent, or a
+person in a hurry, adding a line rather than moving a file — because the widened entry is
+used by exactly the edge it was added for, and every other entry it dragged in is not.
+
+Each slack entry names the node that wrote it, so the line to delete is found by reading
+down the manifest to that node:
+
+```
+slack: 2 allowances nothing imports through
+  typescript: allow "packages/core/src/testing.ts"
+  cli: allow "packages/core/src/testing.ts"
+```
+
+Only `imports.allow` and `imports.external` are measured. An `importedBy` allowlist is
+inbound, and an `importedBy` entry nothing uses is not yet reported.
+
+## `--against`
+
+The manifest in the repository is the policy the tree is held to today. `--against`
+names another — the architecture the team is moving toward — and measures the same tree
+against that instead. The report says how many violations stand between here and there,
+which ones are nearest the ground, and which allowances the target grants that nothing
+would use. The document's `manifest.path` names the file it was measured against, so a
+snapshot of the target is never mistaken for one of the policy.
+
+`--against` is a `conformance` flag only. `check` against a manifest nobody is held to
+yet would fail for no one's benefit.
+
+## The snapshot
+
+`--json` prints one document on stdout and nothing else there. It is the wire format
+everything downstream reads — a pull-request check comparing two of them, an agent reading
+one before it edits, a service keeping history — and it is defined by a schema before any
+of those exist, at
+[`/schema/conformance.schema.json`](/goodbones/schema/conformance.schema.json). Every field
+carries a description in the schema.
+
+```json
+{
+  "version": 1,
+  "manifest": { "path": "architecture.yaml", "sha256": "…" },
+  "roots": ["packages"],
+  "files": 94,
+  "ok": true,
+  "coverage": {
+    "imports": { "covered": 94, "total": 94, "floor": 1 },
+    "structure": { "covered": 0, "total": 94 },
+    "members": { "covered": 58, "total": 94, "floor": 0.6 },
+    "surface": { "covered": 90, "total": 94, "floor": 0.95 },
+    "graph": { "covered": 55, "total": 94, "floor": 0.57 }
+  },
+  "residue": { "files": [], "folders": [] },
+  "violations": [],
+  "unresolved": [],
+  "stale": [],
+  "baseline": { "size": 0 },
+  "cycles": 0,
+  "slack": [
+    { "node": "typescript", "kind": "allow", "entry": "packages/core/src/testing.ts" },
+    { "node": "cli", "kind": "allow", "entry": "packages/core/src/testing.ts" }
+  ],
+  "adoption": { "unrestricted": [], "partial": [] }
+}
+```
+
+It grows the [`check --json`](/goodbones/architecture-rules/enforcement/cli/#check---json)
+shape: `version`, `manifest`, `roots`, `files`, `ok`, `coverage`, `violations`,
+`unresolved`, `stale` and `adoption` mean what they mean there, and `ok` is what `check`
+would have exited with. The rest is the measurement:
+
+- `residue` — the files no family reaches, sorted, and the topmost folders wholly made of
+  them.
+- `violations` — every finding, baselined ones included, in the order above rather than
+  the order they were found.
+- `baseline.size` — the entries in the baseline file: the debt the policy is carrying.
+- `cycles` — every cycle in the walked graph, inside a `cycles` rule's scope or not.
+- `slack` — every allowance nothing uses, in manifest order.
+
+Two things make a snapshot comparable across commits. `manifest.sha256` says whether the
+policy changed between them, so a coverage drop is attributable to the tree or to the
+manifest. And every violation is named by its fingerprint, which excludes line and column,
+so the same violation is the same entry after any edit that does not fix it. A snapshot
+some other run wrote is decoded by `decodeSnapshot` in `@goodbones/core`, which refuses a
+key the shape does not declare.
+
+## Done when
+
+The repository's own policy holds itself to this report: its residue is empty, and the
+two slack entries above are real. `pnpm run architecture:conformance` prints it.

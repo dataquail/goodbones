@@ -7,13 +7,14 @@ import {
   baselineOf,
   type CoverageFamily,
   coverageOf,
+  cyclesIn,
   decodeBaseline,
   decodeManifest,
   EMPTY_BASELINE,
   evaluateGraph,
   evaluateMemberSite,
+  evaluateResolvedEdge,
   evaluateSelectedBindings,
-  evaluateSelectedEdge,
   evaluateStructure,
   evaluateSurface,
   exportRulesSelecting,
@@ -22,16 +23,23 @@ import {
   formatManifestYaml,
   formatMessage,
   fractionsOf,
+  type Graph,
   hasGraphRules,
+  heightOf,
   listSourceFiles,
   makeBaselineFilter,
   MANIFEST_FILENAMES,
   MANIFEST_SCHEMA_ID,
   memberRulesSelecting,
+  type ObservedEdge,
   readManifestFile,
   requiredSiblingsOf,
+  residueOf,
   rulesSelecting,
   serializeBaseline,
+  slackOf,
+  type Snapshot,
+  SNAPSHOT_VERSION,
   type SourceFacts,
   staleEntriesOf,
   surfaceRulesSelecting,
@@ -73,12 +81,29 @@ export type Findings = {
   readonly violations: ReadonlyArray<Violation>;
   readonly unresolved: ReadonlyArray<UnresolvedEdge>;
   readonly files: number;
+  // Every edge resolved from a file under an import rule — what the slack
+  // report reads. An edge from a file no import rule selects is not here,
+  // since no allowlist could have admitted it.
+  readonly edges: ReadonlyArray<ObservedEdge>;
+  // The import graph, when a graph rule needed it or the caller asked.
+  readonly graph: Graph | null;
 };
 
-export const collectFindings = (policy: LoadedPolicy, roots: ReadonlyArray<string>): Findings => {
+export type CollectOptions = {
+  // Build the graph even when no rule needs it — the snapshot counts cycles
+  // and orders violations by it.
+  readonly graph?: boolean;
+};
+
+export const collectFindings = (
+  policy: LoadedPolicy,
+  roots: ReadonlyArray<string>,
+  options: CollectOptions = {},
+): Findings => {
   const files = listSourceFiles(policy.repoRoot, roots, policy.languages);
   const violations: Array<Violation> = [];
   const unresolved: Array<UnresolvedEdge> = [];
+  const edges: Array<ObservedEdge> = [];
 
   // Each file is parsed at most once, whether the per-file families or the
   // graph pass asks first.
@@ -93,13 +118,12 @@ export const collectFindings = (policy: LoadedPolicy, roots: ReadonlyArray<strin
 
   // The graph is the whole repository resolved at once — the one question no
   // per-file adapter can ask — and is built only when a rule needs it.
-  if (hasGraphRules(policy.graph)) {
-    for (const violation of evaluateGraph(
-      policy.graph,
-      buildGraph(files, policy.resolver, factsOf),
-    )) {
-      violations.push(violation);
-    }
+  const graph =
+    options.graph === true || hasGraphRules(policy.graph)
+      ? buildGraph(files, policy.resolver, factsOf)
+      : null;
+  if (graph !== null && hasGraphRules(policy.graph)) {
+    for (const violation of evaluateGraph(policy.graph, graph)) violations.push(violation);
   }
 
   for (const file of files) {
@@ -134,14 +158,21 @@ export const collectFindings = (policy: LoadedPolicy, roots: ReadonlyArray<strin
     for (const specifier of facts.specifiers) {
       const edge = { importer: file, specifier };
 
-      const imported = evaluateSelectedEdge(selectedImports, policy.resolver, edge);
-      if (Result.isFailure(imported)) {
-        if (policy.config.resolve.unresolved === "off") continue;
-        if (policy.ignoreUnresolved.some((pattern) => pattern.test(specifier))) continue;
-        unresolved.push({ file, specifier, detail: imported.failure.detail });
-        continue;
+      // A file no import rule selects never needs its imports resolved, which
+      // is what keeps resolution off the hot path for the bulk of the repo.
+      if (selectedImports.length > 0) {
+        const resolved = policy.resolver.resolve(file, specifier);
+        if (Result.isFailure(resolved)) {
+          if (policy.config.resolve.unresolved === "off") continue;
+          if (policy.ignoreUnresolved.some((pattern) => pattern.test(specifier))) continue;
+          unresolved.push({ file, specifier, detail: resolved.failure.detail });
+          continue;
+        }
+        edges.push({ importer: file, target: resolved.success });
+        for (const violation of evaluateResolvedEdge(selectedImports, file, resolved.success)) {
+          violations.push(violation);
+        }
       }
-      for (const violation of imported.success) violations.push(violation);
 
       const bound = facts.bindings.get(specifier) ?? [];
       const exported = evaluateSelectedBindings(selectedExports, policy.resolver, {
@@ -154,7 +185,7 @@ export const collectFindings = (policy: LoadedPolicy, roots: ReadonlyArray<strin
     }
   }
 
-  return { violations, unresolved, files: files.length };
+  return { violations, unresolved, files: files.length, edges, graph };
 };
 
 const baselinePathOf = (policy: LoadedPolicy): string | null =>
@@ -235,8 +266,14 @@ export const checkReport = (
   policy: LoadedPolicy,
   roots: ReadonlyArray<string>,
   manifestPath: string,
+): CheckReport => reportOf(policy, roots, manifestPath, collectFindings(policy, roots));
+
+const reportOf = (
+  policy: LoadedPolicy,
+  roots: ReadonlyArray<string>,
+  manifestPath: string,
+  findings: Findings,
 ): CheckReport => {
-  const findings = collectFindings(policy, roots);
   const baseline = readBaseline(policy);
   const stale = staleEntriesOf(baseline, findings.violations);
   const { isBaselined } = makeBaselineFilter(baseline);
@@ -377,6 +414,135 @@ export const check = (
   });
 
 const percent = (fraction: number): string => `${String(Math.floor(fraction * 100))}%`;
+
+// The conformance snapshot: `check`'s report grown with what no family
+// reaches, what the allowlists permit and nothing uses, the cycle count and
+// the size of the debt — the whole distance between the tree and the
+// manifest, as one document another run can be compared against. Its shape
+// is the core's `Snapshot`, and the schema published beside the manifest's.
+export const snapshotOf = (
+  policy: LoadedPolicy,
+  roots: ReadonlyArray<string>,
+  manifestPath: string,
+): Snapshot => {
+  const findings = collectFindings(policy, roots, { graph: true });
+  const report_ = reportOf(policy, roots, manifestPath, findings);
+  const files = listSourceFiles(policy.repoRoot, roots, policy.languages);
+  const graph = findings.graph ?? { files, edges: new Map() };
+  const heights = heightOf(graph);
+
+  // Leaf edges first. A violation names a target when it is about an edge;
+  // the cost of fixing it is roughly how much of the graph stands beneath
+  // that target, so the ones nearest the ground come first and a reader
+  // starting at the top of the list is starting where a fix stays local.
+  // Ties keep the fingerprint order, so the list is the same on every run.
+  const heightOfViolation = (one: ReportedViolation): number =>
+    heights.get(one.subject ?? "") ?? heights.get(one.file) ?? 0;
+  const violations = [...report_.violations].sort((left, right) => {
+    const byHeight = heightOfViolation(left) - heightOfViolation(right);
+    return byHeight !== 0 ? byHeight : left.fingerprint.localeCompare(right.fingerprint);
+  });
+
+  return {
+    version: SNAPSHOT_VERSION,
+    manifest: report_.manifest,
+    roots: report_.roots,
+    files: report_.files,
+    ok: report_.ok,
+    coverage: report_.coverage,
+    residue: residueOf(policy, files),
+    violations,
+    unresolved: report_.unresolved,
+    stale: report_.stale,
+    baseline: { size: readBaseline(policy).entries.length },
+    cycles: cyclesIn(graph).length,
+    slack: slackOf(policy.importRules, findings.edges),
+    adoption: report_.adoption,
+  };
+};
+
+const renderSnapshot = (snapshot: Snapshot): ReadonlyArray<string> => {
+  const reportable = snapshot.violations.filter((one) => !one.baselined);
+  const carried = snapshot.violations.length - reportable.length;
+  const count = (n: number, noun: string, plural = `${noun}s`): string =>
+    `${String(n)} ${n === 1 ? noun : plural}`;
+  const row = (family: CoverageFamily): string => {
+    const { covered, floor, total } = snapshot.coverage[family];
+    const fraction = total === 0 ? 1 : covered / total;
+    const mark =
+      floor === undefined
+        ? ""
+        : fraction >= floor
+          ? `  ≥ ${percent(floor)} ✓`
+          : `  < ${percent(floor)} ✗`;
+    return `  ${family.padEnd(10)} ${String(covered).padStart(5)}/${String(total)}  ${percent(fraction).padStart(4)}${mark}`;
+  };
+  const section = (title: string, lines: ReadonlyArray<string>): ReadonlyArray<string> => [
+    "",
+    title,
+    ...lines,
+  ];
+
+  return [
+    `${String(snapshot.files)} files under ${snapshot.roots.join(", ")}, against ${snapshot.manifest.path}`,
+    ...section("coverage", COVERAGE_FAMILIES.map(row)),
+    ...section(
+      `residue: ${count(snapshot.residue.files.length, "file")} no family reaches` +
+        (snapshot.residue.folders.length === 0
+          ? ""
+          : `, ${count(snapshot.residue.folders.length, "folder")} wholly`),
+      [
+        ...snapshot.residue.folders.map((folder) => `  ${folder}/`),
+        ...snapshot.residue.files
+          .filter(
+            (file) => !snapshot.residue.folders.some((folder) => file.startsWith(`${folder}/`)),
+          )
+          .map((file) => `  ${file}`),
+      ],
+    ),
+    ...section(
+      `violations: ${count(reportable.length, "reportable")}` +
+        (carried > 0 ? `, ${String(carried)} carried by the baseline` : "") +
+        (snapshot.stale.length > 0
+          ? `, ${count(snapshot.stale.length, "stale entry", "stale entries")}`
+          : "") +
+        (reportable.length > 0 ? " — nearest the ground first" : ""),
+      reportable.map(describe),
+    ),
+    ...(snapshot.unresolved.length === 0
+      ? []
+      : section(
+          `unresolved: ${count(snapshot.unresolved.length, "import")} no rule can police`,
+          snapshot.unresolved.map((one) => `  ${one.file} → ${one.specifier} (${one.detail})`),
+        )),
+    ...section(
+      `slack: ${count(snapshot.slack.length, "allowance")} nothing imports through`,
+      snapshot.slack.map((one) => `  ${one.node}: ${one.kind} ${JSON.stringify(one.entry)}`),
+    ),
+    "",
+    `cycles: ${String(snapshot.cycles)}`,
+    `baseline: ${count(snapshot.baseline.size, "entry", "entries")}`,
+    `adoption: ${count(snapshot.adoption.unrestricted.length, "unrestricted tier")}, ${count(snapshot.adoption.partial.length, "partial tier")}`,
+  ];
+};
+
+export type ConformanceOptions = CheckOptions;
+
+// The report of the tree against the manifest. Unlike `check`, it never
+// fails: it is a measurement, and the manifest it measures against may be one
+// the tree was never expected to satisfy yet — `--against` names a target.
+// `ok` in the document says what `check` would have done.
+export const conformance = (
+  policy: LoadedPolicy,
+  roots: ReadonlyArray<string>,
+  options: ConformanceOptions,
+): Effect.Effect<void, CliFailure> =>
+  Effect.gen(function* () {
+    const snapshot = snapshotOf(policy, roots, options.manifestPath);
+    yield* report(
+      options.format === "json" ? [JSON.stringify(snapshot, null, 2)] : renderSnapshot(snapshot),
+    );
+  });
 
 // How much of the tree the policy reaches. A probe proves a rule can fire;
 // this is whether the files are there to fire on. Reported per family, with the
@@ -738,8 +904,24 @@ export const run = (
       return;
     }
 
+    // `--against <file>` measures the tree against a manifest other than the
+    // repository's own — the target the team is moving toward. Only
+    // `conformance` takes it: a `check` against a manifest nobody is held to
+    // yet would fail for no one's benefit.
+    const againstAt = rest.indexOf("--against");
+    const against = againstAt === -1 ? undefined : rest[againstAt + 1];
+    if (againstAt !== -1 && (against === undefined || against.startsWith("--"))) {
+      return yield* Effect.fail(fail("--against needs a manifest path"));
+    }
+    if (against !== undefined && command !== "conformance") {
+      return yield* Effect.fail(
+        fail(`--against is a \`conformance\` flag; ${command} does not take it`),
+      );
+    }
+    const manifestFilename = against ?? configFilename;
+
     const policy = yield* Effect.tryPromise({
-      try: () => loadPolicyFromFile(repoRoot, configFilename),
+      try: () => loadPolicyFromFile(repoRoot, manifestFilename),
       catch: (cause) => fail(String(cause)),
     });
     yield* Effect.sync(() => {
@@ -747,7 +929,12 @@ export const run = (
     });
 
     const json = rest.includes("--json");
-    const positional = rest.filter((argument) => argument !== "--json");
+    const positional = rest.filter(
+      (argument, index) =>
+        argument !== "--json" &&
+        argument !== "--against" &&
+        (againstAt === -1 || index !== againstAt + 1),
+    );
     const roots = positional.length > 0 ? positional : ["packages"];
 
     switch (command) {
@@ -755,6 +942,11 @@ export const run = (
         return yield* check(policy, roots, {
           format: json ? "json" : "text",
           manifestPath: manifestPathOf(repoRoot, configFilename),
+        });
+      case "conformance":
+        return yield* conformance(policy, roots, {
+          format: json ? "json" : "text",
+          manifestPath: manifestPathOf(repoRoot, manifestFilename),
         });
       case "baseline":
         return yield* writeBaseline(policy, roots);
@@ -773,7 +965,7 @@ export const run = (
       default:
         return yield* Effect.fail(
           fail(
-            `unknown command "${command}". Try: check [--json] | baseline | coverage | explain <file> | facts <file> [--json] | init | infer | migrate`,
+            `unknown command "${command}". Try: check [--json] | conformance [--json] [--against <manifest>] | baseline | coverage | explain <file> | facts <file> [--json] | init | infer | migrate`,
           ),
         );
     }

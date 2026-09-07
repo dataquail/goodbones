@@ -1,7 +1,13 @@
 import * as Result from "effect/Result";
 import { describe, expect, it } from "vitest";
 
-import { type Coverage, coverageOf, coverageShortfalls, fractionsOf } from "./coverage.js";
+import {
+  type Coverage,
+  coverageOf,
+  coverageShortfalls,
+  fractionsOf,
+  residueOf,
+} from "./coverage.js";
 import { compileGraphRules } from "./graph.js";
 import { compileImportRules } from "./imports.js";
 import { compileMemberRules } from "./members.js";
@@ -129,5 +135,48 @@ describe("coverageShortfalls", () => {
 
   it("is quiet when no floor is stated", () => {
     expect(coverageShortfalls(found, {})).toEqual([]);
+  });
+});
+
+describe("residueOf", () => {
+  it("names the files no family reaches, and the folders made only of them", () => {
+    // src/other/d.ts: under a prohibition alone, in a folder no rule governs,
+    // selected by nothing, in no graph scope.
+    expect(residueOf(policy, FILES)).toEqual({ files: ["src/other/d.ts"], folders: ["src/other"] });
+  });
+
+  it("counts a file in an open folder as residue when nothing else reaches it", () => {
+    // src/lib/c.ts is in an open folder and selected by a surface rule; take
+    // the rule away and the folder is claimed but not policed.
+    const without = { ...policy, surfaceRules: [] };
+    expect(residueOf(without, FILES).files).toEqual(["src/lib/c.ts", "src/other/d.ts"]);
+  });
+
+  it("reports the topmost folder wholly unreached, once", () => {
+    const deep = [...FILES, "src/other/deep/e.ts", "src/other/deep/er/f.ts"];
+    expect(residueOf(policy, deep).folders).toEqual(["src/other"]);
+  });
+
+  it("does not name a folder some file of which is reached", () => {
+    const mixed = [...FILES, "src/other/core-ish.ts"];
+    const reachesIt = {
+      ...policy,
+      memberRules: unwrap(
+        compileMemberRules([
+          {
+            name: "m2",
+            message: "…",
+            probe: { from: "src/other/core-ish.ts", name: "x" },
+            from: "^src/other/core-ish",
+            subject: "calls",
+          },
+        ]),
+      ),
+    };
+    expect(residueOf(reachesIt, mixed)).toEqual({ files: ["src/other/d.ts"], folders: [] });
+  });
+
+  it("is empty over an empty tree", () => {
+    expect(residueOf(policy, [])).toEqual({ files: [], folders: [] });
   });
 });

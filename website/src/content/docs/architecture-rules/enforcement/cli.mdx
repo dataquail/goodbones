@@ -1,12 +1,13 @@
 ---
 title: The CLI
-description: check, baseline, coverage, explain, facts, init, infer and migrate — the same policy with no linter in the loop.
+description: check, conformance, baseline, coverage, explain, facts, init, infer and migrate — the same policy with no linter in the loop.
 ---
 
 The package ships a second way to ask the same question.
 
 ```bash
 architecture check [roots…]      # evaluate the policy
+architecture conformance [roots…] # how far the tree is from the policy: residue, violations, slack
 architecture baseline [roots…]   # record what the repository currently violates
 architecture coverage [roots…]   # how much of the tree the policy reaches
 architecture explain <file>      # what governs this file, and why
@@ -118,11 +119,20 @@ run. `manifest.sha256` hashes the file the policy was read from — the root fil
 it is split with `include`. `version` names this shape, so a document that grows it can say
 which one it grew.
 
+## `conformance`
+
+The distance between the tree and the manifest, as one report: the residue no family
+reaches, the violations ordered leaf-first, and the slack — allowances nothing imports
+through. `--json` emits the snapshot document, and `--against <manifest>` measures the
+same tree against a target manifest instead of the repository's own. It never fails; it
+is a measurement. See [Conformance](/goodbones/architecture-rules/enforcement/conformance/).
+
 ## `coverage`
 
 How much of the tree the policy reaches, per family, with the tiers that said "not tightened
 yet" beneath. `check` compares the same numbers against any floors the manifest states in
 `limits.coverage`. See [Adoption](/goodbones/architecture-rules/enforcement/adoption/).
+`conformance` names the files this counts.
 
 ## `explain`
 

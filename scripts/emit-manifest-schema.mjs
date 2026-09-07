@@ -1,18 +1,24 @@
-// Writes the manifest's JSON Schemas, generated from the Effect codec that
-// decodes it, to packages/core/schema/: the whole manifest, and one node of
-// its tree for a file the manifest includes. Run after a build of the core; a
-// test in the core (`manifest/json-schema.test.ts`) fails when a committed
-// file falls behind the codec, which is how the two are kept in step.
+// Writes the JSON Schemas, each generated from the Effect codec that decodes
+// its document, to packages/core/schema/: the whole manifest, one node of its
+// tree for a file the manifest includes, and the conformance snapshot. Run
+// after a build of the core; a test in the core (`manifest/json-schema.test.ts`,
+// `domain/snapshot.test.ts`) fails when a committed file falls behind the
+// codec, which is how the two are kept in step.
 import { mkdirSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { manifestJsonSchema, manifestNodeJsonSchema } from "../packages/core/build/esm/index.js";
+import {
+  manifestJsonSchema,
+  manifestNodeJsonSchema,
+  snapshotJsonSchema,
+} from "../packages/core/build/esm/index.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const schemas = [
   ["architecture.schema.json", manifestJsonSchema()],
   ["architecture-node.schema.json", manifestNodeJsonSchema()],
+  ["conformance.schema.json", snapshotJsonSchema()],
 ];
 for (const [name, schema] of schemas) {
   const at = path.join(root, "packages/core/schema", name);

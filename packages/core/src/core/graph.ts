@@ -227,6 +227,42 @@ export const cyclesIn = (graph: Graph): ReadonlyArray<ReadonlyArray<string>> =>
     );
   });
 
+// How far each file stands above a leaf: 0 for a file importing nothing the
+// walk saw, else one more than the tallest thing it imports. A violation on a
+// short target is local to fix; one on a tall target drags the tower with it —
+// so a report lists the short ones first. Measured over the strongly
+// connected components, so the members of a cycle share one height and the
+// answer is finite: a cycle is one thing to fix, not a ladder.
+export const heightOf = (graph: Graph): ReadonlyMap<string, number> => {
+  const components = stronglyConnected(graph.files, graph);
+  const componentOf = new Map<string, number>();
+  components.forEach((component, index) => {
+    for (const file of component) componentOf.set(file, index);
+  });
+
+  const heights = new Map<number, number>();
+  const measure = (index: number): number => {
+    const known = heights.get(index);
+    if (known !== undefined) return known;
+    let tallest = -1;
+    for (const file of components[index] ?? []) {
+      for (const target of neighboursOf(graph, file)) {
+        const other = componentOf.get(target);
+        if (other !== undefined && other !== index) tallest = Math.max(tallest, measure(other));
+      }
+    }
+    heights.set(index, tallest + 1);
+    return tallest + 1;
+  };
+
+  const byFile = new Map<string, number>();
+  for (const file of [...graph.files].sort()) {
+    const index = componentOf.get(file);
+    if (index !== undefined) byFile.set(file, measure(index));
+  }
+  return byFile;
+};
+
 const evaluateCycles = (rule: CompiledGraphCycleRule, graph: Graph): ReadonlyArray<Violation> => {
   const nodes = graph.files.filter((file) => inScope(rule, file));
   const violations: Array<Violation> = [];

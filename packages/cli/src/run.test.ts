@@ -2,8 +2,10 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { decodeSnapshot, type Snapshot } from "@goodbones/core";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Result from "effect/Result";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { loadPolicyFromFile as loadPolicy } from "./config-loader.js";
@@ -12,10 +14,12 @@ import {
   type CheckReport,
   type CliFailure,
   collectFindings,
+  conformance as conformanceWith,
   coverage,
   explain,
   facts,
   run,
+  snapshotOf,
   writeBaseline,
 } from "./run.js";
 
@@ -108,6 +112,10 @@ beforeAll(() => {
   write("lib/a.ts", 'import "./b.ts";\nexport const a = 1;\n');
   write("lib/b.ts", 'import "./a.ts";\nexport const b = 1;\n');
   write("lib/bus.ts", "export const makeBus = 1;\n");
+  // residue: a root no family reaches. Walked only by the conformance tests.
+  write("etc/stray.ts", "export const stray = 1;\n");
+  // A target manifest for `--against`: what the tree does today, allowed.
+  write("target.config.mjs", MANIFEST.replace('allow: ["src/**"]', 'allow: ["src/**", "lib/**"]'));
 });
 
 afterAll(() => {
@@ -400,6 +408,160 @@ describe.sequential("run", () => {
     const { exit } = await captureReport(run(repoRoot, ["lint"]));
 
     expect(Exit.isFailure(exit)).toBe(true);
+  });
+
+  it("routes conformance, with --against naming another manifest", async () => {
+    const { exit, output } = await captureReport(
+      run(repoRoot, ["conformance", "src", "--json", "--against", "target.config.mjs", "lib"]),
+    );
+    const snapshot = JSON.parse(output) as Snapshot;
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(snapshot.roots).toEqual(["src", "lib"]);
+    expect(snapshot.manifest.path).toBe("target.config.mjs");
+    // The target allows the edge the repository's own manifest refuses.
+    expect(snapshot.violations.map((one) => one.kind)).not.toContain("import");
+  });
+
+  it("refuses --against without a path, and on any command but conformance", async () => {
+    const bare = await captureReport(run(repoRoot, ["conformance", "--against"]));
+    expect(Exit.isFailure(bare.exit)).toBe(true);
+
+    const onCheck = await captureReport(
+      run(repoRoot, ["check", "--against", "target.config.mjs", "src"]),
+    );
+    expect(Exit.isFailure(onCheck.exit)).toBe(true);
+    expect(JSON.stringify(onCheck.exit)).toContain("conformance");
+  });
+});
+
+const ROOTS = ["src", "lib", "etc"];
+const conformance = (
+  policy: Parameters<typeof conformanceWith>[0],
+  format: "text" | "json" = "text",
+) =>
+  conformanceWith(policy, ROOTS, {
+    format,
+    manifestPath: path.join(policy.repoRoot, "architecture.config.mjs"),
+  });
+
+describe.sequential("conformance", () => {
+  it("emits the snapshot with --json, and the core's codec accepts it", async () => {
+    const { exit, output } = await captureReport(conformance(await loadPolicy(repoRoot), "json"));
+    const decoded = decodeSnapshot(JSON.parse(output));
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(Result.isSuccess(decoded), JSON.stringify(decoded)).toBe(true);
+  });
+
+  it("never fails: the document says what check would have done", async () => {
+    const { exit, output } = await captureReport(conformance(await loadPolicy(repoRoot), "json"));
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect((JSON.parse(output) as Snapshot).ok).toBe(false);
+  });
+
+  it("grows the check report: same files, roots, manifest, coverage and adoption", async () => {
+    const policy = await loadPolicy(repoRoot);
+    const snapshot = snapshotOf(policy, ROOTS, path.join(repoRoot, "architecture.config.mjs"));
+
+    expect(snapshot.version).toBe(1);
+    expect(snapshot.files).toBe(6);
+    expect(snapshot.roots).toEqual(ROOTS);
+    expect(snapshot.manifest.path).toBe("architecture.config.mjs");
+    expect(snapshot.manifest.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(snapshot.coverage.imports).toEqual({ covered: 2, total: 6 });
+    expect(snapshot.adoption).toEqual({ unrestricted: [], partial: [] });
+    expect(snapshot.unresolved).toEqual([]);
+    expect(snapshot.stale).toEqual([]);
+    expect(snapshot.baseline).toEqual({ size: 0 });
+  });
+
+  it("names the residue: the file and the folder no family reaches", async () => {
+    const snapshot = snapshotOf(
+      await loadPolicy(repoRoot),
+      ROOTS,
+      path.join(repoRoot, "architecture.config.mjs"),
+    );
+
+    expect(snapshot.residue).toEqual({ files: ["etc/stray.ts"], folders: ["etc"] });
+  });
+
+  it("reports an allowance nothing imports through as slack", async () => {
+    const snapshot = snapshotOf(
+      await loadPolicy(repoRoot),
+      ROOTS,
+      path.join(repoRoot, "architecture.config.mjs"),
+    );
+
+    // src/ allows `src/**`, and no file in src/ imports another.
+    expect(snapshot.slack).toEqual([{ node: "src", kind: "allow", entry: "src/**" }]);
+  });
+
+  it("drops the slack once an import uses the allowance", async () => {
+    const policy = await loadPolicy(repoRoot);
+    const target = snapshotOf(policy, ROOTS, path.join(repoRoot, "target.config.mjs"));
+    expect(target.slack).toEqual([{ node: "src", kind: "allow", entry: "src/**" }]);
+
+    const against = await loadPolicy(repoRoot, "target.config.mjs");
+    const used = snapshotOf(against, ROOTS, path.join(repoRoot, "target.config.mjs"));
+    // `lib/**` was added to the target and src/thing.repository.ts reaches lib/bus.ts.
+    expect(used.slack).toEqual([{ node: "src", kind: "allow", entry: "src/**" }]);
+    expect(used.violations.map((one) => one.kind)).not.toContain("import");
+  });
+
+  it("counts every cycle in the graph, in a rule's scope or not", async () => {
+    const snapshot = snapshotOf(
+      await loadPolicy(repoRoot),
+      ROOTS,
+      path.join(repoRoot, "architecture.config.mjs"),
+    );
+
+    expect(snapshot.cycles).toBe(1);
+  });
+
+  it("orders violations by the height of their target, leaves first", async () => {
+    const snapshot = snapshotOf(
+      await loadPolicy(repoRoot),
+      ROOTS,
+      path.join(repoRoot, "architecture.config.mjs"),
+    );
+    const fingerprints = snapshot.violations.map((one) => one.fingerprint);
+    const at = (prefix: string): number => {
+      const index = fingerprints.findIndex((one) => one.startsWith(prefix));
+      if (index === -1) throw new Error(`no violation ${prefix} in ${fingerprints.join("\n")}`);
+      return index;
+    };
+
+    // The edge to lib/bus.ts, which imports nothing, is nearest the ground;
+    // the missing sibling is about thing.repository.ts itself, which stands
+    // one above bus.ts — so the edge is listed first.
+    expect(at("import|src/imports|src/thing.repository.ts|lib/bus.ts")).toBeLessThan(
+      at("structure|src/*.repository.ts/requires|src/thing.repository.ts"),
+    );
+    // Same height, fingerprint order — so the list is the same on every run.
+    const again = snapshotOf(
+      await loadPolicy(repoRoot),
+      ROOTS,
+      path.join(repoRoot, "architecture.config.mjs"),
+    );
+    expect(again.violations.map((one) => one.fingerprint)).toEqual(fingerprints);
+  });
+
+  it("renders every section as text", async () => {
+    const { exit, output } = await captureReport(conformance(await loadPolicy(repoRoot)));
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(output).toContain("6 files under src, lib, etc, against architecture.config.mjs");
+    expect(output).toContain("coverage");
+    expect(output).toContain("residue: 1 file no family reaches, 1 folder wholly");
+    expect(output).toContain("  etc/");
+    expect(output).toContain("violations: ");
+    expect(output).toContain("nearest the ground first");
+    expect(output).toContain("slack: 1 allowance nothing imports through");
+    expect(output).toContain('  src: allow "src/**"');
+    expect(output).toContain("cycles: 1");
+    expect(output).toContain("baseline: 0 entries");
   });
 });
 

@@ -21,6 +21,10 @@ export {
   coverageOf,
   coverageShortfalls,
   fractionsOf,
+  type Reach,
+  reachOf,
+  type Residue,
+  residueOf,
 } from "./core/coverage.js";
 export {
   type BindingEdge,
@@ -43,12 +47,14 @@ export {
   type Graph,
   graphRulesFailingTheirProbe,
   hasGraphRules,
+  heightOf,
 } from "./core/graph.js";
 export {
   type CompiledImportRule,
   compileImportRule,
   compileImportRules,
   evaluateImportEdge,
+  evaluateResolvedEdge,
   evaluateSelectedEdge,
   type ImportEdge,
   probeTargetOf,
@@ -63,6 +69,7 @@ export {
   memberRulesFailingTheirProbe,
   memberRulesSelecting,
 } from "./core/members.js";
+export { type ObservedEdge, type Slack, slackOf } from "./core/slack.js";
 export {
   type CompiledStructure,
   compileStructure,
@@ -79,6 +86,7 @@ export {
   surfaceRulesSelecting,
 } from "./core/surface.js";
 export {
+  type Allowance,
   type BindingKind,
   type DeclarationKind,
   type ExportFix,
@@ -115,6 +123,16 @@ export {
   type ManifestPosition,
   renderManifestPath,
 } from "./domain/manifest-location.js";
+export {
+  decodeSnapshot,
+  type Snapshot,
+  SNAPSHOT_SCHEMA_ID,
+  SNAPSHOT_VERSION,
+  snapshotJsonSchema,
+  Snapshot as SnapshotSchema,
+  type SnapshotSlack,
+  type SnapshotViolation,
+} from "./domain/snapshot.js";
 export {
   fingerprintOf,
   formatMessage,

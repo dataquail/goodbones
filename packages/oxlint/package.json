@@ -1,6 +1,6 @@
 {
   "name": "@goodbones/oxlint",
-  "version": "0.1.0-beta.4",
+  "version": "0.1.0-beta.5",
   "type": "module",
   "license": "MIT",
   "description": "The oxlint plugin for @goodbones/core: the imports, exports, members, structure and surface families as five oxlint rules, evaluated in the editor and in CI from the same manifest the CLI reads.",

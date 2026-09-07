@@ -1,6 +1,6 @@
 {
   "name": "@goodbones/typescript",
-  "version": "0.1.0-beta.4",
+  "version": "0.1.0-beta.5",
   "type": "module",
   "license": "MIT",
   "description": "The TypeScript language pack for @goodbones/core: facts read through the TypeScript parser, specifiers resolved through unrs-resolver, behind the core's Language port.",

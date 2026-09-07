@@ -1,6 +1,6 @@
 {
   "name": "@goodbones/cli",
-  "version": "0.1.0-beta.4",
+  "version": "0.1.0-beta.5",
   "type": "module",
   "license": "MIT",
   "description": "The architecture CLI for @goodbones/core: check, baseline, coverage, explain and facts over a whole repository with no linter in the loop, including the graph family (cycles, orphans, transitive reach) that only an adapter seeing every file at once can evaluate.",

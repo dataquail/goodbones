@@ -1,11 +1,12 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 
 import {
   type Baseline,
   baselineOf,
+  type CoverageFamily,
   coverageOf,
-  coverageShortfalls,
   decodeBaseline,
   decodeManifest,
   EMPTY_BASELINE,
@@ -23,6 +24,7 @@ import {
   fractionsOf,
   hasGraphRules,
   listSourceFiles,
+  makeBaselineFilter,
   MANIFEST_FILENAMES,
   MANIFEST_SCHEMA_ID,
   memberRulesSelecting,
@@ -33,13 +35,12 @@ import {
   type SourceFacts,
   staleEntriesOf,
   surfaceRulesSelecting,
-  unbaselined,
   type Violation,
 } from "@goodbones/core";
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 
-import { type LoadedPolicy, loadPolicyFromFile } from "./config-loader.js";
+import { type LoadedPolicy, loadPolicyFromFile, manifestPathOf } from "./config-loader.js";
 import { buildGraph } from "./graph.js";
 import { infer } from "./infer.js";
 import { sourceFactsOf } from "./source-facts.js";
@@ -60,16 +61,24 @@ export type CliFailure = { readonly _tag: "CliFailure"; readonly message: string
 
 const fail = (message: string): CliFailure => ({ _tag: "CliFailure", message });
 
+// An edge the resolver could not turn into a file. It is reported on its own,
+// since every import rule about it enforces nothing.
+export type UnresolvedEdge = {
+  readonly file: string;
+  readonly specifier: string;
+  readonly detail: string;
+};
+
 export type Findings = {
   readonly violations: ReadonlyArray<Violation>;
-  readonly unresolved: ReadonlyArray<string>;
+  readonly unresolved: ReadonlyArray<UnresolvedEdge>;
   readonly files: number;
 };
 
 export const collectFindings = (policy: LoadedPolicy, roots: ReadonlyArray<string>): Findings => {
   const files = listSourceFiles(policy.repoRoot, roots, policy.languages);
   const violations: Array<Violation> = [];
-  const unresolved: Array<string> = [];
+  const unresolved: Array<UnresolvedEdge> = [];
 
   // Each file is parsed at most once, whether the per-file families or the
   // graph pass asks first.
@@ -129,7 +138,7 @@ export const collectFindings = (policy: LoadedPolicy, roots: ReadonlyArray<strin
       if (Result.isFailure(imported)) {
         if (policy.config.resolve.unresolved === "off") continue;
         if (policy.ignoreUnresolved.some((pattern) => pattern.test(specifier))) continue;
-        unresolved.push(`${file} → ${specifier} (${imported.failure.detail})`);
+        unresolved.push({ file, specifier, detail: imported.failure.detail });
         continue;
       }
       for (const violation of imported.success) violations.push(violation);
@@ -171,65 +180,200 @@ const report = (lines: ReadonlyArray<string>): Effect.Effect<void> =>
 const describe = (violation: Violation): string =>
   `  ${violation.file}\n      ${formatMessage(violation)}`;
 
+// Everything `check` has to say, as one value: the two renderers below read
+// it, and nothing else computes a finding. `version` is here so a document
+// that grows this shape (a conformance snapshot) can say which one it grew.
+export type ReportedViolation = Violation & {
+  readonly fingerprint: string;
+  readonly baselined: boolean;
+};
+
+export type CoverageReport = Readonly<
+  Record<
+    CoverageFamily,
+    { readonly covered: number; readonly total: number; readonly floor?: number }
+  >
+>;
+
+export type CheckReport = {
+  readonly version: 1;
+  readonly files: number;
+  readonly roots: ReadonlyArray<string>;
+  readonly ok: boolean;
+  // The file the policy was read from, repo-relative, and a hash of its
+  // bytes — the root file only, when the manifest is split with `include`.
+  readonly manifest: { readonly path: string; readonly sha256: string };
+  // Every finding, baselined ones included; `baselined` says which.
+  readonly violations: ReadonlyArray<ReportedViolation>;
+  readonly unresolved: ReadonlyArray<UnresolvedEdge>;
+  // Baseline entries the code no longer produces.
+  readonly stale: ReadonlyArray<string>;
+  readonly coverage: CoverageReport;
+  readonly adoption: {
+    readonly unrestricted: ReadonlyArray<string>;
+    readonly partial: ReadonlyArray<string>;
+  };
+};
+
+const COVERAGE_FAMILIES: ReadonlyArray<CoverageFamily> = [
+  "imports",
+  "structure",
+  "members",
+  "surface",
+  "graph",
+];
+
+const sha256Of = (file: string): string => {
+  try {
+    return createHash("sha256").update(readFileSync(file)).digest("hex");
+  } catch {
+    return "";
+  }
+};
+
+export const checkReport = (
+  policy: LoadedPolicy,
+  roots: ReadonlyArray<string>,
+  manifestPath: string,
+): CheckReport => {
+  const findings = collectFindings(policy, roots);
+  const baseline = readBaseline(policy);
+  const stale = staleEntriesOf(baseline, findings.violations);
+  const { isBaselined } = makeBaselineFilter(baseline);
+  const violations = findings.violations.map((violation) => ({
+    ...violation,
+    fingerprint: fingerprintOf(violation),
+    baselined: isBaselined(violation),
+  }));
+
+  // The floors. A policy states how much of the tree it reaches, per
+  // family; falling under is a policy that quietly stopped covering files.
+  const floors = policy.config.limits?.coverage ?? {};
+  const found = coverageOf(policy, listSourceFiles(policy.repoRoot, roots, policy.languages));
+  const covered = (family: CoverageFamily): number =>
+    family === "structure" ? found.structure.enumerated : found[family].covered;
+  const coverage = Object.fromEntries(
+    COVERAGE_FAMILIES.map((family) => {
+      const floor = floors[family];
+      return [
+        family,
+        {
+          covered: covered(family),
+          total: found.files,
+          ...(floor === undefined ? {} : { floor }),
+        },
+      ];
+    }),
+  ) as CoverageReport;
+  const shortfalls = shortfallsOf(coverage);
+
+  const reportable = violations.filter((one) => !one.baselined).length;
+  return {
+    version: 1,
+    files: findings.files,
+    roots,
+    ok:
+      reportable === 0 &&
+      findings.unresolved.length === 0 &&
+      stale.length === 0 &&
+      shortfalls.length === 0,
+    manifest: {
+      path: path.relative(policy.repoRoot, manifestPath).replaceAll(path.sep, "/"),
+      sha256: sha256Of(manifestPath),
+    },
+    violations,
+    unresolved: findings.unresolved,
+    stale,
+    coverage,
+    adoption: {
+      unrestricted: policy.adoption.unrestricted,
+      partial: policy.adoption.partial,
+    },
+  };
+};
+
+// Why a report is not `ok`, in the order the text renderer explains it: a
+// stale baseline first, since nothing else is trustworthy until the file
+// describes something real.
+type Shortfall = {
+  readonly family: CoverageFamily;
+  readonly actual: number;
+  readonly floor: number;
+};
+
+const shortfallsOf = (coverage: CoverageReport): ReadonlyArray<Shortfall> =>
+  COVERAGE_FAMILIES.flatMap((family) => {
+    const { covered, floor, total } = coverage[family];
+    const actual = total === 0 ? 1 : covered / total;
+    return floor === undefined || actual >= floor ? [] : [{ family, actual, floor }];
+  });
+
+const failureOf = (
+  report: CheckReport,
+  shortfalls: ReadonlyArray<Shortfall>,
+): CliFailure | null => {
+  if (report.stale.length > 0) return fail("stale baseline entries");
+  if (shortfalls.length > 0) return fail("coverage below floor");
+  if (report.ok) return null;
+  return fail("architecture violations");
+};
+
+const renderText = (report: CheckReport): ReadonlyArray<string> => {
+  const reportable = report.violations.filter((one) => !one.baselined);
+  const carried = report.violations.length - reportable.length;
+  const shortfalls = shortfallsOf(report.coverage);
+  return [
+    ...reportable.map(describe),
+    ...report.unresolved.map(
+      (one) => `  unresolved: ${one.file} → ${one.specifier} (${one.detail})`,
+    ),
+    "",
+    `${String(report.files)} files, ${String(reportable.length)} violations` +
+      (carried > 0 ? `, ${String(carried)} carried by the baseline` : ""),
+    // The ratchet: a fixed violation must leave the baseline, or the floor
+    // never rises and the file stops describing anything real.
+    ...(report.stale.length === 0
+      ? []
+      : [
+          "",
+          `${String(report.stale.length)} baseline entries no longer fire. The code was fixed; prune them:`,
+          ...report.stale.map((entry) => `  ${entry}`),
+          "",
+          "  architecture baseline    # rewrites the file from what still fires",
+        ]),
+    ...(shortfalls.length === 0
+      ? []
+      : [
+          "",
+          "coverage is below the floor the policy states for itself:",
+          ...shortfalls.map(
+            (one) => `  ${one.family}: ${percent(one.actual)} covered, floor ${percent(one.floor)}`,
+          ),
+          "",
+          "  architecture coverage    # which files no rule reaches",
+        ]),
+  ];
+};
+
+export type CheckOptions = {
+  readonly format: "text" | "json";
+  readonly manifestPath: string;
+};
+
 export const check = (
   policy: LoadedPolicy,
   roots: ReadonlyArray<string>,
+  options: CheckOptions,
 ): Effect.Effect<void, CliFailure> =>
   Effect.gen(function* () {
-    const findings = collectFindings(policy, roots);
-    const baseline = readBaseline(policy);
-    const reportable = unbaselined(baseline, findings.violations);
-    const stale = staleEntriesOf(baseline, findings.violations);
-
-    yield* report(reportable.map(describe));
-    yield* report(findings.unresolved.map((one) => `  unresolved: ${one}`));
-
-    const carried = findings.violations.length - reportable.length;
-    yield* report([
-      "",
-      `${String(findings.files)} files, ${String(reportable.length)} violations` +
-        (carried > 0 ? `, ${String(carried)} carried by the baseline` : ""),
-    ]);
-
-    if (stale.length > 0) {
-      // The ratchet: a fixed violation must leave the baseline, or the floor
-      // never rises and the file stops describing anything real.
-      yield* report([
-        "",
-        `${String(stale.length)} baseline entries no longer fire. The code was fixed; prune them:`,
-        ...stale.map((entry) => `  ${entry}`),
-        "",
-        "  architecture baseline    # rewrites the file from what still fires",
-      ]);
-      return yield* Effect.fail(fail("stale baseline entries"));
-    }
-
-    // The floors. A policy states how much of the tree it reaches, per
-    // family; falling under is a policy that quietly stopped covering files.
-    const floors = policy.config.limits?.coverage;
-    const shortfalls =
-      floors === undefined
-        ? []
-        : coverageShortfalls(
-            coverageOf(policy, listSourceFiles(policy.repoRoot, roots, policy.languages)),
-            floors,
-          );
-    if (shortfalls.length > 0) {
-      yield* report([
-        "",
-        "coverage is below the floor the policy states for itself:",
-        ...shortfalls.map(
-          (one) => `  ${one.family}: ${percent(one.actual)} covered, floor ${percent(one.floor)}`,
-        ),
-        "",
-        "  architecture coverage    # which files no rule reaches",
-      ]);
-      return yield* Effect.fail(fail("coverage below floor"));
-    }
-
-    if (reportable.length > 0 || findings.unresolved.length > 0) {
-      return yield* Effect.fail(fail("architecture violations"));
-    }
+    const report_ = checkReport(policy, roots, options.manifestPath);
+    // JSON is one object on stdout and nothing else there; the failure, when
+    // there is one, is a sentence on stderr and the exit code, as in text.
+    yield* report(
+      options.format === "json" ? [JSON.stringify(report_, null, 2)] : renderText(report_),
+    );
+    const failure = failureOf(report_, shortfallsOf(report_.coverage));
+    if (failure !== null) return yield* Effect.fail(failure);
   });
 
 const percent = (fraction: number): string => `${String(Math.floor(fraction * 100))}%`;
@@ -602,11 +746,16 @@ export const run = (
       for (const notice of policy.notices) process.stderr.write(`deprecated: ${notice}\n`);
     });
 
-    const roots = rest.length > 0 ? rest : ["packages"];
+    const json = rest.includes("--json");
+    const positional = rest.filter((argument) => argument !== "--json");
+    const roots = positional.length > 0 ? positional : ["packages"];
 
     switch (command) {
       case "check":
-        return yield* check(policy, roots);
+        return yield* check(policy, roots, {
+          format: json ? "json" : "text",
+          manifestPath: manifestPathOf(repoRoot, configFilename),
+        });
       case "baseline":
         return yield* writeBaseline(policy, roots);
       case "explain": {
@@ -617,14 +766,14 @@ export const run = (
       case "coverage":
         return yield* coverage(policy, roots);
       case "facts": {
-        const [file] = rest.filter((argument) => argument !== "--json");
+        const [file] = positional;
         if (file === undefined) return yield* Effect.fail(fail("facts needs a file path"));
-        return yield* facts(policy, file, rest.includes("--json") ? "json" : "text");
+        return yield* facts(policy, file, json ? "json" : "text");
       }
       default:
         return yield* Effect.fail(
           fail(
-            `unknown command "${command}". Try: check | baseline | coverage | explain <file> | facts <file> [--json] | init | infer | migrate`,
+            `unknown command "${command}". Try: check [--json] | baseline | coverage | explain <file> | facts <file> [--json] | init | infer | migrate`,
           ),
         );
     }

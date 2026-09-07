@@ -73,6 +73,51 @@ Exits non-zero on any reportable violation, any unresolved import, or any stale 
 entry. Each finding names the rule that produced it, and the rule name is the node path in
 the manifest — so the sentence that caused it is found by reading down the same path.
 
+### `check --json`
+
+The same run as one JSON object on stdout and nothing else there; the exit code is
+unchanged, and the sentence saying why it failed goes to stderr. Assert on this in a
+script rather than on the prose, which is free to improve.
+
+```json
+{
+  "version": 1,
+  "files": 90,
+  "roots": ["packages"],
+  "ok": false,
+  "manifest": { "path": "architecture.yaml", "sha256": "…" },
+  "violations": [
+    {
+      "fingerprint": "import|cli/imports|packages/cli/src/x.ts|packages/oxlint/src/y.ts",
+      "kind": "import",
+      "ruleName": "cli/imports",
+      "file": "packages/cli/src/x.ts",
+      "subject": "packages/oxlint/src/y.ts",
+      "message": "…",
+      "baselined": false
+    }
+  ],
+  "unresolved": [{ "file": "…", "specifier": "…", "detail": "…" }],
+  "stale": ["<fingerprint>"],
+  "coverage": {
+    "imports": { "covered": 90, "total": 90, "floor": 1 },
+    "structure": { "covered": 0, "total": 90 },
+    "members": { "covered": 54, "total": 90, "floor": 0.6 },
+    "surface": { "covered": 86, "total": 90, "floor": 0.95 },
+    "graph": { "covered": 53, "total": 90, "floor": 0.58 }
+  },
+  "adoption": { "unrestricted": [], "partial": [] }
+}
+```
+
+`violations` carries every finding, baselined ones included, and `baselined` says which;
+`fingerprint` is the baseline's key. `stale` lists baseline entries the code no longer
+produces. `coverage` is what [`coverage`](#coverage) prints, with a `floor` beside each
+family the manifest states one for, and `ok` is true only when nothing above would fail the
+run. `manifest.sha256` hashes the file the policy was read from — the root file only, when
+it is split with `include`. `version` names this shape, so a document that grows it can say
+which one it grew.
+
 ## `coverage`
 
 How much of the tree the policy reaches, per family, with the tiers that said "not tightened

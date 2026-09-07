@@ -23,16 +23,18 @@ export const hostLanguages = (): ReadonlyArray<Language> => [typescriptLanguage(
 // packs and the live file system, and hand them to the loader. The plugin has
 // one of its own with the same three lines, on purpose — the two hosts share
 // the core and never each other.
+// Named, or discovered: architecture.yaml, .yml, .json, or .config.mjs,
+// exactly one of which may be present. Absolute.
+export const manifestPathOf = (repoRoot: string, configFilename?: string): string =>
+  configFilename === undefined
+    ? findManifestFile(repoRoot)
+    : path.resolve(repoRoot, configFilename);
+
 export const loadPolicyFromFile = async (
   repoRoot: string,
   configFilename?: string,
 ): Promise<LoadedPolicy> => {
-  // Named, or discovered: architecture.yaml, .yml, .json, or .config.mjs,
-  // exactly one of which may be present.
-  const configPath =
-    configFilename === undefined
-      ? findManifestFile(repoRoot)
-      : path.resolve(repoRoot, configFilename);
+  const configPath = manifestPathOf(repoRoot, configFilename);
   const read = await readManifestFile(configPath);
   const loaded = loadPolicy({
     repoRoot,

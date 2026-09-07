@@ -81,8 +81,12 @@ jobs:
       - name: Typecheck affected projects
         run: pnpm exec nx affected -t check --base=origin/main --head=${{ github.event.pull_request.head.sha || github.sha }}
 
-  # The end-to-end suite, never affected-filtered: a red suite is a release
-  # that does not happen.
+  # The end-to-end suite: generated repositories run through the built bin and
+  # through oxlint loading the built plugin. It runs here, on main, and not on
+  # pull requests — it takes several minutes, and what it catches (a plugin
+  # loaded by a dynamic `import()` is not an edge Nx sees) is caught before
+  # anything ships: `release` needs it, so a red suite is a release that does
+  # not happen. Never `nx affected`, and it builds everything first.
   e2e:
     runs-on: ubuntu-latest
     steps:

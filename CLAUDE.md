@@ -149,7 +149,9 @@ with its externals stubbed under the fixture's own `node_modules/`. The harness 
 runs the `oxlint` binary with `packages/oxlint/build/esm/plugin.js` named by absolute path, and
 `e2e/src/install.ts` extracts `pnpm pack` tarballs into the fixture. Assertions are on
 `check --json`, never on the prose. The `e2e` Nx target depends on every build and is never
-cached or affected-filtered; it is its own CI job, required by `release`, and not in `precommit`.
+cached or affected-filtered. It runs in CI on push to `main` only — it takes several minutes,
+so it is not on pull requests and not in `precommit` — and `release` needs it, so a red suite
+blocks the publish. Run `pnpm run e2e` locally before merging anything that touches a build.
 `e2e/src/profile.ts` is the seam a second language fills — a profile and a `resolve.scopes`
 entry; the scenarios do not change. The property tier (`e2e/src/properties/`) is metamorphic
 only — never a model of the evaluators — and a failing seed shrinks for a long time, so

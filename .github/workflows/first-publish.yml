@@ -58,7 +58,7 @@ jobs:
           private-key: ${{ secrets.VERSION_BUMPER_SECRET }}
 
       - name: Checkout main
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: main
           # `nx release` derives the version bump from conventional commits, so

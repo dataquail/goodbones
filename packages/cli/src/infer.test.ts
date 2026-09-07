@@ -277,20 +277,25 @@ describe("infer, over a repository with no manifest", () => {
 });
 
 describe("infer, over this repository", () => {
+  // The four `src/` trees, named: the other CLI test files write their
+  // fixtures under `packages/cli/` while this runs, and a walk of `packages`
+  // would see a different set of files on each pass.
+  const SOURCES = [
+    "packages/core/src",
+    "packages/typescript/src",
+    "packages/cli/src",
+    "packages/oxlint/src",
+  ];
+
   it("describes what the tree does, and `check` against that finds nothing", async () => {
-    const outcome = await inferIn(thisRepository, ["--exhaustive"]);
-    const findings = findingsAgainst(thisRepository, outcome.manifest, ["packages"]);
+    const outcome = await inferIn(thisRepository, ["--exhaustive", ...SOURCES]);
+    const findings = findingsAgainst(thisRepository, outcome.manifest, SOURCES);
 
     expect(findings.violations).toEqual([]);
     expect(findings.unresolved).toEqual([]);
     expect(findings.files).toBe(outcome.files);
-    // The roots, aliases and resolver come from the manifest that is there.
-    expect(Object.keys(outcome.manifest.tree)).toEqual([
-      "~/core/",
-      "~/typescript/",
-      "~/cli/",
-      "~/oxlint/",
-    ]);
+    // The aliases and the resolver come from the manifest that is there.
+    expect(Object.keys(outcome.manifest.tree)).toEqual(["@core/", "@ts/", "@cli/", "@ox/"]);
     expect(outcome.manifest.limits?.coverage?.imports).toBe(1);
   }, 60_000);
 });

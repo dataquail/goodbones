@@ -1,6 +1,6 @@
 import "@xyflow/react/dist/style.css";
 
-import type { View } from "@goodbones/core";
+import type { View, ViewEdge, ViewNode } from "@goodbones/core";
 import {
   Background,
   Controls,
@@ -13,6 +13,7 @@ import { type ReactElement, useMemo } from "react";
 
 import { type FlowEdge, type FlowNode, flowOf } from "./flow.js";
 import type { Selection } from "./hash-state.js";
+import type { Highlight } from "./highlight.js";
 import type { Layout } from "./layout.js";
 import { FolderGroup, NodeCard } from "./node-card.js";
 
@@ -20,11 +21,10 @@ export type CanvasProps = {
   readonly view: View;
   readonly layout: Layout;
   readonly selection: Selection | null;
+  readonly highlight: Highlight | null;
   // A folder clicked becomes the focus; a file or an outside node is selected.
-  readonly onNode: (node: FlowNode["data"]["view"]) => void;
-  readonly onEdge: (
-    edge: FlowEdge["data"] extends infer D ? (D extends { view: infer V } ? V : never) : never,
-  ) => void;
+  readonly onNode: (node: ViewNode) => void;
+  readonly onEdge: (edge: ViewEdge) => void;
   readonly onClear: () => void;
 };
 
@@ -32,8 +32,8 @@ const NODE_TYPES = { card: NodeCard, folder: FolderGroup };
 
 export const Canvas = (props: CanvasProps): ReactElement => {
   const { edges, nodes } = useMemo(
-    () => flowOf(props.view, props.layout, props.selection),
-    [props.view, props.layout, props.selection],
+    () => flowOf(props.view, props.layout, props.selection, props.highlight),
+    [props.view, props.layout, props.selection, props.highlight],
   );
   const onNodeClick: NodeMouseHandler<FlowNode> = (_event, node) => {
     props.onNode(node.data.view);

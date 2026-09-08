@@ -1,11 +1,16 @@
 // The viewer's state lives in the URL hash, so a view is a link and the
 // browser's back button goes up: `#focus=packages/core/src&depth=2&designed&
-// outside&select=edge:a|b`. Nothing here touches the window; the app reads
+// inside&select=edge:a|b`. Nothing here touches the window; the app reads
 // `location.hash` and hands it in.
 
 export type Selection =
   | { readonly kind: "node"; readonly id: string }
-  | { readonly kind: "edge"; readonly from: string; readonly to: string };
+  | { readonly kind: "edge"; readonly from: string; readonly to: string }
+  // A violation, by fingerprint: a `reach` one is traced as a route.
+  | { readonly kind: "violation"; readonly fingerprint: string }
+  // A cycle, by its index in the atlas: its members and the edges within
+  // the component light up.
+  | { readonly kind: "cycle"; readonly index: number };
 
 export type ExplorerState = {
   readonly focus: string;
@@ -23,8 +28,18 @@ export const DEFAULT_STATE: ExplorerState = {
   selected: null,
 };
 
-export const selectionKey = (selection: Selection): string =>
-  selection.kind === "node" ? `node:${selection.id}` : `edge:${selection.from}|${selection.to}`;
+export const selectionKey = (selection: Selection): string => {
+  switch (selection.kind) {
+    case "node":
+      return `node:${selection.id}`;
+    case "edge":
+      return `edge:${selection.from}|${selection.to}`;
+    case "violation":
+      return `violation:${selection.fingerprint}`;
+    case "cycle":
+      return `cycle:${String(selection.index)}`;
+  }
+};
 
 const parseSelection = (key: string | null): Selection | null => {
   if (key === null) return null;
@@ -33,6 +48,13 @@ const parseSelection = (key: string | null): Selection | null => {
     const at = key.indexOf("|", "edge:".length);
     if (at === -1) return null;
     return { kind: "edge", from: key.slice("edge:".length, at), to: key.slice(at + 1) };
+  }
+  if (key.startsWith("violation:")) {
+    return { kind: "violation", fingerprint: key.slice("violation:".length) };
+  }
+  if (key.startsWith("cycle:")) {
+    const index = Number(key.slice("cycle:".length));
+    return Number.isInteger(index) && index >= 0 ? { kind: "cycle", index } : null;
   }
   return null;
 };

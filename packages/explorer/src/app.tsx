@@ -1,4 +1,4 @@
-import { type Atlas, type View, viewOf } from "@goodbones/core";
+import { type Atlas, renderMermaid, type View, viewOf } from "@goodbones/core";
 import { type ReactElement, useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -16,8 +16,10 @@ import {
   type Selection,
   serializeHash,
 } from "./hash-state.js";
+import { highlightOf } from "./highlight.js";
 import { elkLayout, type Layout, type LayoutEngine } from "./layout.js";
-import { type Facts, Panel } from "./panel.js";
+import { type Facts, isFacts, Panel } from "./panel.js";
+import { type Hit, searchFiles } from "./search.js";
 import { Toolbar } from "./toolbar.js";
 
 // The app: the atlas, once loaded; the state, from the URL hash; the view,
@@ -30,6 +32,8 @@ export type AppProps = {
   readonly layout?: LayoutEngine;
   // The document's inline atlas, when `explore --out` wrote one in.
   readonly inline?: string | null;
+  // Where "copy mermaid" puts the text; the clipboard, unless a test says.
+  readonly copy?: (text: string) => Promise<void>;
 };
 
 type Loaded =
@@ -45,9 +49,12 @@ const inlineAtlas = (): string | null =>
     ? null
     : (document.getElementById(INLINE_ATLAS_ID)?.textContent ?? null);
 
+const copyToClipboard = (text: string): Promise<void> => navigator.clipboard.writeText(text);
+
 export const App = (props: AppProps): ReactElement => {
   const fetcher: Fetcher = props.fetcher ?? ((url) => fetch(url));
   const layoutEngine = props.layout ?? elkLayout;
+  const copy = props.copy ?? copyToClipboard;
 
   const [loaded, setLoaded] = useState<Loaded>({ kind: "loading" });
   const [state, setState] = useState<ExplorerState>(readHash);
@@ -116,6 +123,10 @@ export const App = (props: AppProps): ReactElement => {
           }),
     [atlas, state.focus, state.depth, state.outside, state.designed],
   );
+  const highlight = useMemo(
+    () => (atlas === null || view === null ? null : highlightOf(atlas, view, state.selected)),
+    [atlas, view, state.selected],
+  );
 
   const [layout, setLayout] = useState<{ readonly view: View; readonly layout: Layout } | null>(
     null,
@@ -156,11 +167,31 @@ export const App = (props: AppProps): ReactElement => {
         ? async (file: string): Promise<Facts> => {
             const response = await fetcher(`facts?file=${encodeURIComponent(file)}`);
             if (!response.ok) throw new Error("no facts");
-            return (await response.json()) as Facts;
+            const body: unknown = await response.json();
+            if (!isFacts(body)) throw new Error("not facts");
+            return body;
           }
         : null,
     [loaded, fetcher],
   );
+
+  const search = useCallback(
+    (query: string): ReadonlyArray<Hit> => (atlas === null ? [] : searchFiles(atlas, query)),
+    [atlas],
+  );
+  // A hit opens its folder with the file selected: where `explain` starts.
+  const pick = useCallback(
+    (hit: Hit) => {
+      change({ focus: hit.folder, selected: { kind: "node", id: hit.path } });
+    },
+    [change],
+  );
+  const exportMermaid = useCallback(async (): Promise<string> => {
+    if (view === null) throw new Error("nothing to export");
+    const text = renderMermaid(view);
+    await copy(text);
+    return text;
+  }, [view, copy]);
 
   if (loaded.kind === "loading") return <main className="status">loading the atlas…</main>;
   if (loaded.kind === "failed") {
@@ -184,9 +215,13 @@ export const App = (props: AppProps): ReactElement => {
         onNavigate={navigate}
         onChange={change}
         onRescan={rescan}
+        onSearch={search}
+        onPick={pick}
+        onExport={exportMermaid}
       />
       <div className="body">
         <main className="canvas">
+          {highlight !== null && <div className="lit-label">{highlight.label}</div>}
           {empty ? (
             <div className="status">
               <p>
@@ -209,6 +244,7 @@ export const App = (props: AppProps): ReactElement => {
               view={view}
               layout={layout.layout}
               selection={state.selected}
+              highlight={highlight}
               onNode={(node) => {
                 if (node.kind === "folder") navigate(node.id);
                 else select({ kind: "node", id: node.id });
@@ -226,6 +262,7 @@ export const App = (props: AppProps): ReactElement => {
           atlas={atlas}
           view={view}
           selection={state.selected}
+          highlight={highlight}
           factsOf={factsOf}
           onNavigate={navigate}
           onSelect={select}

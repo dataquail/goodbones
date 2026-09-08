@@ -69,6 +69,9 @@ export type LoadedPolicy = {
   // the plugin's load as well.
   readonly graph: CompiledGraph;
   readonly adoption: LoweredRules["adoption"];
+  // The manifest's nodes, each with the pattern that selects its files — what
+  // joins a rule's slug back to the tier the author wrote.
+  readonly nodes: LoweredRules["nodes"];
   readonly structure: CompiledStructure;
   readonly fileSystem: FileSystem;
   // The language packs this policy is evaluated with. The walker takes its
@@ -216,7 +219,10 @@ export const loadPolicy = (
   // The manifest is the authoring surface; these flat rules are the machine's.
   // The languages tell lowering what a source file in each scope is called, so
   // a synthetic probe is a file of the scope's language.
-  const rules = lowerManifest(config, languages, { substitutions: decoded.success.substitutions });
+  const rules = lowerManifest(config, languages, {
+    substitutions: decoded.success.substitutions,
+    locate: input.locate,
+  });
 
   // The ceilings. A tier that says "not tightened yet" is a sentence someone
   // wrote; a ceiling on how many may say so is what keeps the backlog from
@@ -334,6 +340,7 @@ export const loadPolicy = (
     surfaceRules: surfaceRules.success,
     graph: graph.success,
     adoption: rules.adoption,
+    nodes: rules.nodes,
     structure: structure.success,
     fileSystem,
     languages,

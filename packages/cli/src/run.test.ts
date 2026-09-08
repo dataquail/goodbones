@@ -290,6 +290,18 @@ describe.sequential("explain", () => {
     expect(bus).toContain("(cycles)");
   });
 
+  it("names the manifest node that governs the file, and says when none does", async () => {
+    const governed = (
+      await captureReport(explain(await loadPolicy(repoRoot), "src/thing.repository.ts"))
+    ).output;
+    expect(governed).toContain("governed by: src/*.repository.ts");
+    expect(governed).toContain("A port needs its adapter.");
+
+    const ungoverned = (await captureReport(explain(await loadPolicy(repoRoot), "lib/bus.ts")))
+      .output;
+    expect(ungoverned).toContain("governed by: no node");
+  });
+
   it("says so when no tier above the file states an allowlist", async () => {
     const { output } = await captureReport(explain(await loadPolicy(repoRoot), "lib/bus.ts"));
 

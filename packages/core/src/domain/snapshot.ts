@@ -63,6 +63,12 @@ export const SnapshotViolation = Schema.Struct({
   ),
   message: Schema.String,
   baselined: describe(Schema.Boolean, "Carried by the baseline, so `check` does not fail on it."),
+  route: Schema.optionalKey(
+    describe(
+      Schema.Array(Path),
+      "For a graph `reach` violation: the files the origin reached the target through, origin first, target last.",
+    ),
+  ),
 });
 
 const AllowanceKind = describe(

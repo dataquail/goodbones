@@ -243,6 +243,84 @@ describe("external", () => {
     ]);
   });
 
+  // The nodes themselves, kept through lowering, so a report can join a rule's
+  // slug back to the tier the author wrote and the pattern that selects it.
+  it("keeps every node with its authored path, parent, selector and families", () => {
+    const byName = new Map(lowered.nodes.map((node) => [node.name, node]));
+    expect([...byName.keys()]).toEqual([
+      "domain",
+      "domain/*.root.ts",
+      "domain/pure",
+      "domain/pure/*.ts",
+      "domain/adapters",
+      "domain/adapters/*.ts",
+    ]);
+    expect(byName.get("domain")).toEqual({
+      path: "@/domain/",
+      name: "domain",
+      parent: null,
+      kind: "folder",
+      selector: expect.any(String) as string,
+      layout: "enumerated",
+      unrestricted: false,
+      partial: false,
+      families: ["imports", "structure"],
+    });
+    expect(byName.get("domain/pure")).toMatchObject({
+      path: "@/domain/pure/",
+      parent: "domain",
+      kind: "folder",
+      families: ["imports", "structure"],
+    });
+    expect(byName.get("domain/*.root.ts")).toMatchObject({
+      path: "@/domain/*.root.ts",
+      parent: "domain",
+      kind: "file",
+      layout: null,
+      families: [],
+    });
+    // The selector is what governs a file: the subtree for a folder, the file
+    // for a file key, aliases expanded.
+    const selects = (name: string, file: string) =>
+      new RegExp(byName.get(name)?.selector ?? "(?!)").test(file);
+    expect(selects("domain", "pkg/src/domain/pure/x.ts")).toBe(true);
+    expect(selects("domain/pure", "pkg/src/domain/pure/x.ts")).toBe(true);
+    expect(selects("domain/pure", "pkg/src/domain/x.root.ts")).toBe(false);
+    expect(selects("domain/*.root.ts", "pkg/src/domain/x.root.ts")).toBe(true);
+    expect(selects("domain/*.root.ts", "pkg/src/domain/pure/x.root.ts")).toBe(false);
+  });
+
+  it("records an open layout, the adoption flags, and the file an include wrote it in", () => {
+    const flagged = lowerWith(
+      base({
+        "@/legacy/": {
+          layout: "open",
+          partial: true,
+          imports: { message: "m", unrestricted: true },
+          children: {},
+        },
+      }),
+      TYPESCRIPT,
+      { locate: () => ({ line: 1, column: 1, file: "pkg/architecture.yaml" }) },
+    );
+    expect(flagged.nodes).toEqual([
+      {
+        path: "@/legacy/",
+        name: "legacy",
+        parent: null,
+        kind: "folder",
+        selector: expect.any(String) as string,
+        layout: "open",
+        unrestricted: true,
+        partial: true,
+        // A partial folder emits no layout rule, so it writes nothing for
+        // the structure family.
+        families: ["imports"],
+        file: "pkg/architecture.yaml",
+      },
+    ]);
+  });
+
   // A tier that names only its runtime has an allowlist — one that admits no
   // repository file at all.
   it("counts a node with externals and no allow as having an allowlist", () => {

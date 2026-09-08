@@ -3,7 +3,9 @@ import {
   type ExportRule,
   type GraphConfig,
   type ImportRule,
+  type LoweredNode,
   type MemberRule,
+  type NodeFamily,
   OPEN_LAYOUT,
   type StructureFolder,
   type StructureNaming,
@@ -11,7 +13,7 @@ import {
   type StructureRoot,
   type SurfaceRule,
 } from "../domain/architecture-config.js";
-import type { ManifestPath } from "../domain/manifest-location.js";
+import type { ManifestLocator, ManifestPath } from "../domain/manifest-location.js";
 import { fragmentOf, type Substitution } from "./expand.js";
 import { anchored, type CaptureIndex, globToRegexSource, prefixed } from "./glob.js";
 import {
@@ -43,6 +45,10 @@ export type LoweredRules = {
     readonly parity: ReadonlyArray<StructureParity>;
     readonly naming: ReadonlyArray<StructureNaming>;
   };
+  // The tree's nodes, in manifest order (parents before children), each with
+  // the pattern that selects its files. The rules above name these by slug;
+  // this is what a report joins the slug back to.
+  readonly nodes: ReadonlyArray<LoweredNode>;
 };
 
 const FOLDER_KEY = /\/$/;
@@ -301,6 +307,9 @@ export type LowerOptions = {
   // which fragment it came through. A manifest lowered without them is one
   // whose every entry reads as authored where it sits.
   readonly substitutions?: ReadonlyArray<Substitution>;
+  // Where each node was written, so a node from an included file can name
+  // that file. A module manifest has none to give.
+  readonly locate?: ManifestLocator | undefined;
 };
 
 export const lowerManifest = (
@@ -365,6 +374,7 @@ export const lowerManifest = (
   const folders: Array<StructureFolder> = [];
   const parity: Array<StructureParity> = [];
   const namingRules: Array<StructureNaming> = [];
+  const nodes: Array<LoweredNode> = [];
 
   const walk = (
     key: string,
@@ -375,6 +385,8 @@ export const lowerManifest = (
     // Where this node sits in the expanded document, so its `imports` keys
     // can be traced back through any `use` that carried them.
     nodePath: ManifestPath,
+    // The node's provenance: the path as authored, and the parent's slug.
+    authored: { readonly path: string; readonly parent: string | null },
   ): void => {
     const literalSiblings = siblings
       .filter((sibling) => sibling !== key)
@@ -446,6 +458,32 @@ export const lowerManifest = (
 
     const isFolder = isFolderKey(key) || node.children !== undefined;
     const selfPattern = anchored(pathSource);
+
+    // The node itself, before its rules: a report joins a rule's slug back to
+    // this, and reads here what the author wrote rather than what lowering
+    // emitted. `families` says which it wrote something for at this node.
+    const families: Array<NodeFamily> = [];
+    if (node.imports !== undefined) families.push("imports");
+    if (node.importedBy !== undefined) families.push("importedBy");
+    if ((node.members ?? []).length > 0) families.push("members");
+    if ((node.surface ?? []).length > 0) families.push("surface");
+    if ((isFolder && node.partial !== true) || (node.requires ?? []).length > 0) {
+      families.push("structure");
+    }
+    const writtenIn = options.locate?.(nodePath)?.file;
+    nodes.push({
+      path: authored.path,
+      name,
+      parent: authored.parent,
+      kind: isFolder ? "folder" : "file",
+      selector: isFolder ? prefixed(`${pathSource}/`) : selfPattern,
+      ...(node.message === undefined ? {} : { message: node.message }),
+      layout: isFolder ? (node.layout === "open" ? "open" : "enumerated") : null,
+      unrestricted: node.imports?.unrestricted === true,
+      partial: node.partial === true,
+      families,
+      ...(writtenIn === undefined ? {} : { file: writtenIn }),
+    });
 
     // Naming, in two shapes. A folder judges its own segment (when its key
     // declares a capture) and the concept name of every file directly inside
@@ -629,11 +667,20 @@ export const lowerManifest = (
       }
       const siblingKeys = childKeys.map(([childKey]) => childKey);
       for (const [childKey, child] of childKeys) {
-        walk(childKey, child, frame, `${name}/${alternativesOf(childKey)[0] ?? ""}`, siblingKeys, [
-          ...nodePath,
-          "children",
+        walk(
           childKey,
-        ]);
+          child,
+          frame,
+          `${name}/${alternativesOf(childKey)[0] ?? ""}`,
+          siblingKeys,
+          [...nodePath, "children", childKey],
+          {
+            path: `${authored.path}${
+              isFolderKey(childKey) || child.children === undefined ? childKey : `${childKey}/`
+            }`,
+            parent: name,
+          },
+        );
       }
     }
 
@@ -949,6 +996,9 @@ export const lowerManifest = (
         .replace(/^-|-$/g, ""),
       Object.keys(manifest.tree),
       ["tree", key],
+      // A top-level key is written as authored; a folder key without its
+      // slash gets one, so every folder path below reads `a/b/`.
+      { path: isFolderKey(key) || node.children === undefined ? key : `${key}/`, parent: null },
     );
   }
 
@@ -1058,5 +1108,6 @@ export const lowerManifest = (
     graph,
     adoption: { unrestricted: unrestrictedNodes, partial: partialNodes },
     structure: { roots, folders, parity, naming: namingRules },
+    nodes,
   };
 };

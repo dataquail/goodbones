@@ -23,6 +23,7 @@ import {
   formatManifestYaml,
   formatMessage,
   fractionsOf,
+  governingNode,
   type Graph,
   hasGraphRules,
   heightOf,
@@ -695,8 +696,18 @@ export const explain = (policy: LoadedPolicy, file: string): Effect.Effect<void,
     const section = (title: string, lines: ReadonlyArray<string>): ReadonlyArray<string> =>
       lines.length === 0 ? [] : ["", title, ...lines];
 
+    // The tier, before the rules: the deepest manifest node whose path holds
+    // the file, and the sentence its author wrote about it.
+    const governing_ = governingNode(policy.nodes, relative);
+
     yield* report([
       relative,
+      "",
+      governing_ === null
+        ? "  governed by: no node (the manifest's tree does not reach this file)"
+        : `  governed by: ${governing_.path}` +
+          (governing_.file === undefined ? "" : ` (${governing_.file})`),
+      ...(governing_?.message === undefined ? [] : [`      ${governing_.message}`]),
       "",
       allowlists.length === 0
         ? "  may import: anything (no tier above this file states an allowlist)"

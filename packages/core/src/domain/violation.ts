@@ -10,6 +10,11 @@ export type Violation = {
   // restricted symbol, the missing sibling, the disallowed member. `null` when
   // the file alone is the violation.
   readonly subject: string | null;
+  // For a graph `reach` violation: the files the origin reached the target
+  // through, origin first, target last. Kept as data so a renderer can draw
+  // it; not part of the fingerprint, which is (from, to) and survives the
+  // route changing.
+  readonly route?: ReadonlyArray<string>;
 };
 
 // Deliberately excludes line and column so an entry survives ordinary edits to

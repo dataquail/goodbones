@@ -152,6 +152,12 @@ describe("reach", () => {
     expect(violation?.message).toContain(
       "route: src/adapters/a.ts → src/helpers/h.ts → src/infrastructure/live.ts",
     );
+    // And as data, so a renderer can draw it without parsing the sentence.
+    expect(violation?.route).toEqual([
+      "src/adapters/a.ts",
+      "src/helpers/h.ts",
+      "src/infrastructure/live.ts",
+    ]);
   });
 
   it("allows a path that passes through `via`", () => {

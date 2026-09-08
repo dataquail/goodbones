@@ -15,6 +15,24 @@ policy, and reports a message. Only the fact-gathering differs.
 This package is that mechanism, once. One config file, one oxlint plugin, one CLI, six rule
 families.
 
+This is the repository that publishes it, drawn by its own
+[`diagram`](/goodbones/architecture-rules/enforcement/diagram/) command: four packages, the
+two hosts on the core and the language pack, the pack on the core, every edge one the
+policy admits.
+
+```mermaid
+flowchart TB
+  n_packages_cli["cli/"]
+  n_packages_core["core/"]
+  n_packages_oxlint["oxlint/"]
+  n_packages_typescript["typescript/"]
+  n_packages_cli -- 10 --> n_packages_core
+  n_packages_cli -- 2 --> n_packages_typescript
+  n_packages_oxlint -- 19 --> n_packages_core
+  n_packages_oxlint -- 2 --> n_packages_typescript
+  n_packages_typescript -- 5 --> n_packages_core
+```
+
 ## What it enforces
 
 | Question                                       | Family      |

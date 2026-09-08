@@ -36,6 +36,7 @@ import {
   memberRulesSelecting,
   type ObservedEdge,
   readManifestFile,
+  renderMermaid,
   requiredSiblingsOf,
   residueOf,
   type ResolvedTarget,
@@ -54,6 +55,7 @@ import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 
 import { type LoadedPolicy, loadPolicyFromFile, manifestPathOf } from "./config-loader.js";
+import { diagramView, parseDiagramFlags } from "./diagram.js";
 import { buildGraph } from "./graph.js";
 import { infer } from "./infer.js";
 import { sourceFactsOf } from "./source-facts.js";
@@ -627,6 +629,30 @@ export const atlas = (
     yield* report([JSON.stringify(atlasDocument(policy, roots, manifestPath), null, 2)]);
   });
 
+// One folder as a mermaid flowchart with the policy laid over it: the atlas,
+// rolled up to that folder's children by the core, rendered as text. The
+// flags say which folder and how deep; `diagram.ts` reads them.
+export const diagram = (
+  policy: LoadedPolicy,
+  argv: ReadonlyArray<string>,
+  manifestPath: string,
+): Effect.Effect<void, CliFailure> =>
+  Effect.gen(function* () {
+    const parsed = parseDiagramFlags(argv);
+    if (Result.isFailure(parsed)) return yield* Effect.fail(fail(parsed.failure));
+    const flags = parsed.success;
+    const view = diagramView(atlasDocument(policy, flags.roots, manifestPath), flags);
+    if (view.members.length === 0) {
+      return yield* Effect.fail(
+        fail(
+          `nothing to draw: ${view.focus === "" ? "the walk" : view.focus} holds no walked file. ` +
+            `Name a folder under ${flags.roots.join(", ")} with --root.`,
+        ),
+      );
+    }
+    yield* report([renderMermaid(view).trimEnd()]);
+  });
+
 export type ConformanceOptions = CheckOptions;
 
 // The report of the tree against the manifest. Unlike `check`, it never
@@ -1063,6 +1089,10 @@ export const run = (
       // flag reads the same as on `check` and `conformance`.
       case "atlas":
         return yield* atlas(policy, roots, manifestPathOf(repoRoot, configFilename));
+      // `diagram` reads its own flags: a folder to draw, a depth, the files
+      // to centre on.
+      case "diagram":
+        return yield* diagram(policy, rest, manifestPathOf(repoRoot, configFilename));
       case "baseline":
         return yield* writeBaseline(policy, roots);
       case "explain": {
@@ -1080,7 +1110,7 @@ export const run = (
       default:
         return yield* Effect.fail(
           fail(
-            `unknown command "${command}". Try: check [--json] | conformance [--json] [--against <manifest>] | atlas | baseline | coverage | explain <file> | facts <file> [--json] | init | infer | migrate`,
+            `unknown command "${command}". Try: check [--json] | conformance [--json] [--against <manifest>] | atlas | diagram | baseline | coverage | explain <file> | facts <file> [--json] | init | infer | migrate`,
           ),
         );
     }

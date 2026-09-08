@@ -229,7 +229,7 @@
         ],
         "additionalProperties": false
       },
-      "description": "Every walked file, sorted, then every package and builtin some edge reaches."
+      "description": "Every walked file and every local file some edge reaches outside the walk, sorted, then every package and builtin some edge reaches."
     },
     "edges": {
       "type": "array",

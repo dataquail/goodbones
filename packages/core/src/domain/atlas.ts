@@ -131,7 +131,7 @@ export const Atlas = Schema.Struct({
   ),
   files: describe(
     Schema.Array(AtlasFile),
-    "Every walked file, sorted, then every package and builtin some edge reaches.",
+    "Every walked file and every local file some edge reaches outside the walk, sorted, then every package and builtin some edge reaches.",
   ),
   edges: describe(
     Schema.Array(AtlasEdge),

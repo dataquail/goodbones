@@ -279,6 +279,33 @@ describe("atlasOf", () => {
     expect(atlas.roots).toEqual(["src", "scripts"]);
   });
 
+  it("keeps a local target outside the walk as a file, so its edge has somewhere to land", () => {
+    const shared = { importer: "src/server.ts", target: local("vitest.shared.ts") };
+    const outside = atlasOf({
+      ...INPUT,
+      edges: [...EDGES, shared],
+      violations: [
+        ...VIOLATIONS,
+        ...evaluateResolvedEdge(
+          rulesSelecting(IMPORT_RULES, shared.importer),
+          shared.importer,
+          shared.target,
+        ).map(reported),
+      ],
+    });
+    expect(outside.files.find((one) => one.path === "vitest.shared.ts")).toEqual({
+      path: "vitest.shared.ts",
+      node: null,
+      reach: { imports: false, structure: null, members: false, surface: false, graph: false },
+      external: false,
+    });
+    expect(
+      outside.edges.find((one) => one.from === "src/server.ts" && one.to === "vitest.shared.ts"),
+    ).toMatchObject({ status: "violation" });
+    // It is not a walked file, so no allowance's designed targets grow by it.
+    expect(outside.designed.flatMap((one) => one.targets)).not.toContain("vitest.shared.ts");
+  });
+
   it("emits one edge per pair when several specifiers resolve into one target", () => {
     const doubled = atlasOf({
       ...INPUT,

@@ -71,7 +71,10 @@ export {
   memberRulesFailingTheirProbe,
   memberRulesSelecting,
 } from "./core/members.js";
+export { governingNode, nodesSelecting } from "./core/nodes.js";
 export {
+  admittedBy,
+  allowancesAdmitting,
   type Concentration,
   type ObservedEdge,
   type Slack,
@@ -106,8 +109,10 @@ export {
   type ImportProbe,
   type ImportProbeTarget,
   type ImportRule,
+  type LoweredNode,
   type MemberRule,
   type MemberSubject,
+  type NodeFamily,
   type ResolveConfig,
   type ResolveScope,
   type StructureConfig,
@@ -143,6 +148,21 @@ export {
   type SnapshotVacancy,
   type SnapshotViolation,
 } from "./domain/snapshot.js";
+export {
+  ancestorsOf,
+  basenameOf,
+  deepestContaining,
+  dirnameOf,
+  eachNode,
+  filesBeneath,
+  findFolder,
+  type Folder,
+  folderAt,
+  isUnder,
+  makeFolder,
+  type TreeNode,
+  trieOf,
+} from "./domain/tree.js";
 export {
   fingerprintOf,
   formatMessage,

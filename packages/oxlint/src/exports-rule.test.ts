@@ -71,6 +71,7 @@ const policy = (): LoadedPolicy => {
     surfaceRules: [],
     graph: EMPTY_GRAPH_RULES,
     adoption: { unrestricted: [], partial: [] },
+    nodes: [],
     fileSystem: makeFileSystemFake([]),
     languages: [],
     extractor: makeFactExtractorFake({}),

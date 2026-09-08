@@ -1,3 +1,12 @@
+import {
+  basenameOf,
+  deepestContaining,
+  dirnameOf,
+  eachNode,
+  type Folder,
+  isUnder,
+  trieOf as trieOfFiles,
+} from "../domain/tree.js";
 import type { Manifest, ManifestNode } from "./manifest.js";
 
 // The as-built manifest: the inverse of a probe.
@@ -96,17 +105,6 @@ export type Inferred = {
 // ---------------------------------------------------------------------------
 // Paths
 
-const dirnameOf = (file: string): string => {
-  const at = file.lastIndexOf("/");
-  return at === -1 ? "" : file.slice(0, at);
-};
-
-const basenameOf = (file: string): string => file.slice(file.lastIndexOf("/") + 1);
-
-// `folder` is `p` or an ancestor of it. The empty folder is every path's.
-const isUnder = (p: string, folder: string): boolean =>
-  folder === "" || p === folder || p.startsWith(`${folder}/`);
-
 const depthBelow = (p: string, folder: string): number =>
   p === folder ? 0 : (folder === "" ? p : p.slice(folder.length + 1)).split("/").length;
 
@@ -141,55 +139,14 @@ const rewrite = (p: string, generalize: ReadonlyArray<Generalization>): string =
 };
 
 // ---------------------------------------------------------------------------
-// The folder trie of the walked files, over rewritten paths.
+// The folder trie of the walked files, over rewritten paths: the domain's
+// trie, with each file filed under its generalized folder so members merge.
 
-type Folder = {
-  readonly path: string;
-  readonly name: string;
-  // Original paths of the files directly in it.
-  readonly files: Array<string>;
-  readonly children: Map<string, Folder>;
-};
-
-const folderAt = (root: Folder, p: string): Folder => {
-  if (p === root.path) return root;
-  const rest = root.path === "" ? p : p.slice(root.path.length + 1);
-  let at = root;
-  for (const segment of rest.split("/")) {
-    const existing = at.children.get(segment);
-    if (existing !== undefined) {
-      at = existing;
-      continue;
-    }
-    const made: Folder = {
-      path: at.path === "" ? segment : `${at.path}/${segment}`,
-      name: segment,
-      files: [],
-      children: new Map(),
-    };
-    at.children.set(segment, made);
-    at = made;
-  }
-  return at;
-};
-
-type Trie = ReadonlyArray<Folder>;
-
-const trieOf = (input: InferInput, generalize: ReadonlyArray<Generalization>): Trie => {
-  const roots = input.roots.map((root): Folder => ({
-    path: root,
-    name: basenameOf(root),
-    files: [],
-    children: new Map(),
-  }));
-  for (const file of input.files) {
-    const folder = rewrite(dirnameOf(file), generalize);
-    const root = roots.find((one) => isUnder(folder, one.path));
-    if (root === undefined) continue;
-    folderAt(root, folder).files.push(file);
-  }
-  return roots;
-};
+const trieOf = (
+  input: InferInput,
+  generalize: ReadonlyArray<Generalization>,
+): ReadonlyArray<Folder> =>
+  trieOfFiles(input.files, input.roots, (file) => rewrite(dirnameOf(file), generalize));
 
 // ---------------------------------------------------------------------------
 // Which folders are nodes.
@@ -274,23 +231,8 @@ const nodeOf = (folder: Folder, input: InferInput, bases: Bases): Node => {
 
 // The deepest node whose folder holds `p` (a rewritten path), or null when
 // no walk root does.
-const governorOf = (p: string, roots: ReadonlyArray<Node>): Node | null => {
-  const root = roots.find((one) => isUnder(p, one.path));
-  if (root === undefined) return null;
-  const descend = (at: Node): Node => {
-    for (const child of at.children.values()) if (isUnder(p, child.path)) return descend(child);
-    return at;
-  };
-  return descend(root);
-};
-
-const eachNode = (roots: ReadonlyArray<Node>, visit: (node: Node) => void): void => {
-  const walk = (node: Node): void => {
-    visit(node);
-    for (const child of node.children.values()) walk(child);
-  };
-  for (const root of roots) walk(root);
-};
+const governorOf = (p: string, roots: ReadonlyArray<Node>): Node | null =>
+  deepestContaining(roots, p);
 
 // ---------------------------------------------------------------------------
 // Allow sets.

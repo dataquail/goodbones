@@ -333,6 +333,14 @@
           "baselined": {
             "type": "boolean",
             "description": "Carried by the baseline, so `check` does not fail on it."
+          },
+          "route": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "Repo-relative, with forward slashes."
+            },
+            "description": "For a graph `reach` violation: the files the origin reached the target through, origin first, target last."
           }
         },
         "required": [

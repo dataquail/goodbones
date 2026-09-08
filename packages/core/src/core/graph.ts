@@ -301,8 +301,9 @@ const evaluateOrphans = (rule: CompiledGraphOrphanRule, graph: Graph): ReadonlyA
 
 // Breadth-first from each `from` file, never stepping onto a `via` node, so a
 // `to` reached is one reached without passing through the tier that was
-// supposed to mediate. The route is put in the message, not the subject: the
-// fingerprint is (from, to), which survives the route changing.
+// supposed to mediate. The route is carried as data and put in the message,
+// never in the subject: the fingerprint is (from, to), which survives the
+// route changing.
 const evaluateReach = (rule: CompiledGraphReachRule, graph: Graph): ReadonlyArray<Violation> => {
   const violations: Array<Violation> = [];
   const isTarget = (file: string) => anyMatches(rule.to, file) && !anyMatches(rule.toNot, file);
@@ -337,6 +338,7 @@ const evaluateReach = (rule: CompiledGraphReachRule, graph: Graph): ReadonlyArra
             message: `${rule.message} (route: ${route.join(" → ")})`,
             file: origin,
             subject: target,
+            route,
           });
         }
         queue.push(target);

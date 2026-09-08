@@ -285,6 +285,7 @@ const policy: LoadedPolicy = {
   surfaceRules: unwrap(compileSurfaceRules(config.surface)),
   graph: EMPTY_GRAPH_RULES,
   adoption: { unrestricted: [], partial: [] },
+  nodes: [],
   structure: EMPTY_STRUCTURE,
   fileSystem: makeFileSystemFake([]),
   languages: [],

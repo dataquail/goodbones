@@ -49,6 +49,40 @@ export const Allowance = Schema.Struct({
   fragment: Schema.optionalKey(Schema.String),
 });
 
+// One node of the manifest tree, kept through lowering. Every rule and
+// allowance names the node that wrote it by `name` — the slug
+// `packages-core/src/domain` — and this is the record that slug points back
+// to: the path as authored, the sentence the author wrote about the tier, its
+// layout, its adoption flags, and the compiled pattern that selects its files.
+// The flat rules are what evaluation reads; this is what a report reads when
+// it wants to say which tier a file is in, rather than which rule fired.
+export const LoweredNode = Schema.Struct({
+  // As authored, aliases kept: `~/core/src/domain/`. A folder key keeps its
+  // trailing slash; a file key has none.
+  path: Schema.String,
+  // The slug every rule and allowance carries: the join key.
+  name: Schema.String,
+  // The parent's `name`, or null for a top-level key of the tree.
+  parent: Schema.NullOr(Schema.String),
+  kind: Schema.Literals(["folder", "file"]),
+  // A regular-expression source selecting the files this node governs: the
+  // subtree for a folder, the file itself for a file key.
+  selector: Schema.String,
+  message: Schema.optionalKey(Schema.String),
+  // How a folder polices its file names; null for a file node.
+  layout: Schema.NullOr(Schema.Literals(["open", "enumerated"])),
+  unrestricted: Schema.Boolean,
+  partial: Schema.Boolean,
+  // The families this node writes something for itself, its ancestors'
+  // inheritance aside.
+  families: Schema.Array(
+    Schema.Literals(["imports", "importedBy", "members", "surface", "structure"]),
+  ),
+  // The manifest file the node was written in, relative to the root manifest's
+  // folder, when it was written in an included file rather than the root.
+  file: Schema.optionalKey(Schema.String),
+});
+
 export const ImportRule = Schema.Struct({
   name: Schema.String,
   message: Schema.String,
@@ -362,6 +396,8 @@ const StructureConfig = Schema.Struct({
 });
 
 export type Allowance = (typeof Allowance)["Type"];
+export type LoweredNode = (typeof LoweredNode)["Type"];
+export type NodeFamily = LoweredNode["families"][number];
 export type ImportRule = (typeof ImportRule)["Type"];
 export type ResolveConfig = (typeof ResolveConfig)["Type"];
 export type ResolveScope = (typeof ResolveScope)["Type"];

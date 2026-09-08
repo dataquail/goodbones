@@ -52,6 +52,36 @@ const uses = (allowance: Allowance, captures: RegExpExecArray, target: ResolvedT
   return allowance.pattern !== undefined && matchesAny([allowance.pattern], captures, target.path);
 };
 
+// Every allowance an observed edge passes through: each entry, on each
+// allowlist rule that selects the importer, that matches the target. The one
+// matcher `slackOf` counts with and `admittedBy` answers from, so the two
+// never disagree about what "used" means. Ancestors' entries come before the
+// node's own, as the allowlist accumulated them.
+export const allowancesAdmitting = (
+  rules: ReadonlyArray<CompiledImportRule>,
+  edge: ObservedEdge,
+): ReadonlyArray<Allowance> => {
+  const admitting: Array<Allowance> = [];
+  for (const rule of rules) {
+    if (rule.allowances.length === 0) continue;
+    const captures = firstFromMatch(rule, edge.importer);
+    if (captures === null) continue;
+    for (const allowance of rule.allowances) {
+      if (uses(allowance, captures, edge.target)) admitting.push(allowance);
+    }
+  }
+  return admitting;
+};
+
+// The allowance that admitted an observed edge, or null when none did — the
+// edge is then a violation, or from a file under no allowlist. When several
+// admit it, the one written nearest the importer: the most specific sentence
+// about why the edge is allowed.
+export const admittedBy = (
+  rules: ReadonlyArray<CompiledImportRule>,
+  edge: ObservedEdge,
+): Allowance | null => allowancesAdmitting(rules, edge).at(-1) ?? null;
+
 // One entry as one place wrote it: a node that wrote the line, or a fragment
 // that N nodes pulled in with `use`. Keyed by that place, so a fragment's
 // entry is reported once however many nodes reference it.
@@ -105,14 +135,7 @@ export const slackOf = (
   // Which (node, kind, entry) some edge passes through.
   const used = new Set<string>();
   for (const edge of edges) {
-    for (const rule of rules) {
-      if (rule.allowances.length === 0) continue;
-      const captures = firstFromMatch(rule, edge.importer);
-      if (captures === null) continue;
-      for (const allowance of rule.allowances) {
-        if (uses(allowance, captures, edge.target)) used.add(keyOf(allowance));
-      }
-    }
+    for (const allowance of allowancesAdmitting(rules, edge)) used.add(keyOf(allowance));
   }
 
   const slack: Array<Slack> = [];

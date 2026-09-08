@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Allowance, ImportRule } from "../domain/architecture-config.js";
 import { compileImportRules } from "./imports.js";
-import { slackOf } from "./slack.js";
+import { admittedBy, allowancesAdmitting, slackOf } from "./slack.js";
 
 const compile = (rules: ReadonlyArray<ImportRule>) => {
   const compiled = compileImportRules(rules);
@@ -258,10 +258,11 @@ describe("slackOf through a fragment", () => {
 
   // A vacant node is neither granted nor counted: `of` is the nodes with files.
   it("leaves a vacant node out of the count", () => {
-    const report = slackOf(rules, [{ importer: "src/b/x.ts", target: effect }], [
-      "src/a/x.ts",
-      "src/b/x.ts",
-    ]);
+    const report = slackOf(
+      rules,
+      [{ importer: "src/b/x.ts", target: effect }],
+      ["src/a/x.ts", "src/b/x.ts"],
+    );
     expect(report.slack[0]).toEqual({
       node: "shared",
       kind: "allow",
@@ -280,5 +281,47 @@ describe("slackOf through a fragment", () => {
     expect(report.slack).not.toContainEqual(
       expect.objectContaining({ node: "src/own", entry: "effect" }),
     );
+  });
+});
+
+// The matcher slack counts with, asked about one edge: which allowance let it
+// through. What the atlas writes on an admitted edge.
+describe("admittedBy", () => {
+  it("names the allowance an edge passes through, and null when none does", () => {
+    expect(admittedBy(RULES, { importer: "src/core/x.ts", target: local("lib/y.ts") })).toEqual({
+      node: "src/core",
+      kind: "allow",
+      entry: "lib/**",
+      pattern: "^lib(/.*)?$",
+    });
+    expect(
+      admittedBy(RULES, {
+        importer: "src/a.ts",
+        target: { path: "node_modules/effect/index.js", kind: "external", package: "effect" },
+      }),
+    ).toEqual({ node: "src", kind: "external", entry: "effect" });
+    // Refused by the allowlist: nothing admitted it.
+    expect(admittedBy(RULES, { importer: "src/a.ts", target: local("lib/y.ts") })).toBeNull();
+    // From a file under no allowlist: nothing could have.
+    expect(admittedBy(RULES, { importer: "lib/z.ts", target: local("src/a.ts") })).toBeNull();
+  });
+
+  it("prefers the entry written nearest the importer when several admit the edge", () => {
+    const rules = compile([
+      {
+        name: "src/core/imports",
+        message: "…",
+        probe,
+        from: "^src/core/",
+        toNot: ["^src(/.*)?$", "^src/core(/.*)?$"],
+        allowances: [
+          { node: "src", kind: "allow", entry: "src/**", pattern: "^src(/.*)?$" },
+          { node: "src/core", kind: "allow", entry: "src/core/**", pattern: "^src/core(/.*)?$" },
+        ],
+      },
+    ]);
+    const edge = { importer: "src/core/x.ts", target: local("src/core/y.ts") };
+    expect(allowancesAdmitting(rules, edge).map((one) => one.node)).toEqual(["src", "src/core"]);
+    expect(admittedBy(rules, edge)?.node).toBe("src/core");
   });
 });

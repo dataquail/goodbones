@@ -51,6 +51,7 @@ const classNames = (props: NodeProps<FlowNode>): string =>
     props.data.view.kind,
     props.data.selected ? "is-selected" : "",
     props.data.dimmed ? "is-dimmed" : "",
+    props.data.highlighted ? "is-highlighted" : "",
     props.data.view.residue > 0 && props.data.view.residue === props.data.view.files
       ? "is-residue"
       : "",

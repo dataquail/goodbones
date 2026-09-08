@@ -39,6 +39,21 @@ and [`facts`](/goodbones/architecture-rules/enforcement/cli/#facts), on a click.
 `outside` (draw where edges leaving the folder go), `designed` (ghost the slack). The focus,
 the toggles and the selection live in the URL hash, so a view is a link.
 
+**The overlay.** Click a violation's fingerprint anywhere in the panel and it becomes the
+selection: for a [`reach`](/goodbones/architecture-rules/manifest/graph/) violation the
+route the origin took to the target is traced across the canvas, hop by hop, with
+everything else dimmed; for an import violation its two ends light up. Click a cycle — on
+the node it runs through, or in the summary when nothing is selected — and its members and
+the edges within the component light up. Files the current view has no node for are named,
+so a route that leaves the folder says where it went.
+
+**Search.** Type a piece of a path and pick a file: its folder becomes the focus with the
+file selected, which is where `explain` would start.
+
+**Copy mermaid.** One button copies the current view as the flowchart
+[`diagram`](/goodbones/architecture-rules/enforcement/diagram/) would print for the same
+folder and toggles, ready for a pull request or a document.
+
 ## Serving, and writing out
 
 `explore` starts a local server on `--port` (default 4141) and prints the URL; `--open`

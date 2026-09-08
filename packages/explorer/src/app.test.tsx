@@ -40,8 +40,9 @@ vi.mock("./canvas.js", () => ({
   ),
 }));
 
-const serving = (body: unknown) => () =>
-  Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+// A server with the atlas and nothing else: a file's facts are unavailable.
+const serving = (body: unknown) => (url: string) =>
+  Promise.resolve({ ok: url === "atlas.json", json: () => Promise.resolve(body) });
 
 afterEach(() => {
   cleanup();
@@ -101,6 +102,88 @@ describe.sequential("the explorer", () => {
       expect(screen.getByTestId("canvas")).toBeTruthy();
     });
     expect(screen.queryByRole("button", { name: "rescan" })).toBeNull();
+  });
+
+  it("finds a file by path and opens its folder with the file selected", async () => {
+    render(<App fetcher={serving(FIXTURE)} layout={gridLayout} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("canvas")).toBeTruthy();
+    });
+    fireEvent.change(screen.getByLabelText("find a file by path"), { target: { value: "order" } });
+    fireEvent.click(screen.getByRole("option", { name: "src/domain/order.ts" }));
+    await waitFor(() => {
+      expect(window.location.hash).toBe(
+        "#focus=src%2Fdomain&select=node%3Asrc%2Fdomain%2Forder.ts",
+      );
+    });
+    // The panel explains the file: its tier, the violation on it, and that
+    // this server has no facts to give.
+    await waitFor(() => {
+      expect(screen.getByText("domain/ is the model.")).toBeTruthy();
+    });
+    expect(screen.getAllByText("domain/ reaches only itself.").length).toBeGreaterThan(0);
+    await waitFor(() => {
+      expect(screen.getByText("the server could not read this file's facts")).toBeTruthy();
+    });
+  });
+
+  it("traces a selected violation, and lights a selected cycle", async () => {
+    const cyclic = {
+      ...FIXTURE,
+      cycles: [["src/domain/order.ts", "src/domain/user.ts"]],
+    };
+    window.location.hash =
+      "#focus=src%2Fdomain&select=violation%3Aimport%7Csrc%2Fdomain%2Fimports%7Csrc%2Fdomain%2Forder.ts%7Cnode_modules%2Feffect%2Findex.js";
+    render(<App fetcher={serving(cyclic)} layout={gridLayout} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("canvas")).toBeTruthy();
+    });
+    expect(screen.getByRole("heading", { name: /src\/domain\/imports/ })).toBeTruthy();
+    expect(screen.getByText("← clear selection")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("← clear selection"));
+    await waitFor(() => {
+      expect(window.location.hash).toBe("#focus=src%2Fdomain");
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /↻ 2 files/ })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /↻ 2 files/ }));
+    await waitFor(() => {
+      expect(window.location.hash).toBe("#focus=src%2Fdomain&select=cycle%3A0");
+    });
+    await waitFor(() => {
+      expect(screen.getByText("cycle of 2 files")).toBeTruthy();
+    });
+  });
+
+  it("copies the view as mermaid, as diagram would print it", async () => {
+    const copied: Array<string> = [];
+    window.location.hash = "#focus=src&inside";
+    render(
+      <App
+        fetcher={serving(FIXTURE)}
+        layout={gridLayout}
+        copy={(text) => {
+          copied.push(text);
+          return Promise.resolve();
+        }}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("canvas")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "copy mermaid" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "copied" })).toBeTruthy();
+    });
+    expect(copied).toEqual([
+      `flowchart TB
+  n_src_app["app/"]
+  n_src_domain["domain/ ⚠ 1"]
+  n_src_app --> n_src_domain
+`,
+    ]);
   });
 
   it("says when the atlas cannot be read", async () => {

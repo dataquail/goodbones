@@ -1,13 +1,22 @@
-import type { Atlas, AtlasEdge, View, ViewEdge, ViewNode } from "@goodbones/core";
+import type {
+  Atlas,
+  AtlasEdge,
+  SnapshotViolation,
+  View,
+  ViewEdge,
+  ViewNode,
+} from "@goodbones/core";
 import { type ReactElement, useEffect, useState } from "react";
 
 import type { Selection } from "./hash-state.js";
+import type { Highlight } from "./highlight.js";
 
-// The side panel: what the selected edge or node is, in the manifest's own
-// words. An edge lists the imports beneath it and what admitted or refused
-// each; a node shows the tier that governs it, the sentence its author wrote,
-// what the policy has to say about it, and — when a server is there to ask —
-// what the parser read out of a file.
+// The side panel: what the selected thing is, in the manifest's own words. An
+// edge lists the imports beneath it and what admitted or refused each; a node
+// shows the tier that governs it, the sentence its author wrote, what the
+// policy has to say about it, and — when a server is there to ask — what the
+// parser read out of a file; a violation is its message, its route when it
+// has one, and what the canvas is lighting; a cycle is its members.
 
 export type Facts = {
   readonly file: string;
@@ -28,15 +37,37 @@ export type Facts = {
   }>;
 };
 
+// Whether a server's answer is the shape the panel reads. Anything else is
+// shown as unavailable rather than drawn.
+export const isFacts = (value: unknown): value is Facts => {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.file === "string" &&
+    Array.isArray(record.edges) &&
+    record.edges.every(
+      (one: unknown) =>
+        typeof one === "object" &&
+        one !== null &&
+        Array.isArray((one as Record<string, unknown>).bindings),
+    ) &&
+    Array.isArray(record.memberSites) &&
+    Array.isArray(record.exportSites)
+  );
+};
+
 export type PanelProps = {
   readonly atlas: Atlas;
   readonly view: View;
   readonly selection: Selection | null;
+  readonly highlight: Highlight | null;
   // Fetches a file's facts from the server, or null when there is none.
   readonly factsOf: ((file: string) => Promise<Facts>) | null;
   readonly onNavigate: (focus: string) => void;
   readonly onSelect: (selection: Selection | null) => void;
 };
+
+type Select = (selection: Selection) => void;
 
 const findNode = (view: View, id: string): ViewNode | undefined => {
   for (const member of view.members) {
@@ -47,6 +78,40 @@ const findNode = (view: View, id: string): ViewNode | undefined => {
   return view.outside.find((one) => one.id === id);
 };
 
+const FileLink = ({ file, onSelect }: { readonly file: string; readonly onSelect: Select }) => (
+  <button
+    type="button"
+    className="link"
+    onClick={() => {
+      onSelect({ kind: "node", id: file });
+    }}
+  >
+    {file}
+  </button>
+);
+
+const ViolationItem = ({
+  onSelect,
+  violation,
+}: {
+  readonly violation: SnapshotViolation;
+  readonly onSelect: Select;
+}): ReactElement => (
+  <li className={violation.baselined ? "baselined" : "violation"}>
+    <button
+      type="button"
+      className="link fingerprint"
+      title="select this violation — a reach route is traced on the canvas"
+      onClick={() => {
+        onSelect({ kind: "violation", fingerprint: violation.fingerprint });
+      }}
+    >
+      <code>{violation.fingerprint}</code>
+    </button>
+    <p>{violation.message}</p>
+  </li>
+);
+
 const EdgeRow = ({
   atlas,
   edge,
@@ -54,34 +119,18 @@ const EdgeRow = ({
 }: {
   readonly atlas: Atlas;
   readonly edge: AtlasEdge;
-  readonly onSelect: (selection: Selection) => void;
+  readonly onSelect: Select;
 }): ReactElement => {
-  const messages = (edge.violations ?? []).map((fingerprint) => ({
-    fingerprint,
-    message: atlas.violations.find((one) => one.fingerprint === fingerprint)?.message ?? "",
-  }));
+  const violations = (edge.violations ?? []).flatMap((fingerprint) => {
+    const found = atlas.violations.find((one) => one.fingerprint === fingerprint);
+    return found === undefined ? [] : [found];
+  });
   return (
     <li className={`edge-row ${edge.status}`}>
       <div className="edge-ends">
-        <button
-          type="button"
-          className="link"
-          onClick={() => {
-            onSelect({ kind: "node", id: edge.from });
-          }}
-        >
-          {edge.from}
-        </button>
+        <FileLink file={edge.from} onSelect={onSelect} />
         <span className="arrow">→</span>
-        <button
-          type="button"
-          className="link"
-          onClick={() => {
-            onSelect({ kind: "node", id: edge.to });
-          }}
-        >
-          {edge.to}
-        </button>
+        <FileLink file={edge.to} onSelect={onSelect} />
       </div>
       {edge.status === "admitted" && edge.admittedBy !== undefined && (
         <div className="why">
@@ -93,12 +142,13 @@ const EdgeRow = ({
       {edge.status === "ungoverned" && (
         <div className="why">no import allowlist selects the importer</div>
       )}
-      {messages.map((one) => (
-        <div className="why violation" key={one.fingerprint}>
-          <code>{one.fingerprint}</code>
-          <p>{one.message}</p>
-        </div>
-      ))}
+      {violations.length > 0 && (
+        <ul className="facts">
+          {violations.map((one) => (
+            <ViolationItem key={one.fingerprint} violation={one} onSelect={onSelect} />
+          ))}
+        </ul>
+      )}
     </li>
   );
 };
@@ -110,7 +160,7 @@ const EdgePanel = ({
 }: {
   readonly atlas: Atlas;
   readonly edge: ViewEdge;
-  readonly onSelect: (selection: Selection) => void;
+  readonly onSelect: Select;
 }): ReactElement => (
   <>
     <h2>
@@ -177,6 +227,14 @@ const FactsBlock = ({ facts }: { readonly facts: Facts }): ReactElement => (
   </details>
 );
 
+// The cycles that run through a node: any component with a member beneath it.
+const cyclesThrough = (atlas: Atlas, node: ViewNode): ReadonlyArray<number> =>
+  atlas.cycles.flatMap((cycle, index) =>
+    cycle.some((file) => (node.kind === "file" ? file === node.id : file.startsWith(`${node.id}/`)))
+      ? [index]
+      : [],
+  );
+
 const NodePanel = ({
   atlas,
   factsOf,
@@ -188,13 +246,14 @@ const NodePanel = ({
   readonly node: ViewNode;
   readonly factsOf: PanelProps["factsOf"];
   readonly onNavigate: (focus: string) => void;
-  readonly onSelect: (selection: Selection) => void;
+  readonly onSelect: Select;
 }): ReactElement => {
   const governing = atlas.nodes.find((one) => one.name === node.node);
   const isFile = node.kind === "file";
   const violations = atlas.violations.filter((one) =>
     isFile ? one.file === node.id : one.file.startsWith(`${node.id}/`),
   );
+  const cycles = cyclesThrough(atlas, node);
   const edgesFrom = isFile ? atlas.edges.filter((one) => one.from === node.id) : [];
   const edgesTo = isFile ? atlas.edges.filter((one) => one.to === node.id) : [];
 
@@ -252,6 +311,12 @@ const NodePanel = ({
             {governing.file === undefined ? "" : <span className="muted"> ({governing.file})</span>}
           </h3>
           {governing.message !== undefined && <p className="message">{governing.message}</p>}
+          {(governing.unrestricted || governing.partial) && (
+            <p className="muted">
+              {governing.unrestricted ? "unrestricted: this tier states no allowlist yet. " : ""}
+              {governing.partial ? "partial: this folder does not enumerate its files." : ""}
+            </p>
+          )}
           {governing.allowances.length > 0 && (
             <>
               <h3>may import</h3>
@@ -279,9 +344,26 @@ const NodePanel = ({
           <h3>violations</h3>
           <ul className="facts">
             {violations.map((one) => (
-              <li key={one.fingerprint} className={one.baselined ? "baselined" : "violation"}>
-                <code>{one.fingerprint}</code>
-                <p>{one.message}</p>
+              <ViolationItem key={one.fingerprint} violation={one} onSelect={onSelect} />
+            ))}
+          </ul>
+        </section>
+      )}
+      {cycles.length > 0 && (
+        <section>
+          <h3>cycles</h3>
+          <ul className="facts">
+            {cycles.map((index) => (
+              <li key={index}>
+                <button
+                  type="button"
+                  className="link"
+                  onClick={() => {
+                    onSelect({ kind: "cycle", index });
+                  }}
+                >
+                  ↻ {atlas.cycles[index]?.length ?? 0} files
+                </button>
               </li>
             ))}
           </ul>
@@ -314,11 +396,96 @@ const NodePanel = ({
   );
 };
 
+const ViolationPanel = ({
+  highlight,
+  onSelect,
+  violation,
+}: {
+  readonly violation: SnapshotViolation;
+  readonly highlight: Highlight | null;
+  readonly onSelect: Select;
+}): ReactElement => (
+  <>
+    <h2>
+      <span className={`status ${violation.baselined ? "admitted" : "violation"}`}>
+        {violation.kind}
+      </span>{" "}
+      {violation.ruleName}
+    </h2>
+    <p className="message">{violation.message}</p>
+    <p>
+      <code>{violation.fingerprint}</code>
+    </p>
+    <p className="muted">
+      {violation.baselined ? "Carried by the baseline. " : ""}
+      in <FileLink file={violation.file} onSelect={onSelect} />
+      {violation.subject === null ? (
+        ""
+      ) : (
+        <>
+          {" "}
+          · subject <code>{violation.subject}</code>
+        </>
+      )}
+    </p>
+    {violation.route !== undefined && (
+      <section>
+        <h3>route, {violation.route.length - 1} hops</h3>
+        <ol className="route">
+          {violation.route.map((file) => (
+            <li key={file}>
+              <FileLink file={file} onSelect={onSelect} />
+            </li>
+          ))}
+        </ol>
+      </section>
+    )}
+    {highlight !== null && highlight.missing.length > 0 && (
+      <p className="muted">
+        Not in this view: {highlight.missing.join(", ")}. Turn on outside, or open the folder they
+        are in.
+      </p>
+    )}
+  </>
+);
+
+const CyclePanel = ({
+  highlight,
+  members,
+  onSelect,
+}: {
+  readonly members: ReadonlyArray<string>;
+  readonly highlight: Highlight | null;
+  readonly onSelect: Select;
+}): ReactElement => (
+  <>
+    <h2>
+      <span className="status ungoverned">cycle</span> {members.length} files
+    </h2>
+    <p className="muted">
+      These files import each other, directly or through others. A cycle is a module boundary that
+      does not exist.
+    </p>
+    <ul className="facts">
+      {members.map((file) => (
+        <li key={file}>
+          <FileLink file={file} onSelect={onSelect} />
+        </li>
+      ))}
+    </ul>
+    {highlight !== null && highlight.missing.length > 0 && (
+      <p className="muted">Not in this view: {highlight.missing.join(", ")}.</p>
+    )}
+  </>
+);
+
 export const Panel = (props: PanelProps): ReactElement => {
-  const { atlas, selection, view } = props;
+  const { atlas, highlight, selection, view } = props;
+  const onSelect: Select = props.onSelect;
+  let body: ReactElement;
   if (selection === null) {
-    return (
-      <aside className="panel">
+    body = (
+      <>
         <h2>{view.focus === "" ? "the repository" : view.focus}</h2>
         <p className="muted">
           {view.members.length} {view.members.length === 1 ? "member" : "members"},{" "}
@@ -330,25 +497,56 @@ export const Panel = (props: PanelProps): ReactElement => {
           {atlas.cycles.length} cycles, {atlas.designed.filter((one) => !one.used).length} unused
           allowances.
         </p>
-      </aside>
-    );
-  }
-  if (selection.kind === "edge") {
-    const edge = view.edges.find((one) => one.from === selection.from && one.to === selection.to);
-    return (
-      <aside className="panel">
-        {edge === undefined ? (
-          <p className="muted">that edge is not in this view</p>
-        ) : (
-          <EdgePanel atlas={atlas} edge={edge} onSelect={props.onSelect} />
+        {atlas.cycles.length > 0 && (
+          <section>
+            <h3>cycles</h3>
+            <ul className="facts">
+              {atlas.cycles.map((cycle, index) => (
+                <li key={cycle.join("|")}>
+                  <button
+                    type="button"
+                    className="link"
+                    onClick={() => {
+                      onSelect({ kind: "cycle", index });
+                    }}
+                  >
+                    ↻ {cycle.length} files, from {cycle[0]}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
-      </aside>
+      </>
     );
-  }
-  const node = findNode(view, selection.id);
-  return (
-    <aside className="panel">
-      {node === undefined ? (
+  } else if (selection.kind === "edge") {
+    const edge = view.edges.find((one) => one.from === selection.from && one.to === selection.to);
+    body =
+      edge === undefined ? (
+        <p className="muted">that edge is not in this view</p>
+      ) : (
+        <EdgePanel atlas={atlas} edge={edge} onSelect={onSelect} />
+      );
+  } else if (selection.kind === "violation") {
+    const violation = atlas.violations.find((one) => one.fingerprint === selection.fingerprint);
+    body =
+      violation === undefined ? (
+        <p className="muted">the atlas has no such violation</p>
+      ) : (
+        <ViolationPanel violation={violation} highlight={highlight} onSelect={onSelect} />
+      );
+  } else if (selection.kind === "cycle") {
+    const members = atlas.cycles[selection.index];
+    body =
+      members === undefined ? (
+        <p className="muted">the atlas has no such cycle</p>
+      ) : (
+        <CyclePanel members={members} highlight={highlight} onSelect={onSelect} />
+      );
+  } else {
+    const node = findNode(view, selection.id);
+    body =
+      node === undefined ? (
         <p className="muted">that node is not in this view</p>
       ) : (
         <NodePanel
@@ -356,9 +554,24 @@ export const Panel = (props: PanelProps): ReactElement => {
           node={node}
           factsOf={props.factsOf}
           onNavigate={props.onNavigate}
-          onSelect={props.onSelect}
+          onSelect={onSelect}
         />
+      );
+  }
+  return (
+    <aside className="panel">
+      {selection !== null && (
+        <button
+          type="button"
+          className="link clear"
+          onClick={() => {
+            props.onSelect(null);
+          }}
+        >
+          ← clear selection
+        </button>
       )}
+      {body}
     </aside>
   );
 };

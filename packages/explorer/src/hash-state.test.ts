@@ -34,6 +34,17 @@ describe("the URL hash", () => {
     expect(selectionKey({ kind: "node", id: "x" })).toBe("node:x");
   });
 
+  it("round-trips a violation and a cycle selection", () => {
+    const violation = {
+      ...DEFAULT_STATE,
+      selected: { kind: "violation" as const, fingerprint: "import|a|b.ts|c.ts" },
+    };
+    expect(parseHash(serializeHash(violation))).toEqual(violation);
+    const cycle = { ...DEFAULT_STATE, selected: { kind: "cycle" as const, index: 3 } };
+    expect(parseHash(serializeHash(cycle))).toEqual(cycle);
+    expect(parseHash("#select=cycle%3Athree").selected).toBeNull();
+  });
+
   it("drops a trailing slash from the focus a hand wrote", () => {
     expect(parseHash("#focus=src/").focus).toBe("src");
   });

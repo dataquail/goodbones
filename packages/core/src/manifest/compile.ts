@@ -11,6 +11,8 @@ import {
   type StructureRoot,
   type SurfaceRule,
 } from "../domain/architecture-config.js";
+import type { ManifestPath } from "../domain/manifest-location.js";
+import { fragmentOf, type Substitution } from "./expand.js";
 import { anchored, type CaptureIndex, globToRegexSource, prefixed } from "./glob.js";
 import {
   globsOf,
@@ -225,6 +227,11 @@ type Denial = {
   readonly probe: string;
 };
 
+// Which `defs` fragment one key of a node's `imports` was written in, when it
+// was written in one. Resolved per key, since `imports: { use: x, allow: […] }`
+// takes `allow` from the reference site and `external` from the fragment.
+type ImportsProvenance = (key: "allow" | "external") => string | undefined;
+
 const mergeImports = (
   frame: Frame,
   spec: ImportsSpec | undefined,
@@ -232,6 +239,7 @@ const mergeImports = (
   captures: CaptureIndex,
   nextGroup: number,
   node: string,
+  provenance: ImportsProvenance,
 ): Pick<Frame, "allowances" | "importsMessage"> & {
   readonly deny: ReadonlyArray<Denial>;
 } => {
@@ -245,14 +253,24 @@ const mergeImports = (
         .source,
     );
 
+  const via = (key: "allow" | "external"): Pick<Allowance, "fragment"> => {
+    const fragment = provenance(key);
+    return fragment === undefined ? {} : { fragment };
+  };
   const own: ReadonlyArray<Allowance> = [
     ...globsOf(spec.allow ?? []).map((glob) => ({
       node,
       kind: "allow" as const,
       entry: expandAliases(glob, aliases),
       pattern: compileAllow(glob),
+      ...via("allow"),
     })),
-    ...(spec.external ?? []).map((name) => ({ node, kind: "external" as const, entry: name })),
+    ...(spec.external ?? []).map((name) => ({
+      node,
+      kind: "external" as const,
+      entry: name,
+      ...via("external"),
+    })),
   ];
   const deny = (spec.deny ?? []).flatMap((entry) =>
     globsOf(entry.match).map((glob) => ({
@@ -278,11 +296,20 @@ const mergeImports = (
   };
 };
 
+export type LowerOptions = {
+  // The `use` references the expansion replaced, so an allowance can say
+  // which fragment it came through. A manifest lowered without them is one
+  // whose every entry reads as authored where it sits.
+  readonly substitutions?: ReadonlyArray<Substitution>;
+};
+
 export const lowerManifest = (
   manifest: Manifest,
   languages: ReadonlyArray<ProbeLanguage> = [],
+  options: LowerOptions = {},
 ): LoweredRules => {
   const aliases = manifest.aliases ?? {};
+  const substitutions = options.substitutions ?? [];
 
   // The extension a synthetic probe file carries: the first extension of the
   // language whose scope covers the probe's folder. A probe is matched by its
@@ -345,6 +372,9 @@ export const lowerManifest = (
     parent: Frame,
     name: string,
     siblings: ReadonlyArray<string>,
+    // Where this node sits in the expanded document, so its `imports` keys
+    // can be traced back through any `use` that carried them.
+    nodePath: ManifestPath,
   ): void => {
     const literalSiblings = siblings
       .filter((sibling) => sibling !== key)
@@ -394,7 +424,15 @@ export const lowerManifest = (
       parent.nextGroup +
       (Object.keys(compiled.captures).length - Object.keys(parent.captures).length);
 
-    const merged = mergeImports(parent, node.imports, aliases, compiled.captures, nextGroup, name);
+    const merged = mergeImports(
+      parent,
+      node.imports,
+      aliases,
+      compiled.captures,
+      nextGroup,
+      name,
+      (field) => fragmentOf(substitutions, [...nodePath, "imports", field]),
+    );
     const ownDenials = merged.deny;
     const frame: Frame = {
       pathSource,
@@ -591,7 +629,11 @@ export const lowerManifest = (
       }
       const siblingKeys = childKeys.map(([childKey]) => childKey);
       for (const [childKey, child] of childKeys) {
-        walk(childKey, child, frame, `${name}/${alternativesOf(childKey)[0] ?? ""}`, siblingKeys);
+        walk(childKey, child, frame, `${name}/${alternativesOf(childKey)[0] ?? ""}`, siblingKeys, [
+          ...nodePath,
+          "children",
+          childKey,
+        ]);
       }
     }
 
@@ -863,6 +905,7 @@ export const lowerManifest = (
     {},
     1,
     "repo",
+    () => undefined,
   ).deny.entries()) {
     imports.push({
       name: `repo/deny-${String(index)}`,
@@ -905,6 +948,7 @@ export const lowerManifest = (
         .replace(/[^a-zA-Z0-9]+/g, "-")
         .replace(/^-|-$/g, ""),
       Object.keys(manifest.tree),
+      ["tree", key],
     );
   }
 

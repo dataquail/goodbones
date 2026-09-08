@@ -42,6 +42,11 @@ export const Allowance = Schema.Struct({
   entry: Schema.String,
   // For an `allow`: the compiled target pattern, as `toNot` carries it.
   pattern: Schema.optionalKey(Schema.String),
+  // The `defs` fragment the entry arrived through, when the node wrote
+  // `use: <name>` rather than the entry itself. Slack is attributed to the
+  // fragment then: the node's authors wrote one word, and the line to delete
+  // is in `defs`.
+  fragment: Schema.optionalKey(Schema.String),
 });
 
 export const ImportRule = Schema.Struct({

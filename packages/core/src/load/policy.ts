@@ -216,7 +216,7 @@ export const loadPolicy = (
   // The manifest is the authoring surface; these flat rules are the machine's.
   // The languages tell lowering what a source file in each scope is called, so
   // a synthetic probe is a file of the scope's language.
-  const rules = lowerManifest(config, languages);
+  const rules = lowerManifest(config, languages, { substitutions: decoded.success.substitutions });
 
   // The ceilings. A tier that says "not tightened yet" is a sentence someone
   // wrote; a ceiling on how many may say so is what keeps the backlog from

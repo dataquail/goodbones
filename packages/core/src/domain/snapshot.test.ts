@@ -28,6 +28,7 @@ const SAMPLE: Snapshot = {
     graph: { covered: 0, total: 3 },
   },
   residue: { files: ["src/stray.ts"], folders: [] },
+  vacant: [{ node: "src/ghost", allowances: 2 }],
   violations: [
     {
       fingerprint: "import|src/imports|src/a.ts|lib/b.ts",
@@ -52,7 +53,13 @@ const SAMPLE: Snapshot = {
   stale: ["member|m|src/gone.ts|x"],
   baseline: { size: 2 },
   cycles: 1,
-  slack: [{ node: "src", kind: "external", entry: "lodash" }],
+  slack: [
+    { node: "src", kind: "external", entry: "lodash" },
+    { node: "test-file", kind: "external", entry: "stripe", fragment: "test-file", of: 24 },
+  ],
+  concentration: [
+    { fragment: "test-file", kind: "external", entry: "@effect/sql-pg", usedAt: 1, of: 24 },
+  ],
   adoption: { unrestricted: ["src/legacy"], partial: [] },
 };
 

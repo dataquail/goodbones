@@ -7,6 +7,7 @@ import {
   coverageShortfalls,
   fractionsOf,
   residueOf,
+  vacancyOf,
 } from "./coverage.js";
 import { compileGraphRules } from "./graph.js";
 import { compileImportRules } from "./imports.js";
@@ -178,5 +179,73 @@ describe("residueOf", () => {
 
   it("is empty over an empty tree", () => {
     expect(residueOf(policy, [])).toEqual({ files: [], folders: [] });
+  });
+});
+
+describe("vacancyOf", () => {
+  const allowance = (node: string, entry: string) => ({
+    node,
+    kind: "allow" as const,
+    entry,
+    pattern: `^${entry.replace("/**", "(/.*)?$")}`,
+  });
+  // `src` allows `src/**`; `src/core/` inherits it and adds `lib/**`;
+  // `src/ghost/` resets to its own. Written flat, as lowering emits them.
+  const rules = unwrap(
+    compileImportRules([
+      {
+        name: "src/imports",
+        message: "…",
+        probe,
+        from: "^src/",
+        fromNot: ["^src/core/", "^src/ghost/"],
+        toNot: ["^src(/.*)?$"],
+        allowances: [allowance("src", "src/**")],
+      },
+      {
+        name: "src/core/imports",
+        message: "…",
+        probe,
+        from: "^src/core/",
+        toNot: ["^src(/.*)?$", "^lib(/.*)?$"],
+        allowances: [allowance("src", "src/**"), allowance("src/core", "lib/**")],
+      },
+      {
+        name: "src/ghost/imports",
+        message: "…",
+        probe: { from: "src/ghost/zz.ts", to: "src/x.ts" },
+        from: "^src/ghost/",
+        toNot: ["^vendor(/.*)?$"],
+        externals: ["lodash"],
+        allowances: [
+          allowance("src/ghost", "vendor/**"),
+          { node: "src/ghost", kind: "external", entry: "lodash" },
+        ],
+      },
+      // A prohibition states no allowlist and is never vacant.
+      { name: "deny", message: "…", probe, from: "^src/", to: "^src/secret/" },
+    ]),
+  );
+
+  it("names an allowlisted node that selects no walked file, with what it wrote", () => {
+    expect(vacancyOf(rules, FILES)).toEqual([{ node: "src/ghost", allowances: 2 }]);
+  });
+
+  it("does not name a node with a file under it", () => {
+    expect(vacancyOf(rules, [...FILES, "src/ghost/g.ts"])).toEqual([]);
+  });
+
+  // `src`'s own rule steps aside under `src/core/`, but its allowlist is
+  // inherited there, so a file under core is a file `src` grants permission to.
+  it("keeps a parent whose only files sit under an overriding child", () => {
+    expect(vacancyOf(rules, ["src/core/a.ts"])).toEqual([{ node: "src/ghost", allowances: 2 }]);
+  });
+
+  it("names every allowlisted node over an empty tree, in declaration order", () => {
+    expect(vacancyOf(rules, [])).toEqual([
+      { node: "src", allowances: 1 },
+      { node: "src/core", allowances: 1 },
+      { node: "src/ghost", allowances: 2 },
+    ]);
   });
 });

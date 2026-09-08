@@ -1,5 +1,7 @@
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
 import * as path from "node:path";
 
 import {
@@ -51,11 +53,13 @@ import {
   vacancyOf,
   type Violation,
 } from "@goodbones/core";
+import { assetsDir } from "@goodbones/explorer/assets";
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 
 import { type LoadedPolicy, loadPolicyFromFile, manifestPathOf } from "./config-loader.js";
 import { diagramView, parseDiagramFlags } from "./diagram.js";
+import { type ExploreRoutes, parseExploreFlags, respond, writeStandalone } from "./explore.js";
 import { buildGraph } from "./graph.js";
 import { infer } from "./infer.js";
 import { sourceFactsOf } from "./source-facts.js";
@@ -653,6 +657,121 @@ export const diagram = (
     yield* report([renderMermaid(view).trimEnd()]);
   });
 
+// What `facts` prints, as a value: the panel in the viewer shows it for a
+// file, through the server.
+const factsJsonOf = (policy: LoadedPolicy, relative: string): unknown => {
+  const read = sourceFactsOf(policy.repoRoot, relative, policy.extractor);
+  return {
+    file: relative,
+    edges: read.specifiers.map((specifier) => ({
+      specifier,
+      bindings: read.bindings.get(specifier) ?? [],
+    })),
+    memberSites: read.memberSites,
+    exportSites: read.exportSites,
+  };
+};
+
+// The viewer, over this repository's atlas. Served on a port, with the atlas
+// rebuilt on every request so a rescan reflects an edit without a restart —
+// the policy is reloaded too, so an edit to the manifest shows as well — or
+// written to a folder with the atlas inlined, for a static host. The
+// request handling is `explore.ts`'s and is tested there with no socket;
+// this opens the port and hands it the routes.
+export const explore = (
+  policy: LoadedPolicy,
+  argv: ReadonlyArray<string>,
+  manifestPath: string,
+  reload: () => Promise<LoadedPolicy>,
+): Effect.Effect<void, CliFailure> =>
+  Effect.gen(function* () {
+    const parsed = parseExploreFlags(argv);
+    if (Result.isFailure(parsed)) return yield* Effect.fail(fail(parsed.failure));
+    const flags = parsed.success;
+    const assets = assetsDir();
+
+    if (flags.out !== null) {
+      const into = path.resolve(policy.repoRoot, flags.out);
+      const atlas = atlasDocument(policy, flags.roots, manifestPath);
+      yield* Effect.try({
+        try: () => {
+          writeStandalone(assets, atlas, into);
+        },
+        catch: (cause) => fail(`could not write ${into}: ${String(cause)}`),
+      });
+      return yield* report([
+        `wrote the viewer with the atlas inlined to ${path.relative(policy.repoRoot, into)}/.`,
+        `Open ${path.join(path.relative(policy.repoRoot, into), "index.html")} in a browser, or host the folder.`,
+      ]);
+    }
+
+    let current = policy;
+    const routes: ExploreRoutes = {
+      atlas: async () => {
+        // A manifest that no longer loads keeps the last policy that did; the
+        // atlas is still drawn, and the error goes to the terminal.
+        try {
+          current = await reload();
+        } catch (cause) {
+          process.stderr.write(`could not reload the policy: ${String(cause)}\n`);
+        }
+        return atlasDocument(current, flags.roots, manifestPath);
+      },
+      facts: (file) => {
+        const relative = file.replaceAll(path.sep, "/");
+        const walked = listSourceFiles(current.repoRoot, flags.roots, current.languages);
+        return Promise.resolve(walked.includes(relative) ? factsJsonOf(current, relative) : null);
+      },
+      assetsDir: assets,
+    };
+
+    const server = createServer((request, response) => {
+      respond(routes, request.url ?? "/")
+        .then((answer) => {
+          response.writeHead(answer.status, answer.headers);
+          response.end(answer.body);
+        })
+        .catch((cause: unknown) => {
+          response.writeHead(500, { "content-type": "text/plain" });
+          response.end(String(cause));
+        });
+    });
+    const port = yield* Effect.callback<number, CliFailure>((resume) => {
+      server.once("error", (cause) => {
+        resume(
+          Effect.fail(fail(`could not listen on port ${String(flags.port)}: ${cause.message}`)),
+        );
+      });
+      server.listen(flags.port, "127.0.0.1", () => {
+        const address = server.address();
+        resume(
+          Effect.succeed(
+            typeof address === "object" && address !== null ? address.port : flags.port,
+          ),
+        );
+      });
+    });
+    const url = `http://127.0.0.1:${String(port)}/`;
+    yield* report([
+      `architecture explore: ${url}`,
+      `  drawing ${flags.roots.join(", ")} against ${path.relative(policy.repoRoot, manifestPath)}.`,
+      "  The atlas is rebuilt on every load; press ctrl-c to stop.",
+    ]);
+    if (flags.open) {
+      yield* Effect.sync(() => {
+        const opener =
+          process.platform === "darwin"
+            ? "open"
+            : process.platform === "win32"
+              ? "explorer"
+              : "xdg-open";
+        spawn(opener, [url], { detached: true, stdio: "ignore" }).unref();
+      });
+    }
+    // The command is the server: it ends when the process does.
+    return yield* Effect.never;
+  });
+
 export type ConformanceOptions = CheckOptions;
 
 // The report of the tree against the manifest. Unlike `check`, it never
@@ -1093,6 +1212,10 @@ export const run = (
       // to centre on.
       case "diagram":
         return yield* diagram(policy, rest, manifestPathOf(repoRoot, configFilename));
+      case "explore":
+        return yield* explore(policy, rest, manifestPathOf(repoRoot, configFilename), () =>
+          loadPolicyFromFile(repoRoot, configFilename),
+        );
       case "baseline":
         return yield* writeBaseline(policy, roots);
       case "explain": {
@@ -1110,7 +1233,7 @@ export const run = (
       default:
         return yield* Effect.fail(
           fail(
-            `unknown command "${command}". Try: check [--json] | conformance [--json] [--against <manifest>] | atlas | diagram | baseline | coverage | explain <file> | facts <file> [--json] | init | infer | migrate`,
+            `unknown command "${command}". Try: check [--json] | conformance [--json] [--against <manifest>] | atlas | diagram | explore | baseline | coverage | explain <file> | facts <file> [--json] | init | infer | migrate`,
           ),
         );
     }

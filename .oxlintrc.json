@@ -36,6 +36,7 @@
     "**/docs",
     "**/*.md",
     "**/vitest.config.ts",
+    "**/vite.config.ts",
     "**/setupTests.ts",
     "**/vitest.shared.ts",
     "**/vitest.workspace.ts",

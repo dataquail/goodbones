@@ -1,0 +1,64 @@
+---
+title: Explore
+description: architecture explore serves an interactive viewer over the atlas — every folder a diagram of its children, drilled into by clicking, with the policy laid over every edge.
+---
+
+`diagram` draws one folder as text. `explore` draws every folder, on a canvas the reader
+drills through: click a folder and it becomes the focus, with its own children as nodes and
+the imports between them as edges; the crumb bar and the back button go up. The same
+roll-up the mermaid render uses, the same statuses, the same colours — and beside the
+canvas, a panel that says why each edge is what it is, in the manifest's own words.
+
+```bash
+architecture explore [--port N] [--open] [--out <dir>] [roots…]
+```
+
+## What it shows
+
+**The canvas.** Every child of the focus is a node — a folder with its file count, a file, or
+with `outside` on, where an edge leaving the folder lands: the nearest sibling of an ancestor
+(`../core/`), a package, a runtime module. Every import between two children is one edge,
+coloured by status: grey for `admitted`, red for a `violation`, amber and dashed for
+`ungoverned`, faint and dashed for `designed` — an allowance nothing imports through — when
+that toggle is on. Width grows with the count. `⚠ n` on a node counts the violations beneath it
+that the baseline does not carry; `↻` says a cycle runs through it; a hatched node is one no
+family of the policy reaches. Layout is [ELK](https://eclipse.dev/elk/)'s layered algorithm,
+so the tiers read top-down in the order the allowances imply, and no node carries a
+coordinate anywhere.
+
+**The panel.** Click an edge and it lists the imports beneath it: each importer and target,
+the allowance that admitted the import (`allow src/**` at `src`, or the `defs` fragment it
+came through), or the violation's fingerprint and message. Click a file and it shows the
+node that governs it with the sentence its author wrote, what the node lets it import, every
+violation on it, every edge in and out — and, when a server is behind the page, what the
+parser read out of the file: every specifier and the names carried across it, every declared
+member and called name, every export. That is [`explain`](/goodbones/architecture-rules/enforcement/cli/#explain)
+and [`facts`](/goodbones/architecture-rules/enforcement/cli/#facts), on a click.
+
+**The toggles.** `depth` 1 or 2 (each child folder drawn with its own children inside),
+`outside` (draw where edges leaving the folder go), `designed` (ghost the slack). The focus,
+the toggles and the selection live in the URL hash, so a view is a link.
+
+## Serving, and writing out
+
+`explore` starts a local server on `--port` (default 4141) and prints the URL; `--open`
+launches the browser. The atlas is rebuilt on every load — the policy is reloaded too — so
+after an edit to a file or to the manifest the **rescan** button in the toolbar shows the
+result without a restart. Nothing is watched; a rescan over this repository is well under a
+second, and a button is cheaper than a file watcher until it is not.
+
+`--out <dir>` writes the viewer to a folder with the atlas inlined into its `index.html`
+instead of serving it: one static folder a CI job uploads as an artifact or a docs site
+hosts, that opens from a `file://` URL. Without a server there is no rescan and no facts
+panel; everything else is the same page.
+
+## Where it comes from
+
+The viewer is its own package, [`@goodbones/explorer`](https://www.npmjs.com/package/@goodbones/explorer),
+a Vite build of a React app on [React Flow](https://reactflow.dev/) and ELK. It reads the
+[atlas](/goodbones/architecture-rules/enforcement/cli/#atlas) and calls the core's pure
+`viewOf`; it decides nothing about what an edge means. The CLI depends on it for the built
+assets and nothing else — React and the layout engine never enter the CLI's or the plugin's
+dependency tree — and the repository's own policy holds the viewer to reaching the core and
+nothing else in the monorepo, which is a second proof, after the fakes, that the core's pure
+tiers depend on no host.

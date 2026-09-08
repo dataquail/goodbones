@@ -172,34 +172,41 @@ describe.sequential("diagram", () => {
   });
 });
 
-// The package graph of this repository, as a golden: four packages, the two
-// hosts on the core and the pack, the pack on the core, nothing else.
+// The package graph of this repository, as a golden: five packages, the two
+// hosts on the core and the pack, the CLI on the viewer's assets, the pack
+// and the viewer on the core, nothing else.
 describe("diagram, over this repository", () => {
-  // The four `src/` trees, named, as the other self-hosting tests do: the
+  // The five `src/` trees, named, as the other self-hosting tests do: the
   // fixtures other test files write under `packages/cli/` are not the graph.
   const SOURCES = [
     "packages/core/src",
     "packages/typescript/src",
+    "packages/explorer/src",
     "packages/cli/src",
     "packages/oxlint/src",
   ];
 
-  it("draws the four packages and the edges between them", async () => {
+  it("draws the five packages and the edges between them", async () => {
     const policy = await loadPolicy(thisRepository);
     const flags = parseDiagramFlags(["--root", "packages", ...SOURCES]);
     if (Result.isFailure(flags)) throw new Error(flags.failure);
     const atlas = atlasDocument(policy, SOURCES, path.join(thisRepository, "architecture.yaml"));
+    const n = (from: string, to: string): string =>
+      String(count(atlas, `packages/${from}`, `packages/${to}`));
     expect(renderMermaid(diagramView(atlas, flags.success))).toBe(
       `flowchart TB
   n_packages_cli["cli/"]
   n_packages_core["core/"]
+  n_packages_explorer["explorer/"]
   n_packages_oxlint["oxlint/"]
   n_packages_typescript["typescript/"]
-  n_packages_cli -- ${String(count(atlas, "packages/cli", "packages/core"))} --> n_packages_core
-  n_packages_cli -- ${String(count(atlas, "packages/cli", "packages/typescript"))} --> n_packages_typescript
-  n_packages_oxlint -- ${String(count(atlas, "packages/oxlint", "packages/core"))} --> n_packages_core
-  n_packages_oxlint -- ${String(count(atlas, "packages/oxlint", "packages/typescript"))} --> n_packages_typescript
-  n_packages_typescript -- ${String(count(atlas, "packages/typescript", "packages/core"))} --> n_packages_core
+  n_packages_cli -- ${n("cli", "core")} --> n_packages_core
+  n_packages_cli --> n_packages_explorer
+  n_packages_cli -- ${n("cli", "typescript")} --> n_packages_typescript
+  n_packages_explorer -- ${n("explorer", "core")} --> n_packages_core
+  n_packages_oxlint -- ${n("oxlint", "core")} --> n_packages_core
+  n_packages_oxlint -- ${n("oxlint", "typescript")} --> n_packages_typescript
+  n_packages_typescript -- ${n("typescript", "core")} --> n_packages_core
 `,
     );
   }, 60_000);

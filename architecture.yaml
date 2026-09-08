@@ -55,6 +55,7 @@ aliases:
   "@ts": packages/typescript/src
   "@cli": packages/cli/src
   "@ox": packages/oxlint/src
+  "@explorer": packages/explorer/src
 
 # Which exported names may cross which edges — the family a path rule cannot
 # express, because every importer of a module resolves to the same file.
@@ -105,11 +106,13 @@ limits:
   partial: 0
   # Every folder here is `layout: open`, so structure is 0% enumerated and
   # states no floor. The rest are the numbers on the day they were written:
-  # 2026-09-07, after `infer` arrived — members is 54/90 (every file under
-  # the core's `src/`, which prints nothing), surface 86/90 (every file under
-  # a `src/`; the four `vitest.config.ts` are the remainder), graph 53/90
-  # (every non-test file under a `src/`; two new test files moved it from 59%).
-  coverage: { imports: 1, members: 0.6, surface: 0.95, graph: 0.58 }
+  # 2026-09-08, after the explorer arrived — members is 70/128 (every file
+  # under the core's `src/`, which prints nothing; the viewer's files are
+  # under no members rule, which is what moved it from 60%), surface 122/128
+  # (every file under a `src/`; the five `vitest.config.ts` and the viewer's
+  # `vite.config.ts` are the remainder), graph 74/128 (every non-test file
+  # under a `src/`).
+  coverage: { imports: 1, members: 0.54, surface: 0.95, graph: 0.57 }
 
 # The shape of the whole graph — evaluated by `architecture check`, which
 # is the one adapter that sees every file at once.
@@ -131,6 +134,9 @@ graph:
         - "@ts/index.ts"
         - "@cli/main.ts"
         - "@ox/plugin.ts"
+        # The viewer's page entry, and the one module it exports to Node.
+        - "@explorer/main.tsx"
+        - "@explorer/assets.ts"
 
   reach:
     - name: pure-tiers-reach-no-adapter
@@ -149,13 +155,24 @@ graph:
         - "@ts/**"
         - "@cli/**"
         - "@ox/**"
+        - "@explorer/**"
 
     # The one line that proves the decoupling held: nothing in the core
-    # reaches TypeScript, or either host, through any number of hops.
+    # reaches TypeScript, either host, or the viewer, through any number of
+    # hops.
     - name: core-reaches-no-other-package
       message: "The core reaches no other package. A second language is a second pack that depends on the core; the core depends on none of them."
       from: "@core/**"
       fromNot: "**/*.test.ts"
+      to: ["@ts/**", "@cli/**", "@ox/**", "@explorer/**"]
+
+    # The viewer draws what the core's pure functions say. It reaches no
+    # host and no language pack — which is what lets it be bundled for a
+    # browser, and the second proof, after the fakes, that the pure tiers
+    # depend on nothing of this host.
+    - name: explorer-reaches-no-host-and-no-pack
+      message: "The viewer reaches the core and nothing else in the repository: not a host, not a language pack. It is a picture of the atlas, and the atlas is the CLI's to build."
+      from: "@explorer/**"
       to: ["@ts/**", "@cli/**", "@ox/**"]
 
     - name: cli-never-reaches-the-plugin
@@ -216,3 +233,4 @@ tree:
   "~/typescript/": { include: packages/typescript/architecture.yaml }
   "~/cli/": { include: packages/cli/architecture.yaml }
   "~/oxlint/": { include: packages/oxlint/architecture.yaml }
+  "~/explorer/": { include: packages/explorer/architecture.yaml }

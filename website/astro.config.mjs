@@ -57,6 +57,7 @@ export default defineConfig({
                 { slug: "architecture-rules/enforcement/adoption" },
                 { slug: "architecture-rules/enforcement/conformance" },
                 { slug: "architecture-rules/enforcement/diagram" },
+                { slug: "architecture-rules/enforcement/explore" },
                 { slug: "architecture-rules/enforcement/cli" },
               ],
             },

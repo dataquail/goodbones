@@ -1,0 +1,367 @@
+:root {
+  --ink: #1f2933;
+  --muted: #6b7280;
+  --line: #d9dee5;
+  --paper: #ffffff;
+  --ground: #f5f7fa;
+  --accent: #2f6fed;
+  --violation: #c62828;
+  --ungoverned: #f9a825;
+  --designed: #9e9e9e;
+  --admitted: #5b6472;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: var(--ground);
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  background: #eef1f5;
+  padding: 0 4px;
+  border-radius: 3px;
+  word-break: break-all;
+}
+
+.explorer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 16px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px;
+  font-size: 15px;
+}
+
+.crumbs .sep {
+  color: var(--muted);
+  padding: 0 4px;
+}
+
+.crumbs .current {
+  font-weight: 600;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.controls select,
+.controls button {
+  font: inherit;
+}
+
+button.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+button.link:hover {
+  text-decoration: underline;
+}
+
+.body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.canvas {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--muted);
+  padding: 24px;
+  text-align: center;
+}
+
+.status.error {
+  color: var(--violation);
+  flex-direction: column;
+}
+
+.panel {
+  width: 380px;
+  overflow: auto;
+  padding: 16px 18px 32px;
+  background: var(--paper);
+  border-left: 1px solid var(--line);
+  line-height: 1.45;
+}
+
+.panel h2 {
+  font-size: 15px;
+  margin: 0 0 8px;
+  word-break: break-all;
+}
+
+.panel h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 16px 0 6px;
+}
+
+.panel .message {
+  border-left: 3px solid var(--line);
+  padding-left: 10px;
+  color: var(--ink);
+}
+
+.panel ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.panel li {
+  padding: 4px 0;
+}
+
+.panel .edge-row {
+  border-top: 1px solid var(--line);
+  padding: 8px 0;
+}
+
+.panel .edge-row .edge-ends {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  word-break: break-all;
+}
+
+.panel .edge-row .arrow {
+  color: var(--muted);
+}
+
+.panel .why {
+  color: var(--muted);
+  font-size: 12.5px;
+  margin-top: 3px;
+}
+
+.panel .why.violation,
+.panel li.violation {
+  color: var(--violation);
+}
+
+.panel li.baselined {
+  color: var(--muted);
+}
+
+.panel .why p,
+.panel li p {
+  margin: 2px 0 0;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.status.admitted,
+.kind.folder,
+.kind.file,
+.kind.outside,
+.kind.package,
+.kind.builtin,
+.status.violation,
+.status.ungoverned,
+.status.designed {
+  display: inline-block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #eef1f5;
+  color: var(--muted);
+  vertical-align: middle;
+}
+
+.status.violation {
+  background: #fdecea;
+  color: var(--violation);
+}
+
+.status.ungoverned {
+  background: #fff6db;
+  color: #8a5a00;
+}
+
+/* Nodes on the canvas. */
+.card {
+  width: 100%;
+  height: 100%;
+  border: 1.5px solid var(--admitted);
+  border-radius: 8px;
+  background: var(--paper);
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.card.file {
+  border-style: solid;
+  border-color: #b9c0ca;
+  background: #fbfcfd;
+}
+
+.card.outside,
+.card.package,
+.card.builtin {
+  border-style: dashed;
+  border-color: #9aa3ae;
+  background: #f7f8fa;
+  color: var(--muted);
+}
+
+.card.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.2);
+}
+
+.card.is-dimmed {
+  opacity: 0.4;
+}
+
+.card.is-residue {
+  background: repeating-linear-gradient(135deg, #fbfcfd 0 6px, #eef1f5 6px 8px);
+}
+
+.card .card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+
+.card .kind {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.card .label {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card .meta {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.card.group {
+  justify-content: flex-start;
+  background: rgba(245, 247, 250, 0.7);
+  border-style: solid;
+  padding: 0;
+}
+
+.card.group .group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px dashed var(--line);
+  height: 36px;
+}
+
+.badges {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.badge {
+  font-size: 10px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: #eef1f5;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.badge.violation {
+  background: #fdecea;
+  color: var(--violation);
+  font-weight: 600;
+}
+
+.badge.cycle {
+  background: #fff6db;
+  color: #8a5a00;
+}
+
+.badge.adoption {
+  background: #f1ecff;
+  color: #5b3fb5;
+}
+
+.react-flow__handle {
+  opacity: 0;
+}
+
+.react-flow__edge-textbg {
+  fill: var(--paper);
+}

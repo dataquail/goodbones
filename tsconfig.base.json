@@ -58,6 +58,8 @@
       "@goodbones/core/*": ["./packages/core/src/*.ts"],
       "@goodbones/typescript": ["./packages/typescript/src/index.ts"],
       "@goodbones/typescript/*": ["./packages/typescript/src/*.ts"],
+      "@goodbones/explorer/assets": ["./packages/explorer/src/assets.ts"],
+      "@goodbones/explorer/*": ["./packages/explorer/src/*.ts"],
       "@goodbones/cli/*": ["./packages/cli/src/*.ts"],
       "@goodbones/oxlint": ["./packages/oxlint/src/plugin.ts"],
       "@goodbones/oxlint/*": ["./packages/oxlint/src/*.ts"]

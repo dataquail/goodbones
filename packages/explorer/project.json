@@ -1,0 +1,50 @@
+{
+  "name": "@goodbones/explorer",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/explorer/src",
+  "projectType": "library",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "dependsOn": ["^build"],
+      "inputs": [
+        "production",
+        "^production",
+        "{projectRoot}/index.html",
+        "{projectRoot}/vite.config.ts"
+      ],
+      "outputs": ["{projectRoot}/build", "{projectRoot}/.tsbuildinfo"],
+      "options": {
+        "command": "pnpm run build",
+        "cwd": "packages/explorer"
+      }
+    },
+    "check": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "outputs": ["{projectRoot}/.tsbuildinfo", "{projectRoot}/build/src"],
+      "options": {
+        "command": "pnpm run check",
+        "cwd": "packages/explorer"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "pnpm run test",
+        "cwd": "packages/explorer"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "pnpm exec oxlint --type-aware --quiet packages/explorer",
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  },
+  "tags": []
+}

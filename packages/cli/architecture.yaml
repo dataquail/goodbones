@@ -6,8 +6,9 @@
 message: "@goodbones/cli is one host: it reads the manifest file, constructs the language packs, and evaluates every family — including the graph family, which only an adapter seeing every file at once can — with no linter in the loop."
 layout: open
 imports:
-  message: "A host composes the package. It reaches the core's barrels and the language pack's, and its own siblings — never the other host."
-  # The floor, then this package's own.
+  message: "A host composes the package. It reaches the core's barrels and the language pack's, the viewer's built assets, and its own siblings — never the other host."
+  # The floor, then this package's own. Of the viewer it takes one module:
+  # where the bundle is.
   external: [effect, vitest]
   allow:
     - "node:**"
@@ -15,6 +16,7 @@ imports:
     - "@core/index.ts"
     - "@core/testing.ts"
     - "@ts/index.ts"
+    - "@explorer/assets.ts"
     - "@cli/**"
 children:
   "src/":

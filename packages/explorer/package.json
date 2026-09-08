@@ -1,0 +1,67 @@
+{
+  "name": "@goodbones/explorer",
+  "version": "0.1.0-beta.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "The interactive viewer for @goodbones/cli's `architecture explore`: every folder of a repository as a diagram of its children with the architecture policy laid over it, built to static assets the CLI serves. Ships the bundle and one Node module that says where it is.",
+  "author": "zacharyweidenbach",
+  "keywords": [
+    "architecture",
+    "lint",
+    "import-boundaries",
+    "hexagonal",
+    "monorepo"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dataquail/goodbones.git",
+    "directory": "packages/explorer"
+  },
+  "homepage": "https://dataquail.github.io/goodbones",
+  "bugs": {
+    "url": "https://github.com/dataquail/goodbones/issues"
+  },
+  "exports": {
+    "./assets": {
+      "types": "./build/dts/assets.d.ts",
+      "default": "./build/esm/assets.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "build/app",
+    "build/dts",
+    "build/esm",
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx"
+  ],
+  "scripts": {
+    "build": "vite build && tsc -b tsconfig.build.json",
+    "check": "tsc -b tsconfig.json",
+    "clean": "rm -rf build .tsbuildinfo",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@goodbones/core": "workspace:*",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^25.9.4",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "@xyflow/react": "^12.11.6",
+    "elkjs": "^0.12.0",
+    "jsdom": "^30.0.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "vite": "^8.2.2"
+  },
+  "nx": {
+    "includedScripts": []
+  }
+}

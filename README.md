@@ -26,6 +26,7 @@ packages/
   typescript/   @goodbones/typescript
   cli/          @goodbones/cli
   oxlint/       @goodbones/oxlint
+  explorer/     @goodbones/explorer — the viewer `architecture explore` serves
 website/        Astro + Starlight documentation site (GitHub Pages)
 scripts/        release tooling and the local oxlint rule plugin
 ```

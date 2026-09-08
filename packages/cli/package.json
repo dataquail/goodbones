@@ -45,6 +45,7 @@
   },
   "dependencies": {
     "@goodbones/core": "workspace:*",
+    "@goodbones/explorer": "workspace:*",
     "@goodbones/typescript": "workspace:*",
     "effect": "4.0.0-beta.94"
   },

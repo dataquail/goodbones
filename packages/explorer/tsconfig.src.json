@@ -1,0 +1,20 @@
+{
+  // The core, by its bare name, so `tsc -b` builds its declarations first: the
+  // viewer imports `viewOf` and the atlas types through the workspace link,
+  // never through a path alias.
+  "references": [{ "path": "../core/tsconfig.build.json" }],
+  "extends": "../../tsconfig.base.json",
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"],
+  "compilerOptions": {
+    // The viewer runs in a browser; `assets.ts` runs in Node. One program
+    // holds both, so both libraries are in scope.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "jsx": "react-jsx",
+    "outDir": "build/src",
+    "tsBuildInfoFile": ".tsbuildinfo/src.tsbuildinfo",
+    "rootDir": "src",
+    "paths": {}
+  }
+}

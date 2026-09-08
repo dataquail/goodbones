@@ -24,7 +24,7 @@ import type { Repo } from "./repo.js";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WORKSPACE = path.resolve(here, "../..");
 
-export const PACKAGES = ["core", "typescript", "cli", "oxlint"] as const;
+export const PACKAGES = ["core", "typescript", "explorer", "cli", "oxlint"] as const;
 export type Package = (typeof PACKAGES)[number];
 
 export type Tarballs = Readonly<Record<Package, string>>;

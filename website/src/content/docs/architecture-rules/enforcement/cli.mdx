@@ -1,6 +1,6 @@
 ---
 title: The CLI
-description: check, conformance, atlas, diagram, baseline, coverage, explain, facts, init, infer and migrate — the same policy with no linter in the loop.
+description: check, conformance, atlas, diagram, explore, baseline, coverage, explain, facts, init, infer and migrate — the same policy with no linter in the loop.
 ---
 
 The package ships a second way to ask the same question.
@@ -10,6 +10,7 @@ architecture check [roots…]      # evaluate the policy
 architecture conformance [roots…] # how far the tree is from the policy: residue, vacancy, violations, slack
 architecture atlas [roots…]      # the walked tree and every resolved edge, with the policy laid over it, as JSON
 architecture diagram [roots…]    # one folder of that, as a mermaid flowchart
+architecture explore [roots…]    # every folder of that, in a browser
 architecture baseline [roots…]   # record what the repository currently violates
 architecture coverage [roots…]   # how much of the tree the policy reaches
 architecture explain <file>      # what governs this file, and why
@@ -151,6 +152,14 @@ nothing to say. `--root` names the folder, `--focus <file>` centres on the folde
 share, `--depth 2` nests each child's children, `--outside` draws where edges leaving the
 folder go, `--designed` ghosts the allowances nothing uses. The text pastes into a pull
 request as it is. See [Diagram](/goodbones/architecture-rules/enforcement/diagram/).
+
+## `explore`
+
+The interactive viewer over the atlas, served locally: every folder is a diagram of its
+children, a click on a folder makes it the focus, and a panel says why each edge is what it
+is. `--port N` picks the port, `--open` launches the browser, `--out <dir>` writes the viewer
+with the atlas inlined for a static host instead of serving. See
+[Explore](/goodbones/architecture-rules/enforcement/explore/).
 
 ## `coverage`
 

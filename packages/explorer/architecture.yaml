@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://dataquail.github.io/goodbones/schema/architecture-node.schema.json
+#
+# The @goodbones/explorer node of the repository's architecture policy. The
+# root architecture.yaml includes this file at `~/explorer/`; the globals it
+# shares — the aliases, the `defs` it uses, the graph rules — are written there.
+message: "@goodbones/explorer is the viewer: every folder of a repository as a diagram of its children, with the policy laid over it, in a browser. It reads the atlas and calls the core's pure view functions; it decides nothing about what an edge means, and it names no host and no language pack."
+layout: open
+imports:
+  message: "The viewer reaches the core's barrel, React, the canvas and the layout engine, and its own siblings — never a host, never a language pack. What an edge means is the core's to say."
+  # The floor, this package's build tooling, and what the browser draws with.
+  external:
+    - effect
+    - vitest
+    - vite
+    - "@vitejs/plugin-react"
+    - react
+    - react-dom
+    - "@xyflow/react"
+    - elkjs
+    - "@testing-library/react"
+  allow: ["node:**", vitest.shared.ts, "@core/index.ts", "@explorer/**"]
+children:
+  "src/":
+    layout: open
+    children: {}
+    surface:
+      - use: no-default-exports
+      - use: named-reexports-only
+  "**/": { layout: open, children: {} }

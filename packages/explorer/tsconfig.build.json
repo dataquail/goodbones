@@ -1,0 +1,17 @@
+{
+  // Only the Node module is emitted by tsc: `assets.ts`, which says where the
+  // bundle Vite built is. The viewer itself is Vite's to build, into
+  // `build/app`.
+  "references": [{ "path": "../core/tsconfig.build.json" }],
+  "extends": "./tsconfig.src.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": ".tsbuildinfo/build.tsbuildinfo",
+    "outDir": "build/esm",
+    "declarationDir": "build/dts",
+    "stripInternal": true,
+    "composite": true,
+    "declaration": true,
+    "sourceMap": true
+  },
+  "include": ["src/assets.ts"]
+}

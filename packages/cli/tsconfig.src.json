@@ -4,7 +4,8 @@
   // workspace link to `build/dts`, never through a path alias.
   "references": [
     { "path": "../core/tsconfig.build.json" },
-    { "path": "../typescript/tsconfig.build.json" }
+    { "path": "../typescript/tsconfig.build.json" },
+    { "path": "../explorer/tsconfig.build.json" }
   ],
   "extends": "../../tsconfig.base.json",
   "include": ["src"],

@@ -1,6 +1,6 @@
 ---
 title: The CLI
-description: check, conformance, baseline, coverage, explain, facts, init, infer and migrate — the same policy with no linter in the loop.
+description: check, conformance, atlas, baseline, coverage, explain, facts, init, infer and migrate — the same policy with no linter in the loop.
 ---
 
 The package ships a second way to ask the same question.
@@ -8,6 +8,7 @@ The package ships a second way to ask the same question.
 ```bash
 architecture check [roots…]      # evaluate the policy
 architecture conformance [roots…] # how far the tree is from the policy: residue, vacancy, violations, slack
+architecture atlas [roots…]      # the walked tree and every resolved edge, with the policy laid over it, as JSON
 architecture baseline [roots…]   # record what the repository currently violates
 architecture coverage [roots…]   # how much of the tree the policy reaches
 architecture explain <file>      # what governs this file, and why
@@ -127,6 +128,19 @@ slack — allowances nothing imports through, attributed to the `defs` fragment 
 came through `use`. `--json` emits the snapshot document, and `--against <manifest>` measures the
 same tree against a target manifest instead of the repository's own. It never fails; it
 is a measurement. See [Conformance](/goodbones/architecture-rules/enforcement/conformance/).
+
+## `atlas`
+
+The tree as it is, with the manifest laid over it, as one JSON document: every walked
+file with the node that governs it and the families that reach it, every resolved edge
+with its status — `admitted` and by which allowance, `violation` and by which
+fingerprints, or `ungoverned` because no allowlist selects the importer — every
+allowance resolved against the walk and marked used or not, the manifest's nodes, the
+violations and the cycles. Packages and builtins appear as `pkg:<name>` and
+`builtin:<name>` pseudo-files, so a folder can say what it pulls in from outside. It is
+what `diagram` and `explore` render, and its shape is published as
+[`atlas.schema.json`](/goodbones/schema/atlas.schema.json). See
+[Diagram](/goodbones/architecture-rules/enforcement/diagram/).
 
 ## `coverage`
 

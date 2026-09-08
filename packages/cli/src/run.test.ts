@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { decodeSnapshot, type Snapshot } from "@goodbones/core";
+import { decodeAtlas, decodeSnapshot, type Snapshot } from "@goodbones/core";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Result from "effect/Result";
@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { loadPolicyFromFile as loadPolicy } from "./config-loader.js";
 import {
+  atlasDocument,
   check as checkWith,
   type CheckReport,
   type CliFailure,
@@ -377,6 +378,106 @@ describe.sequential("facts", () => {
 // is what these assert. The reporting each command does is covered above —
 // Vitest re-patches `process.stdout.write` across an await, so output written
 // after `run`'s own async config load lands in its capture rather than ours.
+describe.sequential("atlas", () => {
+  it("marks each edge with its status, and lifts the evaluators' answers rather than re-deriving", async () => {
+    const policy = await loadPolicy(repoRoot);
+    const atlas = atlasDocument(
+      policy,
+      ["src", "lib"],
+      path.join(repoRoot, "architecture.config.mjs"),
+    );
+    const status = (from: string, to: string) =>
+      atlas.edges.find((one) => one.from === from && one.to === to)?.status;
+
+    // src/ reaches lib/, which its allowlist refuses: the import violation is
+    // on the edge, and so is the exports one about `makeBus`.
+    const refused = atlas.edges.find(
+      (one) => one.from === "src/thing.repository.ts" && one.to === "lib/bus.ts",
+    );
+    expect(refused?.status).toBe("violation");
+    expect(refused?.violations).toEqual([
+      "import|src/imports|src/thing.repository.ts|lib/bus.ts",
+      "export|no-factories|src/thing.repository.ts|lib/bus.ts#makeBus",
+    ]);
+    // lib/ is under no allowlist, so its edges are ungoverned — and resolved,
+    // which `check` never bothers to do.
+    expect(status("lib/a.ts", "lib/b.ts")).toBe("ungoverned");
+    expect(status("lib/b.ts", "lib/a.ts")).toBe("ungoverned");
+    expect(atlas.cycles).toEqual([["lib/a.ts", "lib/b.ts"]]);
+    // The files carry their tier; the ghost node with no file is in the nodes.
+    expect(atlas.files.find((one) => one.path === "src/thing.repository.ts")?.node).toBe(
+      "src/*.repository.ts",
+    );
+    expect(atlas.files.find((one) => one.path === "lib/bus.ts")?.node).toBeNull();
+    expect(atlas.nodes.map((one) => one.path)).toEqual([
+      "src/",
+      "src/*.repository.ts",
+      "src/*.view.tsx",
+      "src/ghost/",
+    ]);
+    expect(atlas.violations.map((one) => one.fingerprint)).toEqual(
+      expect.arrayContaining(["graph|no-cycles|lib/a.ts|lib/a.ts ↔ lib/b.ts"]),
+    );
+  });
+
+  it("emits one JSON document that decodes against the published shape", async () => {
+    const { exit, output } = await captureReport(run(repoRoot, ["atlas", "src", "lib"]));
+    expect(Exit.isSuccess(exit)).toBe(true);
+    const decoded = decodeAtlas(JSON.parse(output) as unknown);
+    expect(Result.isSuccess(decoded), JSON.stringify(decoded)).toBe(true);
+    if (Result.isSuccess(decoded)) {
+      expect(decoded.success.version).toBe(1);
+      expect(decoded.success.manifest.path).toBe("architecture.config.mjs");
+      expect(decoded.success.roots).toEqual(["src", "lib"]);
+    }
+  });
+});
+
+// This repository is the acceptance test: its policy has no violation and no
+// ungoverned source file, so every observed edge is admitted, and the
+// allowances nothing uses are exactly the snapshot's slack.
+describe("atlas, over this repository", () => {
+  const thisRepository = path.resolve(here, "../../..");
+  // The four `src/` trees, named, as the infer test does: the other test files
+  // write fixtures under `packages/cli/` while this runs.
+  const SOURCES = [
+    "packages/core/src",
+    "packages/typescript/src",
+    "packages/cli/src",
+    "packages/oxlint/src",
+  ];
+
+  it("admits every edge, and its unused designed edges are the snapshot's slack", async () => {
+    const policy = await loadPolicy(thisRepository);
+    const manifestPath = path.join(thisRepository, "architecture.yaml");
+    const atlas = atlasDocument(policy, SOURCES, manifestPath);
+    const snapshot = snapshotOf(policy, SOURCES, manifestPath);
+
+    expect(atlas.edges.length).toBeGreaterThan(100);
+    expect([...new Set(atlas.edges.map((one) => one.status))]).toEqual(["admitted"]);
+    expect(atlas.edges.every((one) => one.admittedBy !== undefined)).toBe(true);
+    expect(atlas.files.filter((one) => !one.external).every((one) => one.node !== null)).toBe(true);
+    // A node from an included file names the file.
+    expect(atlas.nodes.find((one) => one.path === "~/core/src/domain/")?.file).toBe(
+      "packages/core/architecture.yaml",
+    );
+    // The snapshot attributes an entry that came through `use` to the
+    // fragment, once; the atlas keeps it at each node it is in force at.
+    const unused = new Set(
+      atlas.designed
+        .filter((one) => !one.used)
+        .map(
+          (one) =>
+            `${one.allowance.fragment ?? one.node} ${one.allowance.kind} ${one.allowance.entry}`,
+        ),
+    );
+    expect([...unused].sort()).toEqual(
+      [...new Set(snapshot.slack.map((one) => `${one.node} ${one.kind} ${one.entry}`))].sort(),
+    );
+    expect(Result.isSuccess(decodeAtlas(JSON.parse(JSON.stringify(atlas)) as unknown))).toBe(true);
+  }, 60_000);
+});
+
 describe.sequential("run", () => {
   it("defaults to check", async () => {
     const { exit } = await captureReport(run(repoRoot, ["check", "src", "lib"]));

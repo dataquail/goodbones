@@ -1,8 +1,12 @@
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
+import mermaid from "astro-mermaid";
 
 export default defineConfig({
   integrations: [
+    // Renders the ```mermaid fences `architecture diagram` produces, in the
+    // reader's theme. Listed before Starlight, as the integration asks.
+    mermaid({ autoTheme: true }),
     starlight({
       title: "Oxlint Utils",
       description:
@@ -52,6 +56,7 @@ export default defineConfig({
                 { slug: "architecture-rules/enforcement/baseline" },
                 { slug: "architecture-rules/enforcement/adoption" },
                 { slug: "architecture-rules/enforcement/conformance" },
+                { slug: "architecture-rules/enforcement/diagram" },
                 { slug: "architecture-rules/enforcement/cli" },
               ],
             },

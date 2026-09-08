@@ -72,6 +72,7 @@ export {
   memberRulesFailingTheirProbe,
   memberRulesSelecting,
 } from "./core/members.js";
+export { mermaidIdOf, renderMermaid } from "./core/mermaid.js";
 export { governingNode, nodesSelecting } from "./core/nodes.js";
 export {
   admittedBy,
@@ -97,6 +98,18 @@ export {
   surfaceRulesFailingTheirProbe,
   surfaceRulesSelecting,
 } from "./core/surface.js";
+export {
+  DEFAULT_VIEW_OPTIONS,
+  focusOf,
+  type View,
+  type ViewBadges,
+  type ViewEdge,
+  type ViewEdgeStatus,
+  type ViewNode,
+  type ViewNodeKind,
+  viewOf,
+  type ViewOptions,
+} from "./core/view.js";
 export {
   type Allowance,
   type BindingKind,

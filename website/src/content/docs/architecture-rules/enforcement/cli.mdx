@@ -1,6 +1,6 @@
 ---
 title: The CLI
-description: check, conformance, atlas, baseline, coverage, explain, facts, init, infer and migrate — the same policy with no linter in the loop.
+description: check, conformance, atlas, diagram, baseline, coverage, explain, facts, init, infer and migrate — the same policy with no linter in the loop.
 ---
 
 The package ships a second way to ask the same question.
@@ -9,6 +9,7 @@ The package ships a second way to ask the same question.
 architecture check [roots…]      # evaluate the policy
 architecture conformance [roots…] # how far the tree is from the policy: residue, vacancy, violations, slack
 architecture atlas [roots…]      # the walked tree and every resolved edge, with the policy laid over it, as JSON
+architecture diagram [roots…]    # one folder of that, as a mermaid flowchart
 architecture baseline [roots…]   # record what the repository currently violates
 architecture coverage [roots…]   # how much of the tree the policy reaches
 architecture explain <file>      # what governs this file, and why
@@ -141,6 +142,15 @@ violations and the cycles. Packages and builtins appear as `pkg:<name>` and
 what `diagram` and `explore` render, and its shape is published as
 [`atlas.schema.json`](/goodbones/schema/atlas.schema.json). See
 [Diagram](/goodbones/architecture-rules/enforcement/diagram/).
+
+## `diagram`
+
+One folder of the atlas as a mermaid flowchart: its children as nodes, the imports between
+them as edges, each arrow saying whether the policy admits the edge, forbids it, or has
+nothing to say. `--root` names the folder, `--focus <file>` centres on the folder some files
+share, `--depth 2` nests each child's children, `--outside` draws where edges leaving the
+folder go, `--designed` ghosts the allowances nothing uses. The text pastes into a pull
+request as it is. See [Diagram](/goodbones/architecture-rules/enforcement/diagram/).
 
 ## `coverage`
 

@@ -1,0 +1,481 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dataquail.github.io/goodbones/schema/atlas.schema.json",
+  "title": "Architecture atlas",
+  "description": "A repository's walked tree and resolved import graph with its architecture manifest laid over it, as `architecture atlas` emits it. See https://dataquail.github.io/goodbones/architecture-rules/enforcement/diagram/.",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "number",
+      "enum": [
+        1
+      ],
+      "description": "The shape of this document."
+    },
+    "manifest": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "The file the policy was read from — the root file, when split."
+        },
+        "sha256": {
+          "type": "string",
+          "description": "A hash of that file's bytes."
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "additionalProperties": false,
+      "description": "The policy this atlas was drawn against."
+    },
+    "roots": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "description": "Repo-relative, with forward slashes."
+      },
+      "description": "The directories walked."
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "folder",
+              "file"
+            ]
+          },
+          "selector": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "layout": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "open",
+                  "enumerated"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unrestricted": {
+            "type": "boolean"
+          },
+          "partial": {
+            "type": "boolean"
+          },
+          "families": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "imports",
+                "importedBy",
+                "members",
+                "surface",
+                "structure"
+              ]
+            }
+          },
+          "file": {
+            "type": "string"
+          },
+          "allowances": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "allow",
+                    "external"
+                  ],
+                  "description": "`allow` is a path glob under `imports.allow`; `external` a package name under `imports.external`."
+                },
+                "entry": {
+                  "type": "string",
+                  "description": "The entry as written, after alias expansion."
+                },
+                "fragment": {
+                  "type": "string",
+                  "description": "The `defs` fragment the entry arrived through, via `use`."
+                }
+              },
+              "required": [
+                "kind",
+                "entry"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The import allowances this node wrote itself, in manifest order. Inherited ones are on the ancestor that wrote them."
+          }
+        },
+        "required": [
+          "path",
+          "name",
+          "parent",
+          "kind",
+          "selector",
+          "layout",
+          "unrestricted",
+          "partial",
+          "families",
+          "allowances"
+        ],
+        "additionalProperties": false
+      },
+      "description": "The manifest's tree, flattened in manifest order, each node with the pattern that selects its files and the allowances it wrote."
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "A walked file's path, `pkg:<name>` for a package, or `builtin:<name>` for a runtime module."
+          },
+          "node": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The `name` of the deepest manifest node whose selector matches the file, or null when the tree does not reach it. Always null for a package or builtin."
+          },
+          "reach": {
+            "type": "object",
+            "properties": {
+              "imports": {
+                "type": "boolean"
+              },
+              "structure": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "enumerated",
+                      "open"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "members": {
+                "type": "boolean"
+              },
+              "surface": {
+                "type": "boolean"
+              },
+              "graph": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "imports",
+              "structure",
+              "members",
+              "surface",
+              "graph"
+            ],
+            "additionalProperties": false,
+            "description": "Which families reach the file — `coverage`'s per-file record. A file none reaches is residue."
+          },
+          "external": {
+            "type": "boolean",
+            "description": "True for a package or builtin pseudo-file."
+          }
+        },
+        "required": [
+          "path",
+          "node",
+          "reach",
+          "external"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Every walked file, sorted, then every package and builtin some edge reaches."
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "Repo-relative, with forward slashes."
+          },
+          "to": {
+            "type": "string",
+            "description": "A walked file's path, `pkg:<name>` for a package, or `builtin:<name>` for a runtime module."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "admitted",
+              "violation",
+              "ungoverned"
+            ],
+            "description": "`admitted`: the importer is under an import allowlist and an allowance matched the target. `violation`: an import rule fired. `ungoverned`: no import allowlist selects the importer, so the policy has nothing to say."
+          },
+          "admittedBy": {
+            "type": "object",
+            "properties": {
+              "node": {
+                "type": "string",
+                "description": "The `name` of the node that wrote the allowance."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "allow",
+                  "external"
+                ],
+                "description": "`allow` is a path glob under `imports.allow`; `external` a package name under `imports.external`."
+              },
+              "entry": {
+                "type": "string",
+                "description": "The entry as written, after alias expansion."
+              },
+              "fragment": {
+                "type": "string",
+                "description": "The `defs` fragment the entry arrived through, via `use`."
+              }
+            },
+            "required": [
+              "node",
+              "kind",
+              "entry"
+            ],
+            "additionalProperties": false,
+            "description": "With `admitted`: the allowance that let the edge through — the one written nearest the importer when several did."
+          },
+          "violations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Fingerprints of the violations on this edge: the import rule that fired, and any exports rule about a name carried across it."
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Every resolved import, one per (importer, target) pair, with its status under the policy."
+    },
+    "designed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "type": "string",
+            "description": "The `name` of the node the allowance is in force at."
+          },
+          "allowance": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "allow",
+                  "external"
+                ],
+                "description": "`allow` is a path glob under `imports.allow`; `external` a package name under `imports.external`."
+              },
+              "entry": {
+                "type": "string",
+                "description": "The entry as written, after alias expansion."
+              },
+              "fragment": {
+                "type": "string",
+                "description": "The `defs` fragment the entry arrived through, via `use`."
+              }
+            },
+            "required": [
+              "kind",
+              "entry"
+            ],
+            "additionalProperties": false
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "A walked file's path, `pkg:<name>` for a package, or `builtin:<name>` for a runtime module."
+            },
+            "description": "The walked files the entry matches, from the files the node selects; `pkg:<name>` for an `external`."
+          },
+          "used": {
+            "type": "boolean",
+            "description": "Whether any observed edge passes through the allowance. False is slack: permission nothing needs, drawn as a ghost edge."
+          }
+        },
+        "required": [
+          "node",
+          "allowance",
+          "targets",
+          "used"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Every allowance in force at a node with files, resolved against the walk. An allowance with no observed edge under it is slack; an observed edge with no designed edge over it is ungoverned or a violation."
+    },
+    "violations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "fingerprint": {
+            "type": "string",
+            "description": "kind|rule|file|subject — line-independent, so it survives edits to the file it names; the baseline's key."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "import",
+              "export",
+              "structure",
+              "member",
+              "surface",
+              "graph"
+            ]
+          },
+          "ruleName": {
+            "type": "string",
+            "description": "The manifest node path the rule was lowered from."
+          },
+          "file": {
+            "type": "string",
+            "description": "Repo-relative, with forward slashes."
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The other end of the violated relationship — the resolved target, the restricted symbol, the missing sibling — or null when the file alone is the violation."
+          },
+          "message": {
+            "type": "string"
+          },
+          "baselined": {
+            "type": "boolean",
+            "description": "Carried by the baseline, so `check` does not fail on it."
+          },
+          "route": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "Repo-relative, with forward slashes."
+            },
+            "description": "For a graph `reach` violation: the files the origin reached the target through, origin first, target last."
+          }
+        },
+        "required": [
+          "fingerprint",
+          "kind",
+          "ruleName",
+          "file",
+          "subject",
+          "message",
+          "baselined"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Every finding, baselined ones included, as the conformance snapshot lists them."
+    },
+    "cycles": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "description": "Repo-relative, with forward slashes."
+        }
+      },
+      "description": "Every strongly connected component of more than one file, or a file importing itself, each sorted."
+    },
+    "unresolved": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "Repo-relative, with forward slashes."
+          },
+          "specifier": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "specifier",
+          "detail"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Imports the resolver could not turn into a file, from files under an import rule. Not edges."
+    }
+  },
+  "required": [
+    "version",
+    "manifest",
+    "roots",
+    "nodes",
+    "files",
+    "edges",
+    "designed",
+    "violations",
+    "cycles",
+    "unresolved"
+  ],
+  "additionalProperties": false
+}

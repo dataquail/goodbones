@@ -9,6 +9,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  atlasJsonSchema,
   manifestJsonSchema,
   manifestNodeJsonSchema,
   snapshotJsonSchema,
@@ -19,6 +20,7 @@ const schemas = [
   ["architecture.schema.json", manifestJsonSchema()],
   ["architecture-node.schema.json", manifestNodeJsonSchema()],
   ["conformance.schema.json", snapshotJsonSchema()],
+  ["atlas.schema.json", atlasJsonSchema()],
 ];
 for (const [name, schema] of schemas) {
   const at = path.join(root, "packages/core/schema", name);

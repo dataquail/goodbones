@@ -3,6 +3,7 @@
 // manifest into a policy. A host composes these with a language pack and the
 // live file system; a language pack implements the ports. Nothing here names a
 // language. The fakes are under `@goodbones/core/testing`.
+export { type AtlasInput, atlasOf, targetKeyOf } from "./core/atlas.js";
 export {
   type Baseline,
   type BaselineFilter,
@@ -124,6 +125,23 @@ export {
   PatternInvalid,
   ScopeInvalid,
 } from "./domain/architecture-error.js";
+export {
+  type Atlas,
+  ATLAS_SCHEMA_ID,
+  ATLAS_VERSION,
+  type AtlasAllowance,
+  type AtlasEdge,
+  type AtlasEdgeStatus,
+  type AtlasFile,
+  atlasJsonSchema,
+  type AtlasNode,
+  Atlas as AtlasSchema,
+  BUILTIN_PREFIX,
+  decodeAtlas,
+  type DesignedEdge,
+  isExternalTarget,
+  PACKAGE_PREFIX,
+} from "./domain/atlas.js";
 export {
   type Binding,
   type ExportSite,

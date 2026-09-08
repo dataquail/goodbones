@@ -6,6 +6,7 @@ import { Ajv2020 } from "ajv/dist/2020.js";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
+import { atlasJsonSchema } from "../domain/atlas.js";
 import { snapshotJsonSchema } from "../domain/snapshot.js";
 import {
   MANIFEST_NODE_SCHEMA_ID,
@@ -18,6 +19,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.
 const committed = path.join(root, "packages/core/schema/architecture.schema.json");
 const committedNode = path.join(root, "packages/core/schema/architecture-node.schema.json");
 const committedSnapshot = path.join(root, "packages/core/schema/conformance.schema.json");
+const committedAtlas = path.join(root, "packages/core/schema/atlas.schema.json");
 
 const validator = () => {
   const ajv = new Ajv2020({ allErrors: true, strict: false });
@@ -132,6 +134,13 @@ describe("the conformance snapshot JSON Schema", () => {
   it("is what packages/core/schema/conformance.schema.json holds", () => {
     const expected = `${JSON.stringify(snapshotJsonSchema(), null, 2)}\n`;
     expect(readFileSync(committedSnapshot, "utf8")).toBe(expected);
+  });
+});
+
+describe("the atlas JSON Schema", () => {
+  it("is what packages/core/schema/atlas.schema.json holds", () => {
+    const expected = `${JSON.stringify(atlasJsonSchema(), null, 2)}\n`;
+    expect(readFileSync(committedAtlas, "utf8")).toBe(expected);
   });
 });
 

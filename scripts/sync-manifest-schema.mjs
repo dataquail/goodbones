@@ -11,6 +11,7 @@ for (const name of [
   "architecture.schema.json",
   "architecture-node.schema.json",
   "conformance.schema.json",
+  "atlas.schema.json",
 ]) {
   const from = path.join(root, "packages/core/schema", name);
   const to = path.join(root, "website/public/schema", name);

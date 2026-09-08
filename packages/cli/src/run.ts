@@ -3,6 +3,8 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 
 import {
+  type Atlas,
+  atlasOf,
   type Baseline,
   baselineOf,
   type CoverageFamily,
@@ -36,6 +38,7 @@ import {
   readManifestFile,
   requiredSiblingsOf,
   residueOf,
+  type ResolvedTarget,
   rulesSelecting,
   serializeBaseline,
   slackOf,
@@ -79,14 +82,24 @@ export type UnresolvedEdge = {
   readonly detail: string;
 };
 
+// An `exports` violation names the symbol it is about; this remembers the
+// edge it was found on, so the atlas can draw it there.
+export type BindingViolation = {
+  readonly importer: string;
+  readonly target: string;
+  readonly fingerprint: string;
+};
+
 export type Findings = {
   readonly violations: ReadonlyArray<Violation>;
   readonly unresolved: ReadonlyArray<UnresolvedEdge>;
   readonly files: number;
   // Every edge resolved from a file under an import rule — what the slack
-  // report reads. An edge from a file no import rule selects is not here,
-  // since no allowlist could have admitted it.
+  // report reads. An edge from a file no import rule selects is not here
+  // unless `edges: "all"` asked for it, since no allowlist could have
+  // admitted it.
   readonly edges: ReadonlyArray<ObservedEdge>;
+  readonly bindingViolations: ReadonlyArray<BindingViolation>;
   // The import graph, when a graph rule needed it or the caller asked.
   readonly graph: Graph | null;
 };
@@ -95,6 +108,11 @@ export type CollectOptions = {
   // Build the graph even when no rule needs it — the snapshot counts cycles
   // and orders violations by it.
   readonly graph?: boolean;
+  // Resolve the edges of every file, the ones under no import rule included.
+  // `check` skips those as an optimisation; the atlas needs them — they are
+  // the ungoverned edges. An import none of them can resolve is not reported:
+  // no rule is about it.
+  readonly edges?: "governed" | "all";
 };
 
 export const collectFindings = (
@@ -106,6 +124,8 @@ export const collectFindings = (
   const violations: Array<Violation> = [];
   const unresolved: Array<UnresolvedEdge> = [];
   const edges: Array<ObservedEdge> = [];
+  const bindingViolations: Array<BindingViolation> = [];
+  const everyEdge = options.edges === "all";
 
   // Each file is parsed at most once, whether the per-file families or the
   // graph pass asks first.
@@ -138,11 +158,12 @@ export const collectFindings = (
     const selectedMembers = memberRulesSelecting(policy.memberRules, file);
     const selectedSurface = surfaceRulesSelecting(policy.surfaceRules, file);
     if (
+      !everyEdge &&
       selectedImports.length +
         selectedExports.length +
         selectedMembers.length +
         selectedSurface.length ===
-      0
+        0
     ) {
       continue;
     }
@@ -162,16 +183,19 @@ export const collectFindings = (
 
       // A file no import rule selects never needs its imports resolved, which
       // is what keeps resolution off the hot path for the bulk of the repo.
-      if (selectedImports.length > 0) {
+      let target: ResolvedTarget | null = null;
+      if (selectedImports.length > 0 || everyEdge) {
         const resolved = policy.resolver.resolve(file, specifier);
         if (Result.isFailure(resolved)) {
+          if (selectedImports.length === 0) continue;
           if (policy.config.resolve.unresolved === "off") continue;
           if (policy.ignoreUnresolved.some((pattern) => pattern.test(specifier))) continue;
           unresolved.push({ file, specifier, detail: resolved.failure.detail });
           continue;
         }
-        edges.push({ importer: file, target: resolved.success });
-        for (const violation of evaluateResolvedEdge(selectedImports, file, resolved.success)) {
+        target = resolved.success;
+        edges.push({ importer: file, target });
+        for (const violation of evaluateResolvedEdge(selectedImports, file, target)) {
           violations.push(violation);
         }
       }
@@ -182,12 +206,21 @@ export const collectFindings = (
         bindings: bound,
       });
       if (!Result.isFailure(exported)) {
-        for (const { violation } of exported.success) violations.push(violation);
+        for (const { violation } of exported.success) {
+          violations.push(violation);
+          if (target !== null) {
+            bindingViolations.push({
+              importer: file,
+              target: target.path,
+              fingerprint: fingerprintOf(violation),
+            });
+          }
+        }
       }
     }
   }
 
-  return { violations, unresolved, files: files.length, edges, graph };
+  return { violations, unresolved, files: files.length, edges, bindingViolations, graph };
 };
 
 const baselinePathOf = (policy: LoadedPolicy): string | null =>
@@ -557,6 +590,42 @@ const renderSnapshot = (snapshot: Snapshot): ReadonlyArray<string> => {
     `adoption: ${count(snapshot.adoption.unrestricted.length, "unrestricted tier")}, ${count(snapshot.adoption.partial.length, "partial tier")}`,
   ];
 };
+
+// The atlas: the tree as it is with the manifest laid over it — every walked
+// file, every resolved edge with its status, every allowance resolved against
+// the walk. What `check` computes and throws away, kept as one document for
+// the renderers. Every judgement in it is an evaluator's; this only walks,
+// parses, resolves and hands the answers to the core.
+export const atlasDocument = (
+  policy: LoadedPolicy,
+  roots: ReadonlyArray<string>,
+  manifestPath: string,
+): Atlas => {
+  const findings = collectFindings(policy, roots, { graph: true, edges: "all" });
+  const report_ = reportOf(policy, roots, manifestPath, findings);
+  const files = listSourceFiles(policy.repoRoot, roots, policy.languages);
+  return atlasOf({
+    manifest: report_.manifest,
+    roots,
+    nodes: policy.nodes,
+    policy,
+    files,
+    edges: findings.edges,
+    violations: report_.violations,
+    bindingViolations: findings.bindingViolations,
+    unresolved: findings.unresolved,
+    graph: findings.graph ?? { files, edges: new Map() },
+  });
+};
+
+export const atlas = (
+  policy: LoadedPolicy,
+  roots: ReadonlyArray<string>,
+  manifestPath: string,
+): Effect.Effect<void, CliFailure> =>
+  Effect.gen(function* () {
+    yield* report([JSON.stringify(atlasDocument(policy, roots, manifestPath), null, 2)]);
+  });
 
 export type ConformanceOptions = CheckOptions;
 
@@ -990,6 +1059,10 @@ export const run = (
           format: json ? "json" : "text",
           manifestPath: manifestPathOf(repoRoot, manifestFilename),
         });
+      // The document is JSON in either spelling; `--json` is accepted so the
+      // flag reads the same as on `check` and `conformance`.
+      case "atlas":
+        return yield* atlas(policy, roots, manifestPathOf(repoRoot, configFilename));
       case "baseline":
         return yield* writeBaseline(policy, roots);
       case "explain": {
@@ -1007,7 +1080,7 @@ export const run = (
       default:
         return yield* Effect.fail(
           fail(
-            `unknown command "${command}". Try: check [--json] | conformance [--json] [--against <manifest>] | baseline | coverage | explain <file> | facts <file> [--json] | init | infer | migrate`,
+            `unknown command "${command}". Try: check [--json] | conformance [--json] [--against <manifest>] | atlas | baseline | coverage | explain <file> | facts <file> [--json] | init | infer | migrate`,
           ),
         );
     }

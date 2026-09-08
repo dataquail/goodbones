@@ -36,6 +36,7 @@
     "./schema/architecture.schema.json": "./schema/architecture.schema.json",
     "./schema/architecture-node.schema.json": "./schema/architecture-node.schema.json",
     "./schema/conformance.schema.json": "./schema/conformance.schema.json",
+    "./schema/atlas.schema.json": "./schema/atlas.schema.json",
     "./package.json": "./package.json"
   },
   "types": "./build/dts/index.d.ts",

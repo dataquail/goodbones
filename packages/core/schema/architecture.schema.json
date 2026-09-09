@@ -719,6 +719,48 @@
         "type": "string"
       }
     },
+    "layers": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Include"
+        },
+        {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Use"
+              },
+              {
+                "$ref": "#/$defs/Include"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "tier",
+                      "enclosing"
+                    ]
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        }
+      ]
+    },
     "tree": {
       "type": "object",
       "additionalProperties": {
@@ -739,6 +781,9 @@
           "type": "object",
           "properties": {
             "message": {
+              "type": "string"
+            },
+            "layer": {
               "type": "string"
             },
             "partial": {

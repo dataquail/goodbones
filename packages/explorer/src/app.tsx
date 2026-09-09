@@ -1,4 +1,12 @@
-import { type Atlas, renderMermaid, type View, viewOf } from "@goodbones/core";
+import {
+  type Atlas,
+  LAYER_FOCUS,
+  layerViewOf,
+  renderMermaid,
+  sliceOf,
+  type View,
+  viewOf,
+} from "@goodbones/core";
 import { type ReactElement, useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -12,6 +20,7 @@ import { Canvas } from "./canvas.js";
 import {
   DEFAULT_STATE,
   type ExplorerState,
+  type Mode,
   parseHash,
   type Selection,
   serializeHash,
@@ -23,9 +32,10 @@ import { type Hit, searchFiles } from "./search.js";
 import { Toolbar } from "./toolbar.js";
 
 // The app: the atlas, once loaded; the state, from the URL hash; the view,
-// which is the core's roll-up of the atlas to the focus; and the layout,
-// which is ELK's. Every click writes the hash, and the hash is what renders,
-// so a view is a link and the back button goes up.
+// which is the core's roll-up of the atlas to the focus — a folder, a layer,
+// or a slice; and the layout, which is ELK's. Every click writes the hash,
+// and the hash is what renders, so a view is a link and the back button
+// goes up.
 
 export type AppProps = {
   readonly fetcher?: Fetcher;
@@ -50,6 +60,25 @@ const inlineAtlas = (): string | null =>
     : (document.getElementById(INLINE_ATLAS_ID)?.textContent ?? null);
 
 const copyToClipboard = (text: string): Promise<void> => navigator.clipboard.writeText(text);
+
+// A group in a layer or slice view is not a folder on disk; a member of an
+// enclosing layer is.
+const isFolderPath = (id: string): boolean => !id.startsWith(LAYER_FOCUS) && !id.includes("::");
+
+const viewFor = (atlas: Atlas, state: ExplorerState): View => {
+  switch (state.mode.kind) {
+    case "layer":
+      return layerViewOf(atlas, state.mode.layer);
+    case "slice":
+      return sliceOf(atlas, state.mode.file);
+    case "folder":
+      return viewOf(atlas, state.focus, {
+        depth: state.depth,
+        outside: state.outside ? "collapse" : "hide",
+        designed: state.designed,
+      });
+  }
+};
 
 export const App = (props: AppProps): ReactElement => {
   const fetcher: Fetcher = props.fetcher ?? ((url) => fetch(url));
@@ -100,7 +129,13 @@ export const App = (props: AppProps): ReactElement => {
   );
   const navigate = useCallback(
     (focus: string) => {
-      change({ focus, selected: null });
+      change({ mode: { kind: "folder" }, focus, selected: null });
+    },
+    [change],
+  );
+  const setMode = useCallback(
+    (mode: Mode) => {
+      change({ mode, selected: null });
     },
     [change],
   );
@@ -113,15 +148,8 @@ export const App = (props: AppProps): ReactElement => {
 
   const atlas: Atlas | null = loaded.kind === "ready" ? loaded.source.atlas : null;
   const view: View | null = useMemo(
-    () =>
-      atlas === null
-        ? null
-        : viewOf(atlas, state.focus, {
-            depth: state.depth,
-            outside: state.outside ? "collapse" : "hide",
-            designed: state.designed,
-          }),
-    [atlas, state.focus, state.depth, state.outside, state.designed],
+    () => (atlas === null ? null : viewFor(atlas, state)),
+    [atlas, state.mode, state.focus, state.depth, state.outside, state.designed],
   );
   const highlight = useMemo(
     () => (atlas === null || view === null ? null : highlightOf(atlas, view, state.selected)),
@@ -182,7 +210,11 @@ export const App = (props: AppProps): ReactElement => {
   // A hit opens its folder with the file selected: where `explain` starts.
   const pick = useCallback(
     (hit: Hit) => {
-      change({ focus: hit.folder, selected: { kind: "node", id: hit.path } });
+      change({
+        mode: { kind: "folder" },
+        focus: hit.folder,
+        selected: { kind: "node", id: hit.path },
+      });
     },
     [change],
   );
@@ -205,14 +237,22 @@ export const App = (props: AppProps): ReactElement => {
   if (view === null || atlas === null) return <main className="status">…</main>;
 
   const empty = view.members.length === 0;
+  const emptyText =
+    state.mode.kind === "layer"
+      ? `no walked file is in layer ${state.mode.layer}.`
+      : state.mode.kind === "slice"
+        ? `${state.mode.file} is in no layer, so it has no slice.`
+        : `${state.focus === "" ? "the walk" : state.focus} holds no walked file.`;
   return (
     <div className="explorer">
       <Toolbar
         view={view}
         state={state}
+        layers={atlas.layers}
         live={loaded.source.live}
         busy={busy}
         onNavigate={navigate}
+        onMode={setMode}
         onChange={change}
         onRescan={rescan}
         onSearch={search}
@@ -225,7 +265,7 @@ export const App = (props: AppProps): ReactElement => {
           {empty ? (
             <div className="status">
               <p>
-                {state.focus === "" ? "the walk" : state.focus} holds no walked file.{" "}
+                {emptyText}{" "}
                 <button
                   type="button"
                   className="link"
@@ -246,7 +286,7 @@ export const App = (props: AppProps): ReactElement => {
               selection={state.selected}
               highlight={highlight}
               onNode={(node) => {
-                if (node.kind === "folder") navigate(node.id);
+                if (node.kind === "folder" && isFolderPath(node.id)) navigate(node.id);
                 else select({ kind: "node", id: node.id });
               }}
               onEdge={(edge) => {
@@ -265,6 +305,7 @@ export const App = (props: AppProps): ReactElement => {
           highlight={highlight}
           factsOf={factsOf}
           onNavigate={navigate}
+          onMode={setMode}
           onSelect={select}
         />
       </div>

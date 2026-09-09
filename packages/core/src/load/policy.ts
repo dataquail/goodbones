@@ -72,6 +72,7 @@ export type LoadedPolicy = {
   // The manifest's nodes, each with the pattern that selects its files — what
   // joins a rule's slug back to the tier the author wrote.
   readonly nodes: LoweredRules["nodes"];
+  readonly layers: LoweredRules["layers"];
   readonly structure: CompiledStructure;
   readonly fileSystem: FileSystem;
   // The language packs this policy is evaluated with. The walker takes its
@@ -341,6 +342,7 @@ export const loadPolicy = (
     graph: graph.success,
     adoption: rules.adoption,
     nodes: rules.nodes,
+    layers: rules.layers,
     structure: structure.success,
     fileSystem,
     languages,

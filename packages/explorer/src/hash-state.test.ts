@@ -5,6 +5,7 @@ import { DEFAULT_STATE, parseHash, selectionKey, serializeHash } from "./hash-st
 describe("the URL hash", () => {
   it("round-trips every field, so a view is a link", () => {
     const state = {
+      mode: { kind: "folder" as const },
       focus: "packages/core/src",
       depth: 2 as const,
       designed: true,
@@ -43,6 +44,15 @@ describe("the URL hash", () => {
     const cycle = { ...DEFAULT_STATE, selected: { kind: "cycle" as const, index: 3 } };
     expect(parseHash(serializeHash(cycle))).toEqual(cycle);
     expect(parseHash("#select=cycle%3Athree").selected).toBeNull();
+  });
+
+  it("round-trips the layer and slice modes, keeping the folder to go back to", () => {
+    const layer = { ...DEFAULT_STATE, focus: "src", mode: { kind: "layer" as const, layer: "io" } };
+    expect(serializeHash(layer)).toBe("#focus=src&layer=io");
+    expect(parseHash(serializeHash(layer))).toEqual(layer);
+    const slice = { ...DEFAULT_STATE, mode: { kind: "slice" as const, file: "src/a.ts" } };
+    expect(parseHash(serializeHash(slice))).toEqual(slice);
+    expect(parseHash("#layer=").mode).toEqual({ kind: "folder" });
   });
 
   it("drops a trailing slash from the focus a hand wrote", () => {

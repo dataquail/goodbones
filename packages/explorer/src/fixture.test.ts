@@ -9,6 +9,7 @@ export const FIXTURE: Atlas = {
   version: 1,
   manifest: { path: "architecture.yaml", sha256: "abc" },
   roots: ["src"],
+  layers: [],
   nodes: [
     {
       path: "src/",
@@ -46,24 +47,28 @@ export const FIXTURE: Atlas = {
       path: "src/app/server.ts",
       node: "src",
       reach: { imports: true, structure: "open", members: false, surface: false, graph: false },
+      layers: [],
       external: false,
     },
     {
       path: "src/domain/order.ts",
       node: "src/domain",
       reach: { imports: true, structure: "open", members: false, surface: false, graph: false },
+      layers: [],
       external: false,
     },
     {
       path: "src/domain/user.ts",
       node: "src/domain",
       reach: { imports: true, structure: "open", members: false, surface: false, graph: false },
+      layers: [],
       external: false,
     },
     {
       path: "pkg:effect",
       node: null,
       reach: { imports: false, structure: null, members: false, surface: false, graph: false },
+      layers: [],
       external: true,
     },
   ],

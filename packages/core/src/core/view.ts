@@ -56,6 +56,8 @@ export type ViewNode = {
   // or null when none does.
   readonly node: string | null;
   readonly message?: string;
+  // The innermost layer every file beneath is in, when they are in one.
+  readonly layer?: string;
   readonly files: number;
   // Files beneath that no family reaches.
   readonly residue: number;
@@ -120,24 +122,96 @@ type Unit = {
   readonly folder: Folder | null;
 };
 
+// What every view builder asks the atlas repeatedly, built once per atlas.
+export type AtlasIndex = {
+  readonly atlas: Atlas;
+  readonly fileByPath: ReadonlyMap<string, Atlas["files"][number]>;
+  readonly nodeByName: ReadonlyMap<string, Atlas["nodes"][number]>;
+  readonly selectors: ReadonlyArray<{
+    readonly node: Atlas["nodes"][number];
+    readonly matches: RegExp;
+  }>;
+  readonly nodeDepth: (name: string) => number;
+};
+
+export const indexAtlas = (atlas: Atlas): AtlasIndex => {
+  const nodeByName = new Map(atlas.nodes.map((one) => [one.name, one]));
+  return {
+    atlas,
+    fileByPath: new Map(atlas.files.map((one) => [one.path, one])),
+    nodeByName,
+    selectors: atlas.nodes.map((one) => ({ node: one, matches: new RegExp(one.selector) })),
+    nodeDepth: (name) => {
+      let depth = 0;
+      let at = nodeByName.get(name);
+      while (at !== undefined && at.parent !== null) {
+        depth += 1;
+        at = nodeByName.get(at.parent);
+      }
+      return depth;
+    },
+  };
+};
+
+// What is known about everything beneath a path: its tier, its layer, its
+// badges. The one way a view node is made, whichever view it is in.
+export const describeNode = (
+  index: AtlasIndex,
+  id: string,
+  kind: ViewNodeKind,
+  label: string,
+  beneath: ReadonlyArray<string>,
+): ViewNode => {
+  const { atlas, fileByPath, nodeDepth, selectors } = index;
+  const isBeneath = (file: string): boolean =>
+    kind === "file" || isExternalTarget(id) ? file === id : isUnder(file, id);
+  const governing = selectors
+    .filter(({ matches }) => beneath.length > 0 && beneath.every((file) => matches.test(file)))
+    .sort((a, b) => nodeDepth(b.node.name) - nodeDepth(a.node.name))[0]?.node;
+  const violations = atlas.violations.filter((one) => isBeneath(one.file));
+  // The innermost layer every file beneath shares, when they share one.
+  const innermost = beneath.map((file) => fileByPath.get(file)?.layers.at(-1)?.id ?? null);
+  const layer =
+    innermost.length > 0 && innermost.every((one) => one !== null && one === innermost[0])
+      ? innermost[0]
+      : null;
+  return {
+    id,
+    kind,
+    label,
+    node: governing?.name ?? null,
+    ...(governing?.message === undefined ? {} : { message: governing.message }),
+    ...(layer === null || layer === undefined ? {} : { layer }),
+    files: beneath.length,
+    residue: beneath.filter((file) => {
+      const reach = fileByPath.get(file)?.reach;
+      return (
+        reach !== undefined &&
+        !reach.imports &&
+        reach.structure !== "enumerated" &&
+        !reach.members &&
+        !reach.surface &&
+        !reach.graph
+      );
+    }).length,
+    badges: {
+      violations: violations.filter((one) => !one.baselined).length,
+      baselined: violations.filter((one) => one.baselined).length,
+      cycles: atlas.cycles.filter((cycle) => cycle.some(isBeneath)).length,
+      unrestricted: governing?.unrestricted === true,
+      partial: governing?.partial === true,
+    },
+  };
+};
+
 export const viewOf = (
   atlas: Atlas,
   focus: string,
   options: ViewOptions = DEFAULT_VIEW_OPTIONS,
 ): View => {
   const local = atlas.files.filter((one) => !one.external);
-  const fileByPath = new Map(atlas.files.map((one) => [one.path, one]));
-  const nodeByName = new Map(atlas.nodes.map((one) => [one.name, one]));
-  const nodeDepth = (name: string): number => {
-    let depth = 0;
-    let at = nodeByName.get(name);
-    while (at !== undefined && at.parent !== null) {
-      depth += 1;
-      at = nodeByName.get(at.parent);
-    }
-    return depth;
-  };
-  const selectors = atlas.nodes.map((one) => ({ node: one, matches: new RegExp(one.selector) }));
+  const index = indexAtlas(atlas);
+  const { nodeByName } = index;
   const messageByFingerprint = new Map(
     atlas.violations.map((one) => [one.fingerprint, one.message]),
   );
@@ -151,46 +225,12 @@ export const viewOf = (
   const crumbs = crumbsOf(focus);
   if (folder === null) return { focus, crumbs, members: [], outside: [], edges: [] };
 
-  // What is known about everything beneath a path: its tier, its badges.
   const describe = (
     id: string,
     kind: ViewNodeKind,
     label: string,
     beneath: ReadonlyArray<string>,
-  ): ViewNode => {
-    const isBeneath = (file: string): boolean =>
-      kind === "file" || isExternalTarget(id) ? file === id : isUnder(file, id);
-    const governing = selectors
-      .filter(({ matches }) => beneath.length > 0 && beneath.every((file) => matches.test(file)))
-      .sort((a, b) => nodeDepth(b.node.name) - nodeDepth(a.node.name))[0]?.node;
-    const violations = atlas.violations.filter((one) => isBeneath(one.file));
-    return {
-      id,
-      kind,
-      label,
-      node: governing?.name ?? null,
-      ...(governing?.message === undefined ? {} : { message: governing.message }),
-      files: beneath.length,
-      residue: beneath.filter((file) => {
-        const reach = fileByPath.get(file)?.reach;
-        return (
-          reach !== undefined &&
-          !reach.imports &&
-          reach.structure !== "enumerated" &&
-          !reach.members &&
-          !reach.surface &&
-          !reach.graph
-        );
-      }).length,
-      badges: {
-        violations: violations.filter((one) => !one.baselined).length,
-        baselined: violations.filter((one) => one.baselined).length,
-        cycles: atlas.cycles.filter((cycle) => cycle.some(isBeneath)).length,
-        unrestricted: governing?.unrestricted === true,
-        partial: governing?.partial === true,
-      },
-    };
-  };
+  ): ViewNode => describeNode(index, id, kind, label, beneath);
 
   const folderNode = (one: Folder): ViewNode =>
     describe(one.path, "folder", `${one.name}/`, filesBeneath(one));

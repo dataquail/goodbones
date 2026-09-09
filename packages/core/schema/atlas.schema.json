@@ -109,6 +109,9 @@
           "file": {
             "type": "string"
           },
+          "layer": {
+            "type": "string"
+          },
           "allowances": {
             "type": "array",
             "items": {
@@ -156,6 +159,33 @@
       },
       "description": "The manifest's tree, flattened in manifest order, each node with the pattern that selects its files and the allowances it wrote."
     },
+    "layers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "tier",
+              "enclosing"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type"
+        ],
+        "additionalProperties": false
+      },
+      "description": "The architectural layers, outermost first: a `tier` is a stratum files sit in, an `enclosing` layer a boundary the strata sit inside. Empty when the manifest names none."
+    },
     "files": {
       "type": "array",
       "items": {
@@ -175,6 +205,28 @@
               }
             ],
             "description": "The `name` of the deepest manifest node whose selector matches the file, or null when the tree does not reach it. Always null for a package or builtin."
+          },
+          "layers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "The layer's id, as `layers` names it."
+                },
+                "anchor": {
+                  "type": "string",
+                  "description": "The concrete folder or file the assigning node matched: the member of the layer this file belongs to."
+                }
+              },
+              "required": [
+                "id",
+                "anchor"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The layers the file is in, outermost first, each with the folder it was assigned at: `module` at the module's folder, then `application` at its `commands/`. Empty when no node above it names a layer."
           },
           "reach": {
             "type": "object",
@@ -224,6 +276,7 @@
         "required": [
           "path",
           "node",
+          "layers",
           "reach",
           "external"
         ],
@@ -470,6 +523,7 @@
     "manifest",
     "roots",
     "nodes",
+    "layers",
     "files",
     "edges",
     "designed",

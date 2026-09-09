@@ -74,6 +74,7 @@ const policy = (present: ReadonlyArray<string>): LoadedPolicy => {
     graph: EMPTY_GRAPH_RULES,
     adoption: { unrestricted: [], partial: [] },
     nodes: [],
+    layers: [],
     structure: structure.success,
     fileSystem: makeFileSystemFake(present),
     languages: [],

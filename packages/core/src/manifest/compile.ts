@@ -1,5 +1,6 @@
 import {
   type Allowance,
+  type ArchitecturalLayer,
   type ExportRule,
   type GraphConfig,
   type ImportRule,
@@ -49,6 +50,8 @@ export type LoweredRules = {
   // the pattern that selects its files. The rules above name these by slug;
   // this is what a report joins the slug back to.
   readonly nodes: ReadonlyArray<LoweredNode>;
+  // The layers, outermost first: as declared, or as the tree first met them.
+  readonly layers: ReadonlyArray<ArchitecturalLayer>;
 };
 
 const FOLDER_KEY = /\/$/;
@@ -376,6 +379,30 @@ export const lowerManifest = (
   const namingRules: Array<StructureNaming> = [];
   const nodes: Array<LoweredNode> = [];
 
+  // The layers, outermost first. Declared, they are the list as written and
+  // a node naming one the list lacks is refused — a typo would otherwise be
+  // a sixth layer nobody meant. Undeclared, they are met in tree order.
+  const declaredLayers = manifest.layers;
+  const layers: Array<ArchitecturalLayer> = (declaredLayers ?? []).map((one) => ({
+    id: one.id,
+    type: one.type ?? "tier",
+    ...(one.message === undefined ? {} : { message: one.message }),
+  }));
+  const seenLayers = new Set(layers.map((one) => one.id));
+  const meetLayer = (id: string, at: string): void => {
+    if (seenLayers.has(id)) return;
+    if (declaredLayers !== undefined) {
+      const declared = declaredLayers.map((one) => one.id);
+      throw new Error(
+        `"${at}" is in layer "${id}", which \`layers\` does not declare. Declared: ` +
+          `${declared.length === 0 ? "(none)" : declared.join(", ")}. Add it to the list, ` +
+          `outermost first, or fix the name.`,
+      );
+    }
+    seenLayers.add(id);
+    layers.push({ id, type: "tier" });
+  };
+
   const walk = (
     key: string,
     node: ManifestNode,
@@ -471,6 +498,7 @@ export const lowerManifest = (
       families.push("structure");
     }
     const writtenIn = options.locate?.(nodePath)?.file;
+    if (node.layer !== undefined) meetLayer(node.layer, name);
     nodes.push({
       path: authored.path,
       name,
@@ -483,6 +511,7 @@ export const lowerManifest = (
       partial: node.partial === true,
       families,
       ...(writtenIn === undefined ? {} : { file: writtenIn }),
+      ...(node.layer === undefined ? {} : { layer: node.layer }),
     });
 
     // Naming, in two shapes. A folder judges its own segment (when its key
@@ -1109,5 +1138,6 @@ export const lowerManifest = (
     adoption: { unrestricted: unrestrictedNodes, partial: partialNodes },
     structure: { roots, folders, parity, naming: namingRules },
     nodes,
+    layers,
   };
 };

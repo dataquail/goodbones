@@ -65,7 +65,10 @@ export const NodeCard = (props: NodeProps<FlowNode>): ReactElement => {
     <div className={classNames(props)} title={node.message ?? node.id}>
       <Handle type="target" position={Position.Top} isConnectable={false} />
       <div className="card-head">
-        <span className="kind">{KIND_LABEL[node.kind]}</span>
+        <span className="kind">
+          {KIND_LABEL[node.kind]}
+          {node.layer === undefined ? "" : <span className="layer-tag"> · {node.layer}</span>}
+        </span>
         <Badges node={node} />
       </div>
       <div className="label">{node.label}</div>

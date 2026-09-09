@@ -21,6 +21,7 @@ const ATLAS: Atlas = {
   version: 1,
   manifest: { path: "architecture.yaml", sha256: "abc" },
   roots: ["src"],
+  layers: [],
   nodes: [],
   files: [],
   edges: [],

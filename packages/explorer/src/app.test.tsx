@@ -64,7 +64,9 @@ describe.sequential("the explorer", () => {
     await waitFor(() => {
       expect(window.location.hash).toBe("#focus=src%2Fdomain");
     });
-    expect(screen.getByText("order.ts")).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByText("order.ts")).toBeTruthy();
+    });
     // The crumb bar names the way up, and takes it.
     fireEvent.click(screen.getByRole("button", { name: "src" }));
     await waitFor(() => {

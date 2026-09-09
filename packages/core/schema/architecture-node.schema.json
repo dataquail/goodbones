@@ -17,6 +17,9 @@
     "message": {
       "type": "string"
     },
+    "layer": {
+      "type": "string"
+    },
     "partial": {
       "type": "boolean"
     },
@@ -757,6 +760,9 @@
           "type": "object",
           "properties": {
             "message": {
+              "type": "string"
+            },
+            "layer": {
               "type": "string"
             },
             "partial": {

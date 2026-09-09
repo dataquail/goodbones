@@ -164,6 +164,11 @@ const ExportRestriction = Schema.Struct({
 
 export type ManifestNode = {
   readonly message?: string;
+  // The architectural layer this node's files belong to — `domain`, `io`,
+  // `application` — by the id `layers` declares. Inherited by the subtree
+  // until a descendant names its own. The folder tree says where a file is;
+  // the layer says what role it plays, which is what a vertical slice reads.
+  readonly layer?: string;
   // Carry policy for the subtree without claiming to enumerate this folder's
   // contents. What makes incremental adoption possible — and what lets a
   // prototype cover one branch without rejecting every sibling.
@@ -194,6 +199,7 @@ export type ManifestNode = {
 const ManifestNodeSchema: Schema.Codec<ManifestNode> = Schema.suspend(() =>
   Schema.Struct({
     message: Schema.optionalKey(Schema.String),
+    layer: Schema.optionalKey(Schema.String),
     partial: Schema.optionalKey(Schema.Boolean),
     layout: Schema.optionalKey(Schema.Literal("open")),
     name: Schema.optionalKey(Naming),
@@ -260,6 +266,17 @@ const Limits = Schema.Struct({
   coverage: Schema.optionalKey(CoverageFloors),
 });
 
+// One architectural layer, declared once and named by nodes with `layer`.
+// The list's order is outermost first — module, io, application, domain —
+// which is the order a vertical slice reads top-down. A `tier` is a stratum
+// a file sits in; an `enclosing` layer is a boundary the other layers sit
+// inside — a module, a bounded context — drawn as a box around them.
+const Layer = Schema.Struct({
+  id: Schema.String,
+  type: Schema.optionalKey(Schema.Literals(["tier", "enclosing"])),
+  message: Schema.optionalKey(Schema.String),
+});
+
 export const Manifest = Schema.Struct({
   // How an import specifier becomes a file. Every pattern below is matched
   // against a resolved path, so this is what makes the rest of the file mean
@@ -277,10 +294,15 @@ export const Manifest = Schema.Struct({
   // Shorthands expanded in every glob, so a pattern reads the way the repo's own
   // imports do rather than repeating `packages/server/src` on every line.
   aliases: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  // The layers the tree's nodes may name, outermost first. Optional: a tree
+  // that names layers without declaring them gets them in the order they
+  // are first met, all of type `tier`.
+  layers: Schema.optionalKey(Schema.Array(Layer)),
   tree: Schema.Record(Schema.String, ManifestNodeSchema),
 });
 
 export type Manifest = typeof Manifest.Type;
+export type LayerSpec = typeof Layer.Type;
 export type ImportsSpec = typeof Imports.Type;
 export type ImportedBySpec = typeof ImportedBy.Type;
 export type MembersSpec = typeof Members.Type;

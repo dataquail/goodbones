@@ -6,9 +6,10 @@ import type {
   ViewEdge,
   ViewNode,
 } from "@goodbones/core";
+import { LAYER_FOCUS, layerChainOf } from "@goodbones/core";
 import { type ReactElement, useEffect, useState } from "react";
 
-import type { Selection } from "./hash-state.js";
+import type { Mode, Selection } from "./hash-state.js";
 import type { Highlight } from "./highlight.js";
 
 // The side panel: what the selected thing is, in the manifest's own words. An
@@ -64,19 +65,26 @@ export type PanelProps = {
   // Fetches a file's facts from the server, or null when there is none.
   readonly factsOf: ((file: string) => Promise<Facts>) | null;
   readonly onNavigate: (focus: string) => void;
+  readonly onMode: (mode: Mode) => void;
   readonly onSelect: (selection: Selection | null) => void;
 };
 
 type Select = (selection: Selection) => void;
 
-const findNode = (view: View, id: string): ViewNode | undefined => {
-  for (const member of view.members) {
-    if (member.id === id) return member;
-    const child = member.children?.find((one) => one.id === id);
+const findIn = (nodes: ReadonlyArray<ViewNode>, id: string): ViewNode | undefined => {
+  for (const node of nodes) {
+    if (node.id === id) return node;
+    const child = findIn(node.children ?? [], id);
     if (child !== undefined) return child;
   }
-  return view.outside.find((one) => one.id === id);
+  return undefined;
 };
+
+const findNode = (view: View, id: string): ViewNode | undefined =>
+  findIn(view.members, id) ?? findIn(view.outside, id);
+
+// A folder on disk, as opposed to a group a layer or slice view made up.
+const isFolderPath = (id: string): boolean => !id.startsWith(LAYER_FOCUS) && !id.includes("::");
 
 const FileLink = ({ file, onSelect }: { readonly file: string; readonly onSelect: Select }) => (
   <button
@@ -239,6 +247,7 @@ const NodePanel = ({
   atlas,
   factsOf,
   node,
+  onMode,
   onNavigate,
   onSelect,
 }: {
@@ -246,10 +255,12 @@ const NodePanel = ({
   readonly node: ViewNode;
   readonly factsOf: PanelProps["factsOf"];
   readonly onNavigate: (focus: string) => void;
+  readonly onMode: (mode: Mode) => void;
   readonly onSelect: Select;
 }): ReactElement => {
   const governing = atlas.nodes.find((one) => one.name === node.node);
   const isFile = node.kind === "file";
+  const chain = isFile ? layerChainOf(atlas, node.id) : [];
   const violations = atlas.violations.filter((one) =>
     isFile ? one.file === node.id : one.file.startsWith(`${node.id}/`),
   );
@@ -282,7 +293,57 @@ const NodePanel = ({
       <h2>
         <span className={`kind ${node.kind}`}>{node.kind}</span> {node.id === "" ? "/" : node.id}
       </h2>
-      {node.kind === "folder" || node.kind === "outside" ? (
+      {(chain.length > 0 || node.layer !== undefined) && (
+        <p className="chain">
+          {chain.length > 0 ? (
+            chain.map((membership, index) => (
+              <span key={membership.id}>
+                {index > 0 && <span className="sep"> › </span>}
+                <button
+                  type="button"
+                  className="link"
+                  title={`every member of layer ${membership.id}`}
+                  onClick={() => {
+                    onMode({ kind: "layer", layer: membership.id });
+                  }}
+                >
+                  {membership.id}
+                </button>
+                <span className="muted">
+                  {" "}
+                  at {membership.anchor.slice(membership.anchor.lastIndexOf("/") + 1)}
+                </span>
+              </span>
+            ))
+          ) : (
+            <button
+              type="button"
+              className="link"
+              onClick={() => {
+                onMode({ kind: "layer", layer: node.layer ?? "" });
+              }}
+            >
+              layer {node.layer}
+            </button>
+          )}
+          {isFile && (
+            <>
+              {" · "}
+              <button
+                type="button"
+                className="link"
+                title="the files that reach this one from outer layers, and the files it reaches in inner ones"
+                onClick={() => {
+                  onMode({ kind: "slice", file: node.id });
+                }}
+              >
+                vertical slice
+              </button>
+            </>
+          )}
+        </p>
+      )}
+      {(node.kind === "folder" || node.kind === "outside") && isFolderPath(node.id) ? (
         <p>
           <button
             type="button"
@@ -497,6 +558,30 @@ export const Panel = (props: PanelProps): ReactElement => {
           {atlas.cycles.length} cycles, {atlas.designed.filter((one) => !one.used).length} unused
           allowances.
         </p>
+        {atlas.layers.length > 0 && (
+          <section>
+            <h3>layers, outermost first</h3>
+            <ul className="facts">
+              {atlas.layers.map((layer) => (
+                <li key={layer.id}>
+                  <button
+                    type="button"
+                    className="link"
+                    onClick={() => {
+                      props.onMode({ kind: "layer", layer: layer.id });
+                    }}
+                  >
+                    {layer.id}
+                  </button>
+                  <span className="muted">
+                    {layer.type === "enclosing" ? " (enclosing)" : ""}
+                    {layer.message === undefined ? "" : ` — ${layer.message}`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         {atlas.cycles.length > 0 && (
           <section>
             <h3>cycles</h3>
@@ -554,6 +639,7 @@ export const Panel = (props: PanelProps): ReactElement => {
           node={node}
           factsOf={props.factsOf}
           onNavigate={props.onNavigate}
+          onMode={props.onMode}
           onSelect={onSelect}
         />
       );

@@ -28,9 +28,16 @@ const file = (path: string, node: string | null, reach = REACHED): AtlasFile => 
   path,
   node,
   reach,
+  layers: [],
   external: false,
 });
-const external = (path: string): AtlasFile => ({ path, node: null, reach: NONE, external: true });
+const external = (path: string): AtlasFile => ({
+  path,
+  node: null,
+  layers: [],
+  reach: NONE,
+  external: true,
+});
 
 const node = (
   path: string,
@@ -65,6 +72,7 @@ export const ATLAS: Atlas = {
   version: 1,
   manifest: { path: "architecture.yaml", sha256: "abc" },
   roots: ["src", "scripts", "lib"],
+  layers: [],
   nodes: [
     node("src/", "src", null, "^src/", {
       message: "src/ is the program.",

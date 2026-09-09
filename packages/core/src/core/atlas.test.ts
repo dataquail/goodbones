@@ -119,6 +119,7 @@ const GRAPH: Graph = {
 const INPUT: AtlasInput = {
   manifest: { path: "architecture.yaml", sha256: "abc" },
   roots: ["src", "scripts"],
+  layers: [],
   nodes: NODES,
   policy: {
     importRules: IMPORT_RULES,
@@ -158,6 +159,7 @@ describe("atlasOf", () => {
     expect(atlas.files.find((one) => one.path === "src/domain/user.ts")).toMatchObject({
       node: "src/domain",
       reach: { imports: true },
+      layers: [],
       external: false,
     });
     expect(atlas.files.find((one) => one.path === "scripts/build.ts")).toMatchObject({
@@ -297,6 +299,7 @@ describe("atlasOf", () => {
       path: "vitest.shared.ts",
       node: null,
       reach: { imports: false, structure: null, members: false, surface: false, graph: false },
+      layers: [],
       external: false,
     });
     expect(
@@ -304,6 +307,49 @@ describe("atlasOf", () => {
     ).toMatchObject({ status: "violation" });
     // It is not a walked file, so no allowance's designed targets grow by it.
     expect(outside.designed.flatMap((one) => one.targets)).not.toContain("vitest.shared.ts");
+  });
+
+  it("gives each file its layer chain, outermost first, anchored where each was assigned", () => {
+    const layered = atlasOf({
+      ...INPUT,
+      layers: [
+        { id: "module", type: "enclosing" },
+        { id: "domain", type: "tier" },
+      ],
+      nodes: [
+        { ...node("src/", "src", null, "^src/", "src/ is the program."), layer: "module" },
+        {
+          ...node("src/domain/", "src/domain", "src", "^src/domain/", "domain/ is the model."),
+          layer: "domain",
+        },
+        // A file key restating its folder's layer adds nothing: the outer
+        // anchor stays the member.
+        {
+          ...node(
+            "src/domain/user.ts",
+            "src/domain/user.ts",
+            "src/domain",
+            "^src/domain/user\\.ts$",
+            "the user",
+          ),
+          kind: "file",
+          layer: "domain",
+        },
+      ],
+    });
+    const chain = (path: string) => layered.files.find((one) => one.path === path)?.layers;
+    expect(chain("src/server.ts")).toEqual([{ id: "module", anchor: "src" }]);
+    expect(chain("src/domain/order.ts")).toEqual([
+      { id: "module", anchor: "src" },
+      { id: "domain", anchor: "src/domain" },
+    ]);
+    expect(chain("src/domain/user.ts")).toEqual([
+      { id: "module", anchor: "src" },
+      { id: "domain", anchor: "src/domain" },
+    ]);
+    expect(chain("scripts/build.ts")).toEqual([]);
+    expect(chain("pkg:effect")).toEqual([]);
+    expect(layered.layers.map((one) => one.id)).toEqual(["module", "domain"]);
   });
 
   it("emits one edge per pair when several specifiers resolve into one target", () => {

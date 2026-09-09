@@ -65,6 +65,7 @@ export {
   rulesSelecting,
   type SelectedRule,
 } from "./core/imports.js";
+export { LAYER_FOCUS, layerChainOf, layerViewOf, SLICE_FOCUS, sliceOf } from "./core/layers.js";
 export {
   type CompiledMemberRule,
   compileMemberRules,
@@ -99,8 +100,11 @@ export {
   surfaceRulesSelecting,
 } from "./core/surface.js";
 export {
+  type AtlasIndex,
   DEFAULT_VIEW_OPTIONS,
+  describeNode,
   focusOf,
+  indexAtlas,
   type View,
   type ViewBadges,
   type ViewEdge,
@@ -112,6 +116,7 @@ export {
 } from "./core/view.js";
 export {
   type Allowance,
+  type ArchitecturalLayer,
   type BindingKind,
   type DeclarationKind,
   type ExportFix,
@@ -153,6 +158,7 @@ export {
   decodeAtlas,
   type DesignedEdge,
   isExternalTarget,
+  type LayerMembership,
   PACKAGE_PREFIX,
 } from "./domain/atlas.js";
 export {
@@ -258,6 +264,7 @@ export {
   type DecodedManifest,
   decodeManifest,
   type DecodeManifestOptions,
+  type LayerSpec,
   type Manifest,
   type ManifestNode,
   Manifest as ManifestSchema,

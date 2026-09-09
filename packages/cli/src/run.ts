@@ -614,6 +614,7 @@ export const atlasDocument = (
     manifest: report_.manifest,
     roots,
     nodes: policy.nodes,
+    layers: policy.layers,
     policy,
     files,
     edges: findings.edges,

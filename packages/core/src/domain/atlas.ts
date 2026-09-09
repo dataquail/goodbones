@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 
-import { LoweredNode } from "./architecture-config.js";
+import { ArchitecturalLayer, LoweredNode } from "./architecture-config.js";
 import { SnapshotViolation } from "./snapshot.js";
 
 // The atlas: one JSON document per run holding the tree as it is — every
@@ -62,11 +62,26 @@ const EdgeStatus = describe(
   "`admitted`: the importer is under an import allowlist and an allowance matched the target. `violation`: an import rule fired. `ungoverned`: no import allowlist selects the importer, so the policy has nothing to say.",
 );
 
+// One step of a file's layer chain: the layer, and the folder (or file) the
+// node that assigned it matched — `packages/server/src/modules/organization`
+// for the `module` layer of everything in that module.
+export const LayerMembership = Schema.Struct({
+  id: describe(Schema.String, "The layer's id, as `layers` names it."),
+  anchor: describe(
+    Path,
+    "The concrete folder or file the assigning node matched: the member of the layer this file belongs to.",
+  ),
+});
+
 export const AtlasFile = Schema.Struct({
   path: Target,
   node: describe(
     Schema.NullOr(Schema.String),
     "The `name` of the deepest manifest node whose selector matches the file, or null when the tree does not reach it. Always null for a package or builtin.",
+  ),
+  layers: describe(
+    Schema.Array(LayerMembership),
+    "The layers the file is in, outermost first, each with the folder it was assigned at: `module` at the module's folder, then `application` at its `commands/`. Empty when no node above it names a layer.",
   ),
   reach: describe(
     Schema.Struct({
@@ -129,6 +144,10 @@ export const Atlas = Schema.Struct({
     Schema.Array(AtlasNode),
     "The manifest's tree, flattened in manifest order, each node with the pattern that selects its files and the allowances it wrote.",
   ),
+  layers: describe(
+    Schema.Array(ArchitecturalLayer),
+    "The architectural layers, outermost first: a `tier` is a stratum files sit in, an `enclosing` layer a boundary the strata sit inside. Empty when the manifest names none.",
+  ),
   files: describe(
     Schema.Array(AtlasFile),
     "Every walked file and every local file some edge reaches outside the walk, sorted, then every package and builtin some edge reaches.",
@@ -161,6 +180,7 @@ export type AtlasFile = typeof AtlasFile.Type;
 export type AtlasEdge = typeof AtlasEdge.Type;
 export type AtlasEdgeStatus = AtlasEdge["status"];
 export type AtlasAllowance = typeof AtlasAllowance.Type;
+export type LayerMembership = typeof LayerMembership.Type;
 export type DesignedEdge = typeof DesignedEdge.Type;
 
 // Decodes a document some other run wrote, refusing a key the shape does not

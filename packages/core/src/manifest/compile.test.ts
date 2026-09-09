@@ -321,6 +321,64 @@ describe("external", () => {
     ]);
   });
 
+  it("keeps a node's own layer, and the layers as declared, outermost first", () => {
+    const layered = lowerWith(
+      {
+        ...base({
+          "@/modules/{module}/": {
+            layer: "module",
+            layout: "open",
+            children: {
+              "interface/": { layer: "io", layout: "open", children: {} },
+              "domain/": { layer: "domain", layout: "open", children: {} },
+              "**/": { layout: "open", children: {} },
+            },
+          },
+        }),
+        layers: [
+          { id: "module", type: "enclosing", message: "A bounded context." },
+          { id: "io" },
+          { id: "domain" },
+        ],
+      },
+      TYPESCRIPT,
+    );
+    expect(layered.layers).toEqual([
+      { id: "module", type: "enclosing", message: "A bounded context." },
+      { id: "io", type: "tier" },
+      { id: "domain", type: "tier" },
+    ]);
+    // Inheritance is the reader's to apply: a node carries only what it wrote.
+    expect(layered.nodes.map((one) => [one.path, one.layer])).toEqual([
+      ["@/modules/{module}/", "module"],
+      ["@/modules/{module}/interface/", "io"],
+      ["@/modules/{module}/domain/", "domain"],
+      ["@/modules/{module}/**/", undefined],
+    ]);
+  });
+
+  it("meets undeclared layers in tree order, and refuses one the declaration lacks", () => {
+    const met = lowerManifest(
+      base({
+        "@/app/": { layer: "outer", layout: "open", children: {} },
+        "@/lib/": { layer: "inner", layout: "open", children: {} },
+      }),
+    );
+    expect(met.layers).toEqual([
+      { id: "outer", type: "tier" },
+      { id: "inner", type: "tier" },
+    ]);
+    expect(() =>
+      lowerWith(
+        {
+          ...base({ "@/app/": { layer: "outter", layout: "open", children: {} } }),
+          layers: [{ id: "outer" }],
+        },
+        TYPESCRIPT,
+      ),
+    ).toThrow(/"app" is in layer "outter", which `layers` does not declare. Declared: outer/);
+  });
+
   // A tier that names only its runtime has an allowlist — one that admits no
   // repository file at all.
   it("counts a node with externals and no allow as having an allowlist", () => {

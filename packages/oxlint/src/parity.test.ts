@@ -286,6 +286,7 @@ const policy: LoadedPolicy = {
   graph: EMPTY_GRAPH_RULES,
   adoption: { unrestricted: [], partial: [] },
   nodes: [],
+  layers: [],
   structure: EMPTY_STRUCTURE,
   fileSystem: makeFileSystemFake([]),
   languages: [],

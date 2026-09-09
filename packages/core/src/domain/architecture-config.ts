@@ -81,6 +81,18 @@ export const LoweredNode = Schema.Struct({
   // The manifest file the node was written in, relative to the root manifest's
   // folder, when it was written in an included file rather than the root.
   file: Schema.optionalKey(Schema.String),
+  // The layer this node itself declares, when it declares one. Inheritance is
+  // the reader's to apply through `parent`; a node without one is in its
+  // nearest ancestor's layer.
+  layer: Schema.optionalKey(Schema.String),
+});
+
+// One architectural layer, as the manifest declared it (or as lowering met
+// it): a stratum a file sits in, or a boundary the strata sit inside.
+export const ArchitecturalLayer = Schema.Struct({
+  id: Schema.String,
+  type: Schema.Literals(["tier", "enclosing"]),
+  message: Schema.optionalKey(Schema.String),
 });
 
 export const ImportRule = Schema.Struct({
@@ -397,6 +409,7 @@ const StructureConfig = Schema.Struct({
 
 export type Allowance = (typeof Allowance)["Type"];
 export type LoweredNode = (typeof LoweredNode)["Type"];
+export type ArchitecturalLayer = (typeof ArchitecturalLayer)["Type"];
 export type NodeFamily = LoweredNode["families"][number];
 export type ImportRule = (typeof ImportRule)["Type"];
 export type ResolveConfig = (typeof ResolveConfig)["Type"];

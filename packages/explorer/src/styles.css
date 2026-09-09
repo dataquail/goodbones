@@ -300,6 +300,14 @@ button.link:hover {
   color: var(--muted);
 }
 
+.card .layer-tag {
+  color: #5b3fb5;
+}
+
+.panel .chain .sep {
+  color: var(--muted);
+}
+
 .card .label {
   font-weight: 600;
   white-space: nowrap;

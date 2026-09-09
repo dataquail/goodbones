@@ -1,0 +1,76 @@
+---
+title: Layers
+description: "`layer` names the role a folder's files play — io, application, domain — and `layers` orders those roles, so the explorer can draw every member of a layer and the vertical slice a file takes part in."
+---
+
+The tree says where a file is. It does not say what role it plays: `commands/` under one
+module and `platform/cqrs/` under the kernel are both the application layer, and nothing in
+their paths says so. `layer` does.
+
+```yaml
+layers:
+  - { id: module, type: enclosing, message: "A bounded context: one module, its own domain." }
+  - { id: io }
+  - { id: infrastructure }
+  - { id: application }
+  - { id: domain }
+
+tree:
+  "@/modules/{module}/":
+    layer: module
+    children:
+      "interface/": { layer: io }
+      "infrastructure/": { layer: infrastructure }
+      "commands/": { layer: application }
+      "queries/": { layer: application }
+      "event-handlers/": { layer: application }
+      "domain/": { layer: domain }
+  "@/platform/":
+    children:
+      "cqrs/": { layer: application }
+      "ddd/": { layer: domain }
+```
+
+## Membership
+
+`layer` on a node puts every file beneath it in that layer, until a descendant names its own.
+A node without one is in its nearest ancestor's layer; a file no ancestor claims is in none.
+The value is an id, any human-readable string.
+
+Each file therefore carries a **chain** of layers, outermost first, with the concrete folder
+each was assigned at: `packages/server/src/modules/organization/commands/create.handler.ts`
+is in `module` at `…/modules/organization` and in `application` at `…/organization/commands`.
+That folder is the file's **member** of the layer — the module it belongs to, the tier it sits
+in — and is what the views below group by. The atlas records the chain on every file.
+
+## Declaration
+
+`layers`, at the top of the manifest, lists the ids the tree may name, **outermost first**.
+That order is what a vertical slice reads top-down. Each entry may say:
+
+- `type: tier` (the default) — a stratum files sit in: io, application, domain.
+- `type: enclosing` — a boundary the strata sit inside: a module, a bounded context. Drawn as
+  a box around its layers rather than as one of them.
+- `message` — the sentence that explains the layer, shown where the layer is.
+
+A node naming a layer the list lacks is refused at load, so a typo cannot become a sixth
+layer nobody meant. The list is optional: without it, layers are met in tree order, all of
+type `tier`.
+
+## What it enables
+
+Both are views in [`explore`](/goodbones/architecture-rules/enforcement/explore/), and both
+are `View`s the mermaid renderer draws like a folder.
+
+**A layer.** Pick a layer from the toolbar. For a tier, every member file is drawn, grouped by
+the enclosing member it sits in — the io layer is every endpoint and event handler, module
+by module — with the imports between them. For an enclosing layer, the members themselves
+are drawn — one node per module — with the imports between modules rolled up.
+
+**A slice.** Select a file and open its vertical slice: the files that reach it from an outer
+or equal layer, transitively, and the files it reaches in an inner or equal layer,
+transitively, never stepping through a file no layer claims. A command handler's slice is
+the endpoint that dispatches to it, the command beside it, and the domain root and port it
+uses; the domain root's slice is every handler and endpoint above it. It is exhaustive on
+purpose: a file dozens of slices pass through shows all of them, grouped by module and
+layer, in layer order.

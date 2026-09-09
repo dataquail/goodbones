@@ -52,7 +52,7 @@
     "unrs-resolver": "^1.12.2"
   },
   "devDependencies": {
-    "@types/node": "^25.9.4"
+    "@types/node": "^26.4.1"
   },
   "nx": {
     "includedScripts": []

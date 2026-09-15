@@ -73,6 +73,12 @@ const policy = (): LoadedPolicy => {
     adoption: { unrestricted: [], partial: [] },
     fileSystem: makeFileSystemFake([]),
     languages: [],
+    campaignRules: [],
+    ledgers: new Map(),
+    ledgerDir: ".architecture-campaigns",
+    functions: new Map(),
+    now: 0,
+    syntax: { parse: () => null },
     extractor: makeFactExtractorFake({}),
     resolver: makeModuleResolverFake({
       "@effect-server-utils/cqrs": CQRS_BARREL,

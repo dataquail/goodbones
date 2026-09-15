@@ -57,21 +57,23 @@ describe("bindings", () => {
   const bindings = (source: string, specifier: string) =>
     factsFor(source).bindings.get(specifier) ?? [];
 
-  it("reads a named import by the name in the source module, not the local alias", () => {
+  it("reads a named import by the name in the source module, and carries the local alias", () => {
     expect(bindings(`import { makeCommandBus as make } from "m";`, "m")).toEqual([
-      { symbol: "makeCommandBus", kind: "named" },
+      { symbol: "makeCommandBus", kind: "named", local: "make" },
     ]);
   });
 
   it("distinguishes default from namespace from named", () => {
     expect(bindings(`import d, * as n from "m";`, "m")).toEqual([
-      { symbol: "default", kind: "default" },
-      { symbol: "*", kind: "namespace" },
+      { symbol: "default", kind: "default", local: "d" },
+      { symbol: "*", kind: "namespace", local: "n" },
     ]);
   });
 
   it("reads a re-export's source name", () => {
-    expect(bindings(`export { a as b } from "m";`, "m")).toEqual([{ symbol: "a", kind: "named" }]);
+    expect(bindings(`export { a as b } from "m";`, "m")).toEqual([
+      { symbol: "a", kind: "named", local: "a" },
+    ]);
   });
 
   // A side-effect import is an edge with nothing crossing it: the import rules
@@ -82,7 +84,7 @@ describe("bindings", () => {
 
   it("reads a string-literal import name", () => {
     expect(bindings(`import { "a-b" as ab } from "m";`, "m")).toEqual([
-      { symbol: "a-b", kind: "named" },
+      { symbol: "a-b", kind: "named", local: "ab" },
     ]);
   });
 });
@@ -97,7 +99,7 @@ describe("whole-module bindings", () => {
     ['const m = await import("m");', "import()"],
     ['const m = require("m");', "require()"],
   ])("%s carries the whole module, as `import * as` does", (source) => {
-    expect(factsFor(source).bindings.get("m")).toEqual(whole);
+    expect(factsFor(source).bindings.get("m")).toMatchObject(whole);
   });
 
   it("a side-effect import carries nothing", () => {

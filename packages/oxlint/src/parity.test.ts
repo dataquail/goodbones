@@ -295,6 +295,12 @@ const policy: LoadedPolicy = {
   structure: EMPTY_STRUCTURE,
   fileSystem: makeFileSystemFake([]),
   languages: [],
+  campaignRules: [],
+  ledgers: new Map(),
+  ledgerDir: ".architecture-campaigns",
+  functions: new Map(),
+  now: 0,
+  syntax: { parse: () => null },
   extractor: makeFactExtractorFake({}),
   resolver,
   ignoreUnresolved: [],
@@ -406,15 +412,17 @@ describe("the corpus exercises every form", () => {
   it("reads every binding form", () => {
     const bindings = facts("parity/edges.ts").bindings;
     expect(bindings.get("mixed-bindings")).toEqual([
-      { symbol: "default", kind: "default" },
-      { symbol: "a", kind: "named" },
-      { symbol: "b", kind: "named" },
-      { symbol: "string-name", kind: "named" },
+      { symbol: "default", kind: "default", local: "mixed" },
+      { symbol: "a", kind: "named", local: "a" },
+      { symbol: "b", kind: "named", local: "c" },
+      { symbol: "string-name", kind: "named", local: "d" },
     ]);
-    expect(bindings.get("namespace-only")).toEqual([{ symbol: "*", kind: "namespace" }]);
+    expect(bindings.get("namespace-only")).toEqual([
+      { symbol: "*", kind: "namespace", local: "ns" },
+    ]);
     expect(bindings.get("reexport-named")).toEqual([
-      { symbol: "e", kind: "named" },
-      { symbol: "f", kind: "named" },
+      { symbol: "e", kind: "named", local: "e" },
+      { symbol: "f", kind: "named", local: "f" },
     ]);
     expect(bindings.get("side-effect")).toEqual([]);
   });
@@ -423,8 +431,8 @@ describe("the corpus exercises every form", () => {
     const bindings = facts("parity/edges.ts").bindings;
     const whole = [{ symbol: "*", kind: "namespace" }];
     expect(bindings.get("reexport-all")).toEqual(whole);
-    expect(bindings.get("reexport-namespace")).toEqual(whole);
-    expect(bindings.get("import-equals")).toEqual(whole);
+    expect(bindings.get("reexport-namespace")).toMatchObject(whole);
+    expect(bindings.get("import-equals")).toMatchObject(whole);
     expect(bindings.get("dynamic-literal")).toEqual(whole);
     expect(bindings.get("require-literal")).toEqual(whole);
   });

@@ -1,22 +1,30 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 
 import {
+  allowed,
   type Baseline,
   baselineOf,
+  type CampaignHit,
+  campaignsSelecting,
+  type CompiledCampaign,
   type CoverageFamily,
   coverageOf,
   cyclesIn,
   decodeBaseline,
   decodeManifest,
   EMPTY_BASELINE,
+  entryOf,
+  evaluateCampaigns,
   evaluateGraph,
   evaluateMemberSite,
   evaluateResolvedEdge,
   evaluateSelectedBindings,
   evaluateStructure,
   evaluateSurface,
+  explainCampaign,
   exportRulesSelecting,
   findManifestFile,
   fingerprintOf,
@@ -26,20 +34,31 @@ import {
   type Graph,
   hasGraphRules,
   heightOf,
+  isComplete,
+  isStalled,
+  leafTermsOf,
+  type Ledger,
+  ledgerArithmeticHolds,
+  ledgerOf,
   listSourceFiles,
   makeBaselineFilter,
   MANIFEST_FILENAMES,
   MANIFEST_SCHEMA_ID,
   memberRulesSelecting,
   type ObservedEdge,
+  progressOf,
+  pruned,
   readManifestFile,
+  reconcile,
   requiredSiblingsOf,
   residueOf,
   rulesSelecting,
   serializeBaseline,
+  serializeLedger,
   slackOf,
   type Snapshot,
   SNAPSHOT_VERSION,
+  type SnapshotCampaign,
   type SourceFacts,
   staleEntriesOf,
   surfaceRulesSelecting,
@@ -80,6 +99,10 @@ export type UnresolvedEdge = {
 
 export type Findings = {
   readonly violations: ReadonlyArray<Violation>;
+  // Every campaign hit, ledgered or not. Kept apart from the violations: a
+  // hit is debt a campaign is paying down, judged against its ledger rather
+  // than the baseline.
+  readonly campaigns: ReadonlyArray<CampaignHit>;
   readonly unresolved: ReadonlyArray<UnresolvedEdge>;
   readonly files: number;
   // Every edge resolved from a file under an import rule — what the slack
@@ -103,16 +126,25 @@ export const collectFindings = (
 ): Findings => {
   const files = listSourceFiles(policy.repoRoot, roots, policy.languages);
   const violations: Array<Violation> = [];
+  const campaigns: Array<CampaignHit> = [];
   const unresolved: Array<UnresolvedEdge> = [];
   const edges: Array<ObservedEdge> = [];
 
-  // Each file is parsed at most once, whether the per-file families or the
-  // graph pass asks first.
+  // Each file is read and parsed at most once, whether the per-file
+  // families, the graph pass or a campaign asks first.
+  const texts = new Map<string, string>();
+  const textOf = (file: string): string => {
+    const cached = texts.get(file);
+    if (cached !== undefined) return cached;
+    const text = readFileSync(path.join(policy.repoRoot, file), "utf8");
+    texts.set(file, text);
+    return text;
+  };
   const parsed = new Map<string, SourceFacts>();
   const factsOf = (file: string): SourceFacts => {
     const cached = parsed.get(file);
     if (cached !== undefined) return cached;
-    const facts = sourceFactsOf(policy.repoRoot, file, policy.extractor);
+    const facts = policy.extractor.factsOf(file, textOf(file));
     parsed.set(file, facts);
     return facts;
   };
@@ -130,6 +162,28 @@ export const collectFindings = (
   for (const file of files) {
     for (const violation of evaluateStructure(policy.structure, policy.fileSystem, file)) {
       violations.push(violation);
+    }
+
+    // A campaign selects by its scope. The file is parsed by the scope's
+    // matcher once, and only when a term of some selected campaign reads the
+    // syntax tree.
+    const selectedCampaigns = campaignsSelecting(policy.campaignRules, file);
+    if (selectedCampaigns.length > 0) {
+      const text = textOf(file);
+      const needsSyntax = selectedCampaigns.some((rule) =>
+        leafTermsOf(rule.detect).some((leaf) => leaf === "syntax" || leaf === "fn"),
+      );
+      for (const hit of evaluateCampaigns(selectedCampaigns, {
+        file,
+        text,
+        facts: factsOf(file),
+        resolver: policy.resolver,
+        fileSystem: policy.fileSystem,
+        syntax: needsSyntax ? policy.syntax.parse(file, text) : null,
+        functions: policy.functions,
+      })) {
+        campaigns.push(hit);
+      }
     }
 
     const selectedImports = rulesSelecting(policy.importRules, file);
@@ -186,7 +240,7 @@ export const collectFindings = (
     }
   }
 
-  return { violations, unresolved, files: files.length, edges, graph };
+  return { violations, campaigns, unresolved, files: files.length, edges, graph };
 };
 
 const baselinePathOf = (policy: LoadedPolicy): string | null =>
@@ -218,6 +272,29 @@ const describe = (violation: Violation): string =>
 export type ReportedViolation = Violation & {
   readonly fingerprint: string;
   readonly baselined: boolean;
+  // For a campaign hit: carried by the campaign's ledger, so `check` does
+  // not fail on it. The campaign analogue of `baselined`.
+  readonly ledgered: boolean;
+};
+
+// One campaign, as `check` sees it: how many hits, which are new, which
+// ledger entries no longer fire, and whether the ledger adds up.
+export type CampaignReport = {
+  readonly id: string;
+  readonly count: number;
+  // Hits the ledger does not carry — unrecorded growth, as entries.
+  readonly new: ReadonlyArray<string>;
+  // Ledger entries no hit produces — fixed, and waiting to be pruned.
+  readonly stale: ReadonlyArray<string>;
+  // Entries whose hash moved under a still-present anchor.
+  readonly drifted: number;
+  // No ledger file: `campaigns init` has not been run.
+  readonly missingLedger: boolean;
+  // `entries.length === initial + Σ delta − fixed`.
+  readonly arithmetic: boolean;
+  readonly complete: boolean;
+  readonly stalled: boolean;
+  readonly onComplete: "keep" | "remove";
 };
 
 export type CoverageReport = Readonly<
@@ -245,7 +322,76 @@ export type CheckReport = {
     readonly unrestricted: ReadonlyArray<string>;
     readonly partial: ReadonlyArray<string>;
   };
+  readonly campaigns: ReadonlyArray<CampaignReport>;
 };
+
+// Each campaign's hits against its ledger. A campaign with no ledger has
+// every hit new; one with no hits and no ledger has nothing to say.
+const campaignReportsOf = (
+  policy: LoadedPolicy,
+  hits: ReadonlyArray<CampaignHit>,
+): ReadonlyArray<CampaignReport> =>
+  policy.campaignRules.map((rule) => {
+    const own = hits.filter((hit) => hit.campaign === rule.id).map((hit) => hit.violation);
+    const ledger = policy.ledgers.get(rule.id);
+    if (ledger === undefined) {
+      return {
+        id: rule.id,
+        count: own.length,
+        new: [...new Set(own.map(entryOf))].sort(),
+        stale: [],
+        drifted: 0,
+        missingLedger: true,
+        arithmetic: true,
+        complete: own.length === 0,
+        stalled: false,
+        onComplete: rule.onComplete,
+      };
+    }
+    const state = reconcile(ledger, own, rule.unit);
+    return {
+      id: rule.id,
+      count: own.length,
+      new: [...new Set(state.unrecorded.map(entryOf))].sort(),
+      stale: state.stale,
+      drifted: state.drifted.length,
+      missingLedger: false,
+      arithmetic: ledgerArithmeticHolds(ledger),
+      complete: isComplete(ledger) && own.length === 0,
+      stalled: isStalled(rule, ledger, policy.now),
+      onComplete: rule.onComplete,
+    };
+  });
+
+// Whether a campaign hit is carried by its ledger — exactly, or by anchor.
+const ledgeredFilter = (
+  policy: LoadedPolicy,
+  hits: ReadonlyArray<CampaignHit>,
+): ((hit: CampaignHit) => boolean) => {
+  const carried = new Set<Violation>();
+  for (const rule of policy.campaignRules) {
+    const ledger = policy.ledgers.get(rule.id);
+    if (ledger === undefined) continue;
+    const own = hits.filter((hit) => hit.campaign === rule.id).map((hit) => hit.violation);
+    for (const one of reconcile(ledger, own, rule.unit).ledgered) carried.add(one);
+  }
+  return (hit) => carried.has(hit.violation);
+};
+
+// Why a campaign report is not ok, in the order `check` explains it.
+const campaignFailuresOf = (campaigns: ReadonlyArray<CampaignReport>): ReadonlyArray<string> => [
+  ...campaigns.filter((one) => one.stale.length > 0).map(() => "stale ledger entries"),
+  ...campaigns.filter((one) => !one.arithmetic).map(() => "ledger arithmetic does not hold"),
+  ...campaigns
+    .filter((one) => one.missingLedger && one.count > 0)
+    .map((one) => `campaign ${one.id} has no ledger`),
+  ...campaigns
+    .filter((one) => !one.missingLedger && one.new.length > 0)
+    .map(() => "unrecorded campaign growth"),
+  ...campaigns
+    .filter((one) => one.complete && !one.missingLedger && one.onComplete === "remove")
+    .map((one) => `campaign ${one.id} is complete and declared onComplete: remove`),
+];
 
 const COVERAGE_FAMILIES: ReadonlyArray<CoverageFamily> = [
   "imports",
@@ -278,11 +424,22 @@ const reportOf = (
   const baseline = readBaseline(policy);
   const stale = staleEntriesOf(baseline, findings.violations);
   const { isBaselined } = makeBaselineFilter(baseline);
-  const violations = findings.violations.map((violation) => ({
-    ...violation,
-    fingerprint: fingerprintOf(violation),
-    baselined: isBaselined(violation),
-  }));
+  const isLedgered = ledgeredFilter(policy, findings.campaigns);
+  const violations = [
+    ...findings.violations.map((violation) => ({
+      ...violation,
+      fingerprint: fingerprintOf(violation),
+      baselined: isBaselined(violation),
+      ledgered: false,
+    })),
+    ...findings.campaigns.map((hit) => ({
+      ...hit.violation,
+      fingerprint: fingerprintOf(hit.violation),
+      baselined: false,
+      ledgered: isLedgered(hit),
+    })),
+  ];
+  const campaigns = campaignReportsOf(policy, findings.campaigns);
 
   // The floors. A policy states how much of the tree it reaches, per
   // family; falling under is a policy that quietly stopped covering files.
@@ -305,7 +462,7 @@ const reportOf = (
   ) as CoverageReport;
   const shortfalls = shortfallsOf(coverage);
 
-  const reportable = violations.filter((one) => !one.baselined).length;
+  const reportable = violations.filter((one) => !one.baselined && !one.ledgered).length;
   return {
     version: 1,
     files: findings.files,
@@ -314,7 +471,8 @@ const reportOf = (
       reportable === 0 &&
       findings.unresolved.length === 0 &&
       stale.length === 0 &&
-      shortfalls.length === 0,
+      shortfalls.length === 0 &&
+      campaignFailuresOf(campaigns).length === 0,
     manifest: {
       path: path.relative(policy.repoRoot, manifestPath).replaceAll(path.sep, "/"),
       sha256: sha256Of(manifestPath),
@@ -327,6 +485,7 @@ const reportOf = (
       unrestricted: policy.adoption.unrestricted,
       partial: policy.adoption.partial,
     },
+    campaigns,
   };
 };
 
@@ -351,14 +510,80 @@ const failureOf = (
   shortfalls: ReadonlyArray<Shortfall>,
 ): CliFailure | null => {
   if (report.stale.length > 0) return fail("stale baseline entries");
+  const [campaignFailure] = campaignFailuresOf(report.campaigns);
+  if (campaignFailure !== undefined) return fail(campaignFailure);
   if (shortfalls.length > 0) return fail("coverage below floor");
   if (report.ok) return null;
   return fail("architecture violations");
 };
 
+// A campaign hit, with the campaign's `how` as its instruction.
+const describeHit = (violation: ReportedViolation): string =>
+  `  ${violation.file}${violation.subject === null ? "" : `  (${violation.subject})`}\n      ${formatMessage(violation)}`;
+
+const renderCampaigns = (report: CheckReport): ReadonlyArray<string> => {
+  const hits = report.violations.filter((one) => one.kind === "campaign");
+  return report.campaigns.flatMap((campaign): ReadonlyArray<string> => {
+    const rule = `campaign/${campaign.id}`;
+    const fresh = new Set(campaign.new);
+    const own = hits.filter((one) => one.ruleName === rule && fresh.has(entryOf(one)));
+    if (campaign.missingLedger && campaign.count > 0) {
+      return [
+        "",
+        `campaign ${campaign.id}: ${count(campaign.count, "hit")} and no ledger. Record them before they count as growth:`,
+        "",
+        `  architecture campaigns init ${campaign.id}`,
+      ];
+    }
+    const complete = campaign.complete && !campaign.missingLedger;
+    return [
+      ...(campaign.new.length === 0
+        ? []
+        : [
+            "",
+            `campaign ${campaign.id}: ${count(campaign.new.length, "new hit")} the ledger does not carry. Fix them, or record why the count may rise:`,
+            ...own.map(describeHit),
+            "",
+            `  architecture campaigns allow ${campaign.id} --reason "<why>"`,
+          ]),
+      ...(campaign.stale.length === 0
+        ? []
+        : [
+            "",
+            `campaign ${campaign.id}: ${count(campaign.stale.length, "ledger entry", "ledger entries")} no longer fire. The code was fixed; prune them:`,
+            ...campaign.stale.map((entry) => `  ${entry}`),
+            "",
+            `  architecture campaigns prune ${campaign.id}`,
+          ]),
+      ...(campaign.arithmetic
+        ? []
+        : [
+            "",
+            `campaign ${campaign.id}: the ledger does not add up (entries ≠ initial + allowed − fixed). An entry was added by hand; remove it, or record it with \`campaigns allow\`.`,
+          ]),
+      ...(complete && campaign.onComplete === "remove"
+        ? [
+            "",
+            `campaign ${campaign.id} is complete and declares onComplete: remove. Delete it from the manifest, and its ledger.`,
+          ]
+        : []),
+      ...(campaign.stalled
+        ? [
+            "",
+            `notice: campaign ${campaign.id} has stalled — no entry has left its ledger within its staleAfter.`,
+          ]
+        : []),
+      ...(complete && campaign.onComplete === "keep"
+        ? ["", `notice: campaign ${campaign.id} is complete, and stays as a guard.`]
+        : []),
+    ];
+  });
+};
+
 const renderText = (report: CheckReport): ReadonlyArray<string> => {
-  const reportable = report.violations.filter((one) => !one.baselined);
-  const carried = report.violations.length - reportable.length;
+  const reportable = report.violations.filter((one) => one.kind !== "campaign" && !one.baselined);
+  const carried =
+    report.violations.filter((one) => one.kind !== "campaign").length - reportable.length;
   const shortfalls = shortfallsOf(report.coverage);
   return [
     ...reportable.map(describe),
@@ -390,6 +615,7 @@ const renderText = (report: CheckReport): ReadonlyArray<string> => {
           "",
           "  architecture coverage    # which files no rule reaches",
         ]),
+    ...renderCampaigns(report),
   ];
 };
 
@@ -415,6 +641,9 @@ export const check = (
   });
 
 const percent = (fraction: number): string => `${String(Math.floor(fraction * 100))}%`;
+
+const count = (n: number, noun: string, plural = `${noun}s`): string =>
+  `${String(n)} ${n === 1 ? noun : plural}`;
 
 // The conformance snapshot: `check`'s report grown with what no family
 // reaches, what the allowlists permit and nothing uses, the cycle count and
@@ -449,6 +678,41 @@ export const snapshotOf = (
   // that rather than as lines nobody needs.
   const { concentration, slack } = slackOf(policy.importRules, findings.edges, files);
 
+  const campaigns: ReadonlyArray<SnapshotCampaign> = policy.campaignRules.map((rule) => {
+    const ledger = policy.ledgers.get(rule.id);
+    const own = findings.campaigns.filter((hit) => hit.campaign === rule.id).length;
+    const base: SnapshotCampaign = {
+      id: rule.id,
+      ...(rule.title === null ? {} : { title: rule.title }),
+      ...(rule.owner === null ? {} : { owner: rule.owner }),
+      initial: own,
+      allowed: 0,
+      count: own,
+      fixed: 0,
+      progress: 0,
+      lastProgress: new Date(policy.now).toISOString(),
+      regressions: 0,
+      stalled: false,
+      complete: own === 0,
+      onComplete: rule.onComplete,
+      ledgered: false,
+    };
+    if (ledger === undefined) return base;
+    return {
+      ...base,
+      initial: ledger.initial,
+      allowed: ledger.regressions.reduce((sum, one) => sum + one.delta, 0),
+      count: ledger.entries.length,
+      fixed: ledger.fixed,
+      progress: progressOf(ledger),
+      lastProgress: ledger.lastProgress,
+      regressions: ledger.regressions.length,
+      stalled: isStalled(rule, ledger, policy.now),
+      complete: isComplete(ledger),
+      ledgered: true,
+    };
+  });
+
   return {
     version: SNAPSHOT_VERSION,
     manifest: report_.manifest,
@@ -466,14 +730,33 @@ export const snapshotOf = (
     slack,
     concentration,
     adoption: report_.adoption,
+    campaigns,
   };
 };
 
+// The campaigns, stalled and complete first, then by progress.
+const renderCampaignRows = (campaigns: ReadonlyArray<SnapshotCampaign>): ReadonlyArray<string> => {
+  const width = Math.max(0, ...campaigns.map((one) => one.id.length));
+  const state = (one: SnapshotCampaign): string =>
+    !one.ledgered ? "no ledger" : one.complete ? "complete" : one.stalled ? "stalled" : "";
+  const ordered = [...campaigns].sort((left, right) => {
+    const rank = (one: SnapshotCampaign): number =>
+      one.stalled ? 0 : one.complete && one.ledgered ? 1 : 2;
+    const byRank = rank(left) - rank(right);
+    return byRank !== 0 ? byRank : left.progress - right.progress;
+  });
+  return ordered.map(
+    (one) =>
+      `  ${one.id.padEnd(width)}  ${percent(one.progress).padStart(4)}  ${String(one.count).padStart(5)} left` +
+      `  ${String(one.fixed)} fixed  ${String(one.allowed)} allowed` +
+      (one.owner === undefined ? "" : `  ${one.owner}`) +
+      (state(one) === "" ? "" : `  ${state(one)}`),
+  );
+};
+
 const renderSnapshot = (snapshot: Snapshot): ReadonlyArray<string> => {
-  const reportable = snapshot.violations.filter((one) => !one.baselined);
+  const reportable = snapshot.violations.filter((one) => !one.baselined && !one.ledgered);
   const carried = snapshot.violations.length - reportable.length;
-  const count = (n: number, noun: string, plural = `${noun}s`): string =>
-    `${String(n)} ${n === 1 ? noun : plural}`;
   const row = (family: CoverageFamily): string => {
     const { covered, floor, total } = snapshot.coverage[family];
     const fraction = total === 0 ? 1 : covered / total;
@@ -520,7 +803,7 @@ const renderSnapshot = (snapshot: Snapshot): ReadonlyArray<string> => {
     ),
     ...section(
       `violations: ${count(reportable.length, "reportable")}` +
-        (carried > 0 ? `, ${String(carried)} carried by the baseline` : "") +
+        (carried > 0 ? `, ${String(carried)} carried by the baseline or a ledger` : "") +
         (snapshot.stale.length > 0
           ? `, ${count(snapshot.stale.length, "stale entry", "stale entries")}`
           : "") +
@@ -549,6 +832,18 @@ const renderSnapshot = (snapshot: Snapshot): ReadonlyArray<string> => {
             (one) =>
               `  ${one.fragment}: ${one.kind} ${JSON.stringify(one.entry)}  used at ${String(one.usedAt)} of ${count(one.of, "node")}`,
           ),
+        )),
+    ...(snapshot.campaigns.length === 0
+      ? []
+      : section(
+          `campaigns: ${count(snapshot.campaigns.length, "campaign")}` +
+            (snapshot.campaigns.some((one) => one.stalled)
+              ? `, ${count(snapshot.campaigns.filter((one) => one.stalled).length, "stalled", "stalled")}`
+              : "") +
+            (snapshot.campaigns.some((one) => one.complete && one.ledgered)
+              ? `, ${count(snapshot.campaigns.filter((one) => one.complete && one.ledgered).length, "complete", "complete")}`
+              : ""),
+          renderCampaignRows(snapshot.campaigns),
         )),
     "",
     `cycles: ${String(snapshot.cycles)}`,
@@ -669,7 +964,8 @@ export const explain = (policy: LoadedPolicy, file: string): Effect.Effect<void,
         !rule.fileNot.some((pattern) => pattern.test(relative)),
     );
 
-    const firstSentence = (message: string) => `${message.split(". ")[0] ?? message}.`;
+    const firstSentence = (message: string) =>
+      `${(message.split(". ")[0] ?? message).replace(/\.$/, "")}.`;
     const named = (rule: { readonly name: string; readonly message: string }): string =>
       `    ${rule.name} — ${firstSentence(rule.message)}`;
 
@@ -694,6 +990,32 @@ export const explain = (policy: LoadedPolicy, file: string): Effect.Effect<void,
     ];
     const section = (title: string, lines: ReadonlyArray<string>): ReadonlyArray<string> =>
       lines.length === 0 ? [] : ["", title, ...lines];
+
+    // Each campaign selecting the file, with its truth table: one line per
+    // leaf term and what it answered here, so a detector that "should fire"
+    // and does not shows which term is not saying what its author thinks.
+    const selectedCampaigns = campaignsSelecting(policy.campaignRules, relative);
+    const campaignLines = selectedCampaigns.flatMap((rule) => {
+      const at = path.join(policy.repoRoot, relative);
+      const text = existsSync(at) ? readFileSync(at, "utf8") : "";
+      const input = {
+        file: relative,
+        text,
+        facts: policy.extractor.factsOf(relative, text),
+        resolver: policy.resolver,
+        fileSystem: policy.fileSystem,
+        syntax: policy.syntax.parse(relative, text),
+        functions: policy.functions,
+      };
+      const hits = evaluateCampaigns([rule], input);
+      return [
+        `    ${rule.name} — ${firstSentence(rule.why)} (${rule.unit}; ${hits.length === 0 ? "no hit" : count(hits.length, "hit")})`,
+        ...explainCampaign(rule, input).map(
+          (line) =>
+            `        ${line.answer ? "✓" : "✗"} ${line.term}${line.count === undefined ? "" : ` (${String(line.count)})`}`,
+        ),
+      ];
+    });
 
     yield* report([
       relative,
@@ -727,6 +1049,7 @@ export const explain = (policy: LoadedPolicy, file: string): Effect.Effect<void,
       ...section("  vocabulary (members):", vocabulary.map(named)),
       ...section("  may export (surface):", surface.map(named)),
       ...section("  graph:", graph),
+      ...section("  campaigns:", campaignLines),
     ]);
   });
 
@@ -830,6 +1153,21 @@ limits:
   unrestricted: 0
   partial: 0
 
+# Migrations the repository is running, each with a detector, a rationale, a
+# guide, an owner and a ledger of every place the pattern still occurs. Fill
+# one in, then \`architecture campaigns init <id>\` to write its ledger.
+# https://dataquail.github.io/goodbones/architecture-rules/manifest/campaigns/
+# campaigns:
+#   - id: js-to-ts
+#     why: The strict tsconfig cannot land while any src file is JavaScript.
+#     how: Rename to .ts, add types at the module boundary, leave the body alone.
+#     scope: ["src/**"]
+#     unit: file
+#     detect: { path: { file: "\\.(js|jsx)$" } }
+#     probes: { fires: [{ path: src/legacy/util.js }], ignores: [{ path: src/util.ts }] }
+#     staleAfter: 14d
+#     onComplete: remove
+
 # The repository. One open root, reaching itself and the runtime; run
 # \`architecture check\` to see what else it reaches, and write that down here.
 # https://dataquail.github.io/goodbones/architecture-rules/manifest/imports/
@@ -918,6 +1256,232 @@ export const migrate = (
     ]);
   });
 
+// The ledgers. `campaigns` alone is the status table; `init` writes a
+// campaign's first ledger from what fires today; `prune` removes what no
+// longer fires; `allow` is the one way an entry is added, and it records why.
+const ledgerPathOf = (policy: LoadedPolicy, id: string): string =>
+  path.resolve(policy.repoRoot, policy.ledgerDir, `${id}.json`);
+
+const writeLedger = (policy: LoadedPolicy, ledger: Ledger): void => {
+  const at = ledgerPathOf(policy, ledger.id);
+  mkdirSync(path.dirname(at), { recursive: true });
+  writeFileSync(at, serializeLedger(ledger));
+};
+
+const campaignNamed = (policy: LoadedPolicy, id: string): CompiledCampaign | null =>
+  policy.campaignRules.find((rule) => rule.id === id) ?? null;
+
+// The author of a regression: `--by`, else git's user.email, else the
+// GIT_AUTHOR_EMAIL the environment carries. Without one the record is refused
+// rather than written blank, since the record is the point.
+const authorOf = (given: string | undefined): string | null => {
+  if (given !== undefined && given !== "") return given;
+  try {
+    const email = execFileSync("git", ["config", "user.email"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (email !== "") return email;
+  } catch {
+    // git absent, or no email configured
+  }
+  const fromEnvironment = process.env.GIT_AUTHOR_EMAIL;
+  return fromEnvironment === undefined || fromEnvironment === "" ? null : fromEnvironment;
+};
+
+const flagOf = (argv: ReadonlyArray<string>, flag: string): string | undefined => {
+  const at = argv.indexOf(flag);
+  const value = at === -1 ? undefined : argv[at + 1];
+  return value === undefined || value.startsWith("--") ? undefined : value;
+};
+
+const CAMPAIGN_SUBCOMMANDS = ["init", "prune", "allow"] as const;
+const CAMPAIGN_VALUE_FLAGS = ["--reason", "--by", "--entries"] as const;
+
+// `campaigns [init <id> | prune [<id>] | allow <id> --reason <text>] [roots…]`:
+// the subcommand and its id come first; whatever positional is left names
+// the roots to walk, as it does for every other command.
+export const campaignArgsOf = (
+  argv: ReadonlyArray<string>,
+  ids: ReadonlyArray<string>,
+): {
+  readonly subcommand: string | undefined;
+  readonly id: string | undefined;
+  readonly roots: ReadonlyArray<string>;
+} => {
+  const positional: Array<string> = [];
+  for (let at = 0; at < argv.length; at += 1) {
+    const one = argv[at] ?? "";
+    if ((CAMPAIGN_VALUE_FLAGS as ReadonlyArray<string>).includes(one)) {
+      at += 1;
+      continue;
+    }
+    if (!one.startsWith("--")) positional.push(one);
+  }
+  const [first, second, ...rest] = positional;
+  if (first === undefined || !(CAMPAIGN_SUBCOMMANDS as ReadonlyArray<string>).includes(first)) {
+    return { subcommand: undefined, id: undefined, roots: positional };
+  }
+  // `prune` takes an optional id; the next word is one only if a campaign
+  // has that name, else it is a root.
+  const takesId = first !== "prune" || (second !== undefined && ids.includes(second));
+  return takesId
+    ? { subcommand: first, id: second, roots: rest }
+    : { subcommand: first, id: undefined, roots: second === undefined ? [] : [second, ...rest] };
+};
+
+export const campaigns = (
+  policy: LoadedPolicy,
+  defaultRoots: ReadonlyArray<string>,
+  argv: ReadonlyArray<string>,
+): Effect.Effect<void, CliFailure> =>
+  Effect.gen(function* () {
+    const parsed = campaignArgsOf(
+      argv,
+      policy.campaignRules.map((rule) => rule.id),
+    );
+    const { id, subcommand } = parsed;
+    const roots = parsed.roots.length > 0 ? parsed.roots : defaultRoots;
+    if (policy.campaignRules.length === 0) {
+      return yield* report(["this policy declares no campaigns."]);
+    }
+    const hitsOf = (): ReadonlyArray<CampaignHit> => collectFindings(policy, roots).campaigns;
+    const own = (hits: ReadonlyArray<CampaignHit>, campaign: string): ReadonlyArray<Violation> =>
+      hits.filter((hit) => hit.campaign === campaign).map((hit) => hit.violation);
+
+    switch (subcommand) {
+      case undefined: {
+        const snapshot = snapshotOf(policy, roots, manifestPathOf(policy.repoRoot));
+        return yield* report([
+          `${count(snapshot.campaigns.length, "campaign")} under ${roots.join(", ")}`,
+          "",
+          ...renderCampaignRows(snapshot.campaigns),
+          "",
+          "  architecture campaigns init <id>                       # write a ledger from what fires today",
+          "  architecture campaigns prune [<id>]                    # drop entries that no longer fire",
+          '  architecture campaigns allow <id> --reason "<why>"     # record why the count may rise',
+        ]);
+      }
+      case "init": {
+        if (id === undefined) return yield* Effect.fail(fail("campaigns init needs a campaign id"));
+        const rule = campaignNamed(policy, id);
+        if (rule === null) return yield* Effect.fail(fail(`no campaign is named "${id}"`));
+        if (policy.ledgers.has(id)) {
+          return yield* Effect.fail(
+            fail(
+              `${path.relative(policy.repoRoot, ledgerPathOf(policy, id))} already exists. \`init\` ` +
+                `writes a campaign's first ledger and does not overwrite one; \`prune\` and \`allow\` ` +
+                `are how it changes.`,
+            ),
+          );
+        }
+        const ledger = ledgerOf(id, own(hitsOf(), id), policy.now);
+        yield* Effect.sync(() => {
+          writeLedger(policy, ledger);
+        });
+        return yield* report([
+          `${count(ledger.entries.length, "hit")} recorded in ${path.relative(policy.repoRoot, ledgerPathOf(policy, id))}.`,
+          "Each one is a place the campaign has yet to reach. Fixing one means pruning its line.",
+        ]);
+      }
+      case "prune": {
+        const targets =
+          id === undefined
+            ? policy.campaignRules
+            : [campaignNamed(policy, id)].filter((one) => one !== null);
+        if (id !== undefined && targets.length === 0) {
+          return yield* Effect.fail(fail(`no campaign is named "${id}"`));
+        }
+        const hits = hitsOf();
+        const lines: Array<string> = [];
+        for (const rule of targets) {
+          const ledger = policy.ledgers.get(rule.id);
+          if (ledger === undefined) {
+            lines.push(`${rule.id}: no ledger to prune (run \`campaigns init ${rule.id}\`).`);
+            continue;
+          }
+          const next = pruned(ledger, own(hits, rule.id), rule.unit, policy.now);
+          const removed = ledger.entries.length - next.entries.length;
+          const rewritten = next.entries.filter((entry) => !ledger.entries.includes(entry)).length;
+          if (removed === 0 && rewritten === 0) {
+            lines.push(`${rule.id}: nothing to prune.`);
+            continue;
+          }
+          yield* Effect.sync(() => {
+            writeLedger(policy, next);
+          });
+          lines.push(
+            `${rule.id}: ${count(removed, "entry", "entries")} pruned` +
+              (rewritten > 0 ? `, ${count(rewritten, "entry", "entries")} rewritten` : "") +
+              `; ${count(next.entries.length, "entry", "entries")} left.`,
+          );
+        }
+        return yield* report(lines);
+      }
+      case "allow": {
+        if (id === undefined)
+          return yield* Effect.fail(fail("campaigns allow needs a campaign id"));
+        const rule = campaignNamed(policy, id);
+        if (rule === null) return yield* Effect.fail(fail(`no campaign is named "${id}"`));
+        const ledger = policy.ledgers.get(id);
+        if (ledger === undefined) {
+          return yield* Effect.fail(
+            fail(`campaign ${id} has no ledger yet; run \`campaigns init ${id}\` first.`),
+          );
+        }
+        const reason = flagOf(argv, "--reason");
+        if (reason === undefined) {
+          return yield* Effect.fail(
+            fail(
+              "campaigns allow needs --reason <text>: growth is recorded with why, or not at all.",
+            ),
+          );
+        }
+        const by = authorOf(flagOf(argv, "--by"));
+        if (by === null) {
+          return yield* Effect.fail(
+            fail("campaigns allow needs an author: pass --by <email>, or set git's user.email."),
+          );
+        }
+        const state = reconcile(ledger, own(hitsOf(), id), rule.unit);
+        const unrecorded = [...new Set(state.unrecorded.map(entryOf))].sort();
+        // `--entries` allows a subset and refuses the rest: a pull request
+        // that legitimately adds one hit while another is an accident.
+        const chosen =
+          flagOf(argv, "--entries")
+            ?.split(",")
+            .map((one) => one.trim()) ?? unrecorded;
+        const unknown = chosen.filter((entry) => !unrecorded.includes(entry));
+        if (unknown.length > 0) {
+          return yield* Effect.fail(
+            fail(`these entries are not unrecorded hits of ${id}: ${unknown.join(", ")}`),
+          );
+        }
+        if (chosen.length === 0) {
+          return yield* report([`${id}: nothing to allow; every hit is in the ledger.`]);
+        }
+        const next = allowed(ledger, chosen, { at: policy.now, by, reason });
+        yield* Effect.sync(() => {
+          writeLedger(policy, next);
+        });
+        const left = unrecorded.filter((entry) => !chosen.includes(entry));
+        return yield* report([
+          `${id}: ${count(chosen.length, "entry", "entries")} allowed, recorded as a regression by ${by}.`,
+          ...chosen.map((entry) => `  ${entry}`),
+          ...(left.length === 0
+            ? []
+            : ["", `${count(left.length, "hit")} left unrecorded; check still fails on them.`]),
+        ]);
+      }
+      default:
+        return yield* Effect.fail(
+          fail(
+            `unknown campaigns subcommand "${subcommand}". Try: campaigns | campaigns init <id> | campaigns prune [<id>] | campaigns allow <id> --reason <text> [--by <email>] [--entries a,b]`,
+          ),
+        );
+    }
+  });
+
 export const run = (
   repoRoot: string,
   argv: ReadonlyArray<string>,
@@ -969,6 +1533,8 @@ export const run = (
     const roots = positional.length > 0 ? positional : ["packages"];
 
     switch (command) {
+      case "campaigns":
+        return yield* campaigns(policy, ["packages"], rest);
       case "check":
         return yield* check(policy, roots, {
           format: json ? "json" : "text",
@@ -996,7 +1562,7 @@ export const run = (
       default:
         return yield* Effect.fail(
           fail(
-            `unknown command "${command}". Try: check [--json] | conformance [--json] [--against <manifest>] | baseline | coverage | explain <file> | facts <file> [--json] | init | infer | migrate`,
+            `unknown command "${command}". Try: check [--json] | conformance [--json] [--against <manifest>] | baseline | campaigns [init <id> | prune [<id>] | allow <id> --reason <text>] | coverage | explain <file> | facts <file> [--json] | init | infer | migrate`,
           ),
         );
     }

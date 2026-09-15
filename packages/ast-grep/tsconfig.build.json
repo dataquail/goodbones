@@ -1,0 +1,18 @@
+{
+  // The packages this one imports by bare specifier, so `tsc -b` builds their
+  // declarations first: a bare `@goodbones/*` import resolves through the
+  // workspace link to `build/dts`, never through a path alias.
+  "references": [{ "path": "../core/tsconfig.build.json" }],
+  "extends": "./tsconfig.src.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "tsBuildInfoFile": ".tsbuildinfo/build.tsbuildinfo",
+    "outDir": "build/esm",
+    "declarationDir": "build/dts",
+    "stripInternal": true,
+    "composite": true,
+    "declaration": true,
+    "sourceMap": true
+  },
+  "include": ["src"]
+}

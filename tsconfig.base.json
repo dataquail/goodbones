@@ -58,6 +58,8 @@
       "@goodbones/core/*": ["./packages/core/src/*.ts"],
       "@goodbones/typescript": ["./packages/typescript/src/index.ts"],
       "@goodbones/typescript/*": ["./packages/typescript/src/*.ts"],
+      "@goodbones/ast-grep": ["./packages/ast-grep/src/index.ts"],
+      "@goodbones/ast-grep/*": ["./packages/ast-grep/src/*.ts"],
       "@goodbones/cli/*": ["./packages/cli/src/*.ts"],
       "@goodbones/oxlint": ["./packages/oxlint/src/plugin.ts"],
       "@goodbones/oxlint/*": ["./packages/oxlint/src/*.ts"]

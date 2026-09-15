@@ -5,6 +5,7 @@ import { defineWorkspace } from "vitest/config";
 export default defineWorkspace([
   "packages/core",
   "packages/typescript",
+  "packages/ast-grep",
   "packages/cli",
   "packages/oxlint",
 ]);

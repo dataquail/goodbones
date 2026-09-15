@@ -7,6 +7,7 @@
   "references": [
     { "path": "packages/core/tsconfig.build.json" },
     { "path": "packages/typescript/tsconfig.build.json" },
+    { "path": "packages/ast-grep/tsconfig.build.json" },
     { "path": "packages/cli/tsconfig.build.json" },
     { "path": "packages/oxlint/tsconfig.build.json" }
   ]

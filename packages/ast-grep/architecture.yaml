@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://dataquail.github.io/goodbones/schema/architecture-node.schema.json
+#
+# The @goodbones/ast-grep node of the repository's architecture policy. The
+# root architecture.yaml includes this file at `~/ast-grep/`; the globals it
+# shares — the aliases, the `defs` it uses, the graph rules — are written there.
+message: "@goodbones/ast-grep implements the core's SyntaxMatcher port over ast-grep, for the campaigns family's `syntax` term. It depends on the core and on nothing else in the repository; a host composes it into a language pack."
+layout: open
+imports:
+  message: "The matcher reaches the core's barrels, ast-grep, and its own siblings. It is the only package that may name ast-grep."
+  # The floor, then this package's own.
+  external: [effect, vitest, "@ast-grep/napi"]
+  allow: ["node:**", vitest.shared.ts, "@core/index.ts", "@core/testing.ts", "@ag/**"]
+children:
+  "src/":
+    layout: open
+    children: {}
+    surface:
+      - use: no-default-exports
+      - use: named-reexports-only
+  "**/": { layout: open, children: {} }

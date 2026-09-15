@@ -86,6 +86,7 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
+      "@ast-grep/napi",
       "@swc/core",
       "esbuild",
       "msgpackr-extract",

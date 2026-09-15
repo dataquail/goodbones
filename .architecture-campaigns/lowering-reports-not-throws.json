@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "id": "lowering-reports-not-throws",
+  "created": "2026-09-15T21:56:54.278Z",
+  "initial": 17,
+  "fixed": 0,
+  "lastProgress": "2026-09-15T21:56:54.278Z",
+  "regressions": [],
+  "entries": [
+    "packages/core/src/manifest/compile.ts#lower#3bfd86f4",
+    "packages/core/src/manifest/compile.ts#lower#46c58f35",
+    "packages/core/src/manifest/compile.ts#lowerCampaign#4c41ebb9",
+    "packages/core/src/manifest/compile.ts#lowerCampaign#b692e5f4",
+    "packages/core/src/manifest/compile.ts#probeSites#f46b0a25",
+    "packages/core/src/manifest/compile.ts#strayBasenameFor#ac6e45fc",
+    "packages/core/src/manifest/compile.ts#violatingSampleFor#0b6bb558",
+    "packages/core/src/manifest/compile.ts#violatingSampleFor#a0afd25d",
+    "packages/core/src/manifest/compile.ts#walk#2ab4504c",
+    "packages/core/src/manifest/compile.ts#walk#2f8d25fc",
+    "packages/core/src/manifest/compile.ts#walk#9c86c18e",
+    "packages/core/src/manifest/compile.ts#walk#a23b2a96",
+    "packages/core/src/manifest/compile.ts#walk#c9ab632b",
+    "packages/core/src/manifest/glob.ts#globToRegexSource#dcce3f13",
+    "packages/core/src/manifest/json-schema.ts#manifestJsonSchema#fc1a0eab",
+    "packages/core/src/manifest/json-schema.ts#manifestNodeJsonSchema#3035bbda",
+    "packages/core/src/manifest/json-schema.ts#manifestNodeJsonSchema#6fb85167"
+  ]
+}

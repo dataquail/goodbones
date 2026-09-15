@@ -14,9 +14,10 @@ pnpm add -D @goodbones/cli      # the `architecture` CLI: check, baseline, cover
 
 Both pull in `@goodbones/core` (the manifest schema and the evaluators) and
 `@goodbones/typescript` (the TypeScript language pack) transitively; you never install those
-directly until a second language pack exists. The pack resolves modules with
-[`unrs-resolver`](https://www.npmjs.com/package/unrs-resolver), which ships its own native
-binary; there is nothing else to configure at the OS level.
+directly until a second language pack exists. The pack parses files with
+[`oxc-parser`](https://www.npmjs.com/package/oxc-parser) and resolves modules with
+[`unrs-resolver`](https://www.npmjs.com/package/unrs-resolver); each ships its own native
+binary as a platform package, and there is nothing else to configure at the OS level.
 
 ## Wire it into oxlint
 

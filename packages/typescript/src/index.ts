@@ -3,7 +3,20 @@ import type { Language } from "@goodbones/core";
 import { makeFactExtractorLive } from "./extractor.js";
 import { makeModuleResolverLive, TYPESCRIPT } from "./resolver.js";
 
-export { factsOfText, makeFactExtractorLive } from "./extractor.js";
+export {
+  type EdgeForm,
+  factsOfText,
+  makeFactExtractorLive,
+  type ProgramBody,
+  type ReadBinding,
+  type ReadEdge,
+  type ReadExportSite,
+  type ReadFacts,
+  type ReadMemberSite,
+  readProgram,
+  sourceFactsOf,
+  type SyntaxNode,
+} from "./extractor.js";
 export { npmPackageOf } from "./npm-package.js";
 export { decodeTypescriptScopeOptions, type TypescriptScopeOptions } from "./options.js";
 export { makeModuleResolverLive, TYPESCRIPT } from "./resolver.js";

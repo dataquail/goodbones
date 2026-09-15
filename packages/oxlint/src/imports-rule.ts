@@ -5,20 +5,15 @@ import {
   rulesSelecting,
   type SelectedRule,
 } from "@goodbones/core";
+import type { ReadEdge } from "@goodbones/typescript";
 import * as Result from "effect/Result";
 
 import {
-  type CallNode,
-  type ImportEqualsNode,
-  importEqualsSpecifierOf,
-  type ImportExpressionNode,
-  importExpressionSpecifierOf,
+  at,
+  factsOfProgram,
   type OxlintRule,
-  type ReportableNode,
-  requireSpecifierOf,
+  type Program,
   type RuleContext,
-  type SourceNode,
-  specifierOf,
   toRepoRelative,
 } from "./oxlint-api.js";
 
@@ -44,32 +39,29 @@ export const makeImportsRule = (policy: LoadedPolicy): OxlintRule => ({
     let importer = "";
     let selected: ReadonlyArray<SelectedRule> = [];
 
-    const check = (node: ReportableNode, specifier: string | null): void => {
-      if (specifier === null) return;
-
+    const check = (edge: ReadEdge): void => {
+      const { specifier } = edge;
       const outcome = evaluateSelectedEdge(selected, policy.resolver, { importer, specifier });
 
       if (Result.isFailure(outcome)) {
         if (policy.config.resolve.unresolved === "off") return;
         if (policy.ignoreUnresolved.some((pattern) => pattern.test(specifier))) return;
-        context.report({ node, message: unresolvedMessage(specifier, outcome.failure.detail) });
+        context.report({
+          node: at(edge.node),
+          message: unresolvedMessage(specifier, outcome.failure.detail),
+        });
         return;
       }
 
       for (const violation of outcome.success) {
         if (policy.baseline.isBaselined(violation)) continue;
-        context.report({ node, message: formatMessage(violation) });
+        context.report({ node: at(edge.node), message: formatMessage(violation) });
       }
     };
 
-    const checkSource = (node: SourceNode): void => {
-      check(node, specifierOf(node));
-    };
-
-    // Every form that names a module is an edge. The CLI adapter reads the same
-    // five out of TypeScript's tree, and the parity suite holds the two to it: a
-    // `require` the plugin skipped would be a rule that enforces nothing under
-    // `oxlint` while failing under `architecture check`.
+    // Every form that names a module is an edge, and the pack's reader is
+    // what says which forms those are — the same reader the CLI reads a file
+    // through, so a form one host sees the other sees too.
     return {
       before() {
         importer = toRepoRelative(policy.repoRoot, context.filename);
@@ -77,19 +69,8 @@ export const makeImportsRule = (policy: LoadedPolicy): OxlintRule => ({
         selected = rulesSelecting(policy.importRules, importer);
         return selected.length > 0;
       },
-      ImportDeclaration: checkSource,
-      ExportNamedDeclaration: checkSource,
-      ExportAllDeclaration: checkSource,
-      // `import("m")` with a literal argument. A computed one is not a fact a
-      // static policy can speak about, in either adapter.
-      ImportExpression(node: ImportExpressionNode) {
-        check(node, importExpressionSpecifierOf(node));
-      },
-      CallExpression(node: CallNode) {
-        check(node, requireSpecifierOf(node));
-      },
-      TSImportEqualsDeclaration(node: ImportEqualsNode) {
-        check(node, importEqualsSpecifierOf(node));
+      Program(node: Program) {
+        for (const edge of factsOfProgram(importer, node).edges) check(edge);
       },
     };
   },

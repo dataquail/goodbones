@@ -23,7 +23,7 @@ describe("typescriptLanguage", () => {
     expect(ignored("thing.ts")).toBe(false);
   });
 
-  it("reads facts through the TypeScript parser", () => {
+  it("reads facts through oxc-parser", () => {
     const facts = language.extractor.factsOf("x.ts", `import { a } from "m";`);
     expect(facts.specifiers).toEqual(["m"]);
   });

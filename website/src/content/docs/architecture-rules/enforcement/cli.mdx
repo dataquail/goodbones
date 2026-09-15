@@ -32,11 +32,13 @@ oxlint's JS plugin API is alpha. A policy that only one alpha host can evaluate 
 point of failure, and the policy is the valuable artefact — it should outlive any particular
 way of running it.
 
-The CLI covers **all five per-file families, and the graph.** Where the plugin reads oxlint's syntax tree, the CLI
-reads TypeScript's, and the two meet at the same vocabulary — a specifier, a binding, a
-member site — so both answer to the same core rather than to each other. That shared core is
-what makes the second adapter a check on the first rather than a second implementation to
-keep in sync.
+The CLI covers **all five per-file families, and the graph.** Where the plugin reads the
+syntax tree oxlint hands it, the CLI parses each file itself with
+[oxc-parser](https://www.npmjs.com/package/oxc-parser) — the same parser oxlint is built on,
+emitting the same tree — and one reader in the TypeScript pack turns either tree into the
+same vocabulary: a specifier, a binding, a member site. Both hosts answer to the same core
+rather than to each other, and that shared core is what makes the second adapter a check on
+the first rather than a second implementation to keep in sync.
 
 It is also the only way to write a baseline, which needs every finding at once rather than
 one file at a time.

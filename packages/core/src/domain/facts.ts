@@ -1,9 +1,9 @@
 import type { BindingKind, DeclarationKind, MemberSubject } from "./architecture-config.js";
 
-// What a policy can know about one source file, read once. Both adapters
-// produce this vocabulary — the plugin from oxlint's syntax tree, the CLI from
-// TypeScript's — which is what keeps them answerable to the same core rather
-// than to each other. A rule is evaluated against these and nothing else.
+// What a policy can know about one source file, read once. A language pack
+// produces this vocabulary out of its syntax tree, and both hosts read it —
+// which is what keeps them answerable to the same core rather than to each
+// other. A rule is evaluated against these and nothing else.
 
 // One name pulled across one import edge: `import { makeCommandBus } from "…"`
 // is a single binding, and so is the `Effect` in `import { Effect } from "effect"`.

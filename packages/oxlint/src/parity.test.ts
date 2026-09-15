@@ -39,17 +39,20 @@ import { makeSurfaceRule } from "./surface-rule.js";
 RuleTester.describe = describe;
 RuleTester.it = it;
 
-// The two adapters read facts out of two different syntax trees and claim to
-// meet at one vocabulary. This suite is that claim, tested: every snippet below
-// is parsed by TypeScript through the CLI's extractor, the facts it yields are
-// turned into the diagnostics a rule that fires on *everything* would produce,
-// and the oxlint rule is then required to produce exactly those diagnostics
-// from the same snippet.
+// Both hosts read facts through one reader, the pack's `readProgram`, over
+// one ESTree shape — the CLI parses with oxc-parser, oxlint parses with its
+// own build of the same parser and hands the plugin the tree. This suite pins
+// that the two parsers, at their paired versions, produce the tree the reader
+// expects: every snippet below is parsed by oxc-parser through `factsOfText`,
+// the facts it yields are turned into the diagnostics a rule that fires on
+// *everything* would produce, and the oxlint rule is then required to produce
+// exactly those diagnostics from the same snippet through oxlint's parse.
 //
-// A form one adapter sees and the other does not fails here, not in a user's
+// A bump of `oxlint` or `oxc-parser` alone — a node renamed, a field moved, a
+// form one parser emits and the other does not — fails here, not in a user's
 // CI as a policy that holds under `architecture check` and not under `oxlint`.
-// A form both are blind to — `interface`, a class body — passes; widening one
-// adapter without the other is the failure this exists to catch.
+// The corpus-completeness tests at the end pin what the reader reads, so a
+// form the reader quietly stopped seeing fails too.
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -58,7 +61,7 @@ type Fixture = { readonly file: string; readonly code: string };
 const CORPUS: ReadonlyArray<Fixture> = [
   {
     // Every syntactic form that names a module, with and without bindings —
-    // and, at the end, the two computed forms neither adapter can read.
+    // and, at the end, the two computed forms the reader cannot read.
     file: "parity/edges.ts",
     code: `
 import "side-effect";
@@ -94,6 +97,7 @@ f();
 x.f();
 x.y.f();
 x?.f();
+(x.f)();
 f(g());
 x[key]();
 x["f"]();
@@ -108,9 +112,9 @@ export { C };
 `,
   },
   {
-    // Every declaration shape a port might take — the ones both adapters read,
-    // and the ones both step over, so that reading a new one is a change to
-    // both adapters or to neither.
+    // Every declaration shape a port might take — the ones the reader reads,
+    // and the ones it steps over, so that reading a new one is a change made
+    // here on purpose.
     file: "parity/type-members.ts",
     code: `
 export type Alias = {
@@ -140,8 +144,8 @@ export type Mapped = { [K in "a"]: string };
 `,
   },
   {
-    // Every member shape a class body can carry — the ones both adapters read
-    // under the class's name, and the ones both step over: a constructor, a
+    // Every member shape a class body can carry — the ones the reader reads
+    // under the class's name, and the ones it steps over: a constructor, a
     // private `#name`, a computed key, an index signature, and the two
     // shapes that are not a named class declaration at all.
     file: "parity/class-members.ts",
@@ -155,6 +159,7 @@ export class Live {
   static d(): void {}
   "e-f"(): void {}
   readonly g?: number;
+  accessor n = 1;
   #h(): void {}
   [key]: string;
   [index: string]: unknown;
@@ -178,11 +183,13 @@ export const L = class { m(): void {} };
 export const a = 1, b = 2;
 export let { c, d: [e] } = { c: 1, d: [2] };
 export function f() {}
+export declare function df(): void;
 export class C {}
 export type T = string;
 export interface I { x: number }
 export enum E { A }
 export namespace Exported { export const inner = 1; }
+export namespace Dotted.Inner { export const inner = 1; }
 const local = 1;
 type LocalT = number;
 export { local, LocalT as Renamed };
@@ -370,9 +377,9 @@ new RuleTester({ cwd: repoRoot }).run(
   casesFor(expectedSurface),
 );
 
-// The suites above only prove the plugin agrees with the CLI. This pins what
-// the CLI itself reads, so the corpus cannot quietly stop exercising a form —
-// if both adapters lost `require`, the parity suites would still pass.
+// The suites above only prove the two parses agree. This pins what the reader
+// reads, so the corpus cannot quietly stop exercising a form — if the reader
+// lost `require`, the parity suites would still pass.
 describe("the corpus exercises every form", () => {
   const facts = (file: string) => {
     const found = cliFacts.find((one) => one.fixture.file === file);
@@ -426,7 +433,7 @@ describe("the corpus exercises every form", () => {
     const called = facts("parity/calls.ts")
       .memberSites.filter((site) => site.subject === "calls")
       .map((site) => site.name);
-    expect(called).toEqual(["f", "f", "f", "f", "f", "g"]);
+    expect(called).toEqual(["f", "f", "f", "f", "f", "f", "g"]);
   });
 
   it("reads every export form, top level only", () => {
@@ -439,11 +446,13 @@ describe("the corpus exercises every form", () => {
       "named:c:variable",
       "named:e:variable",
       "named:f:function",
+      "named:df:function",
       "named:C:class",
       "named:T:type",
       "named:I:interface",
       "named:E:enum",
       "named:Exported:other",
+      "named:Dotted:other",
       "named:local:variable",
       "named:Renamed:type",
       "named:TT:type",
@@ -487,6 +496,7 @@ describe("the corpus exercises every form", () => {
       "Live.d:class",
       "Live.e-f:class",
       "Live.g:class",
+      "Live.n:class",
       "Port.i:class",
       "Port.j:class",
     ]);

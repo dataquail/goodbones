@@ -1,8 +1,8 @@
 import { exports, type FileContent, imports, type Profile, source } from "../profile.js";
 
 // One planted violation per family, and one tree both hosts are run over: the
-// CLI proves all six fire through the bin, and the plugin is held to the same
-// per-file answer. Every fingerprint below is what `check --json` reports.
+// CLI proves all seven fire through the bin, and the plugin is held to the
+// same per-file answer. Every fingerprint below is what `check --json` reports.
 
 export const everyFamilyManifest = (profile: Profile): Readonly<Record<string, unknown>> => ({
   resolve: { scopes: [profile.scope], unresolved: "error" },
@@ -33,6 +33,19 @@ export const everyFamilyManifest = (profile: Profile): Readonly<Record<string, u
       symbols: ["makeBus"],
     },
   ],
+  // campaigns: a file still under legacy/, with no ledger to carry it.
+  campaigns: [
+    {
+      id: "legacy-to-modern",
+      why: "Nothing new is written under legacy/.",
+      how: "Move the module out of legacy/.",
+      scope: ["src/**"],
+      unit: "file",
+      detect: { path: { file: "^src/legacy/" } },
+      probes: { fires: [{ path: "src/legacy/old.ts" }], ignores: [{ path: "src/new.ts" }] },
+      staleAfter: "30d",
+    },
+  ],
   tree: {
     "src/": {
       message: "src/ admits pure/, adapters/, ports/ and a view.",
@@ -40,6 +53,7 @@ export const everyFamilyManifest = (profile: Profile): Readonly<Record<string, u
       children: {
         "pure/": { layout: "open", children: {} },
         "adapters/": { layout: "open", children: {} },
+        "legacy/": { layout: "open", children: {} },
         "ports/": {
           message: "ports/ holds a *.repository.ts beside its -live.ts.",
           children: {
@@ -87,6 +101,8 @@ export const everyFamilyFiles: Readonly<Record<string, FileContent>> = {
   }),
   // structure: a file ports/ does not admit.
   "src/ports/stray.ts": exports("stray"),
+  // campaigns: a file the legacy-to-modern campaign still counts.
+  "src/legacy/old.ts": exports("old"),
   // surface: a named export.  members: a stateful hook.
   "src/thing.view.ts": source({ exports: ["V"], declares: [{ calls: "useState" }] }),
   // graph/cycles: two files that import each other.  graph/orphans: a file
@@ -113,4 +129,5 @@ export const everyFamilyFingerprints = {
   cycle: "graph|no-cycles|lib/a.ts|lib/a.ts ↔ lib/b.ts",
   orphan: "graph|no-orphans|lib/orphan.ts|",
   reach: "graph|pure-reaches-no-adapter|src/pure/calc.ts|src/adapters/db.ts",
+  campaign: "campaign|campaign/legacy-to-modern|src/legacy/old.ts|",
 } as const;

@@ -1,0 +1,237 @@
+---
+title: Campaigns
+description: Tracking a migration as an object in the manifest — a detector, a rationale, a guide, an owner, a definition of done, and a ledger that only shrinks on its own.
+---
+
+Most debt paydown is an incremental migration: every class component to hooks, every page
+under `pages/` to `app/`, every direct use of a vendor SDK behind one facade, every
+`snake_case` file name to `kebab-case`. The work is too big for one change, so it is cut
+into tickets, and the tickets become the only record of how far it has got. Nothing static
+enforces that the count goes down; nothing tells someone editing a file that the file is
+inside a migration; nothing notices when a migration has quietly stopped.
+
+`campaigns` makes the migration an object in the repository. Where a rule says what may
+never happen, a campaign names what the code is moving **away from**, ledgers every place
+it still occurs, and refuses to let the count go up unrecorded.
+
+```yaml
+campaigns:
+  - id: react-class-components
+    title: Class components to hooks
+    why: Class lifecycle methods block concurrent features and the new testing setup.
+    how: |
+      Convert to a function component. componentDidMount becomes useEffect with [],
+      state becomes useState or useReducer. See docs/migrations/hooks.md.
+    owner: "@dataquail/web-platform"
+    scope: ["apps/web/src/**"]
+    unit: declaration
+    detect:
+      syntax:
+        pattern: "class $NAME extends $BASE { $$$ }"
+        where:
+          BASE: { binding: { resolves: { external: react }, member: [Component, PureComponent] } }
+    probes:
+      fires:
+        - path: apps/web/src/a.tsx
+          source: "import { Component } from 'react'; export class Foo extends Component {}"
+          edges: { react: { external: react } }
+      ignores:
+        - { path: apps/web/src/b.tsx, source: "class Foo extends Base {}" }
+    staleAfter: 30d
+    onComplete: keep
+```
+
+| Field        | Meaning                                                                                                      |
+| ------------ | ------------------------------------------------------------------------------------------------------------ |
+| `id`         | kebab-case; the ledger's file name and the rule name's tail (`campaign/<id>`)                                |
+| `why`        | the rationale, printed by `explain` and `conformance`                                                        |
+| `how`        | what a reader at a hit does about it — the message every hit carries                                         |
+| `owner`      | who is running it; printed in the status table                                                               |
+| `scope`      | which files it selects: alias-aware globs, as [`graph`](/goodbones/architecture-rules/manifest/graph/) takes |
+| `unit`       | what a hit is — `file`, `declaration` or `match` — see [The unit](#the-unit)                                 |
+| `detect`     | the detector: `all`, `any`, `not` over the [terms](#terms)                                                   |
+| `probes`     | sources it must fire on and stay silent on — see [Probes](#probes)                                           |
+| `staleAfter` | `14d`, `12h`: how long without progress before the report calls it stalled                                   |
+| `onComplete` | `keep` (the default — stays as a guard against recurrence) or `remove` (`check` fails until it is deleted)   |
+
+A campaign is a rule, a [baseline](/goodbones/architecture-rules/enforcement/baseline/) and a
+[conformance](/goodbones/architecture-rules/enforcement/conformance/) measure with one thing
+the other families lack: a way to name a pattern the import graph cannot see. Its findings
+are of kind `campaign`, and they are judged against the campaign's
+[ledger](/goodbones/architecture-rules/enforcement/ledger/), never against the baseline.
+
+## The unit
+
+A campaign declares what a hit **is**, and that decides both what its ledger entries look
+like and what a term from another level means.
+
+| Unit          | A hit is…                       | Entry              | Fingerprint subject                                            |
+| ------------- | ------------------------------- | ------------------ | -------------------------------------------------------------- |
+| `file`        | a whole file                    | `file`             | _(none)_                                                       |
+| `declaration` | a named declaration in the file | `file#Name`        | the declaration's name                                         |
+| `match`       | one matched expression          | `file#Anchor#hash` | the enclosing declaration and a short hash of the matched text |
+
+Fingerprints anchor on declarations, never on positions, so an entry survives a reformat
+as a baseline entry does. A `match` entry's hash changes when the matched text changes; an
+edit elsewhere inside the same declaration leaves the anchor in place, and `check` treats
+the entry as the same one — `campaigns prune` rewrites the hash without counting it as
+progress. A match at the top level of a file has no anchor and is keyed by its hash alone.
+
+Every term answers at one level. `path`, `imports`, `requires`, `content` and a `fn` that
+returns a boolean are statements about the **file**; `exports` and `members` are about a
+**declaration**; `syntax` and a `fn` that returns a list are about a **match**. The unit
+decides what a term from another level means:
+
+- In a **`file`** campaign every term is existential — _the file contains one_ — and `not`
+  is _contains none_. The campaign yields at most one hit per file.
+- In a **`declaration`** or **`match`** campaign, the candidates are what the declaration-
+  and match-level terms produce. A file-level term is a **filter** over all of them: true
+  admits every candidate, false admits none. A declaration-level term in a `match`
+  campaign speaks to the match's anchor; a match-level term in a `declaration` campaign
+  sources the declaration each match sits in.
+- `not` is the complement **within those candidates**. `all: [syntax A, not syntax B]` is
+  the declarations A matches that B does not. `not syntax B` alone is nothing at all —
+  there is no universe of "every other declaration" to draw from — and a probe will say
+  so at load.
+
+## Terms
+
+| Term       | Shape                                       | Holds when…                                                                                                                                                                   |
+| ---------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `path`     | `{ file, fileNot?, subject?, convention? }` | the repo-relative path matches `file` (a regular expression) and not `fileNot`; with `subject` and `convention`, the capture group named has the convention's shape           |
+| `imports`  | `{ resolves, symbols? }`                    | some import of the file resolves to the target — a path glob, `{ external: <package> }` or `{ builtin: <module> }` — and, with `symbols`, pulls one of those names across it  |
+| `exports`  | `{ name?, kinds?, declares?, reexport? }`   | an export site the [`surface`](/goodbones/architecture-rules/manifest/surface/) selectors admit                                                                               |
+| `members`  | `{ subject, name?, in?, declares? }`        | a member or called name the [`members`](/goodbones/architecture-rules/manifest/members/) selectors admit; `calls` is about the file, `members` about the declaration it is in |
+| `requires` | `["{base}.test.ts", …]`                     | every named sibling exists — the [`structure`](/goodbones/architecture-rules/manifest/structure/) parity strings                                                              |
+| `content`  | `{ regex }`                                 | the regular expression matches the file's text (multiline)                                                                                                                    |
+| `syntax`   | an ast-grep rule, plus `where`              | the engine finds a node — see [The syntax term](#the-syntax-term)                                                                                                             |
+| `fn`       | `"module#export"`                           | the function answers `true`, or lists subjects — see [The function term](#the-function-term)                                                                                  |
+
+Each term is an object with exactly one key, so a misspelled one is a decode error naming
+the line rather than a term that quietly matches nothing. `path.convention` is one of
+`kebab-case`, `camelCase`, `PascalCase`, `snake_case` or `{ regex }`; the `path` term reads
+positively — _the name has this shape_ — so a rename campaign detects the old shape.
+
+## Composition
+
+`all`, `any` and `not` compose terms, and each other, to any depth — the same three words
+ast-grep uses inside a rule.
+
+```yaml
+- id: rsc-boundaries
+  why: A component that uses client-only APIs must say so, or the server render fails at runtime.
+  how: Add the `use client` directive at the top of the file, or move the hook into a client component.
+  scope: ["app/**"]
+  unit: file
+  detect:
+    all:
+      - not: { content: { regex: '^["'']use client["'']' } }
+      - any:
+          - syntax: { pattern: "$HOOK($$$)", where: { HOOK: { regex: "^use[A-Z]" } } }
+          - imports: { resolves: { external: framer-motion } }
+          - fn: ./campaigns/rsc.mjs#needsClientBoundary
+  probes:
+    fires: [{ path: app/x.tsx, source: "export default () => { useState(); }" }]
+  staleAfter: 30d
+```
+
+Terms are evaluated cheapest first — the path, then the facts the parser already produced
+(`imports`, `exports`, `members`), then the file system (`requires`), the text
+(`content`), the syntax tree (`syntax`, parsed once per file and shared by every campaign),
+and last a predicate function. An `all` stops at the first file-level term that fails, so a
+`path` term in front of a `syntax` term is what keeps the parse off files the campaign
+was never about.
+
+## The syntax term
+
+The `syntax` term is an [ast-grep](https://ast-grep.github.io/reference/rule.html) rule
+object — `pattern`, `kind`, `regex`, `has`, `inside`, `precedes`, `follows`, `nthChild`,
+`all`, `any`, `not` — with `where` beside it. Metavariables are `$NAME` for one node and
+`$$$` for any number. A pattern is matched structurally, so `class $NAME extends $BASE { $$$ }`
+finds a class whatever its body says, and `$HOOK($$$)` finds every call.
+
+`where` narrows a metavariable:
+
+```yaml
+where:
+  HOOK: { regex: "^use[A-Z]" }
+  BASE: { binding: { resolves: { external: react }, member: [Component, PureComponent] } }
+```
+
+`regex` is over the text the metavariable captured. `binding` follows the identifier at the
+root of the capture back to the import that bound it — `C` in
+`import { Component as C }`, `React` in `import React from "react"` — resolves that edge
+the way every other rule resolves one, and checks the target against `resolves` and the
+name pulled across against `member`: the exported name for a named import, the property
+accessed (`React.Component` → `Component`) for a default or namespace one. This is how
+_"a class that extends a React component"_ is said without listing every alias the file
+might use, and it is done in the core against the file's facts, not by the engine.
+
+The names `kind` takes, inside `has` and `inside` too, are the engine's node kinds — and
+the engine is ast-grep, so they are tree-sitter's for the grammar the file is parsed with:
+`class_declaration`, `call_expression`, `arrow_function`. A relational rule (`has`, `inside`)
+searches the immediate children or ancestors unless it says `stopBy: end`. `pattern` is
+engine-neutral by construction; a later matcher over a different tree would ship a
+documented kind mapping rather than a compatibility surprise.
+
+The matcher is `@goodbones/ast-grep`, which both hosts compose into the TypeScript pack.
+The plugin parses `sourceCode.text` with the same matcher the CLI uses, so this family's
+parity contract is _one engine_ rather than a corpus. A campaign whose `scope` covers a
+language with no matcher is refused at load, with the language named.
+
+## The function term
+
+`fn: ./campaigns/rsc.mjs#needsClientBoundary` names an export of a module, resolved relative
+to the root manifest. The host imports it before the policy loads and refuses a reference
+whose export is not a function. A `.mjs` manifest may hold the function itself in place of
+the string.
+
+```js
+/** @type {import("@goodbones/core").CampaignPredicate} */
+export const needsClientBoundary = ({ file, text, facts, syntax }) =>
+  facts.specifiers.some((one) => one.startsWith("@vendor/browser-")) ||
+  (syntax?.findAll({ pattern: "window.$X" }).length ?? 0) > 0;
+```
+
+It is given the file's path, its text, its facts (`specifiers`, `bindings`, `memberSites`,
+`exportSites`) and its syntax tree (`null` without a matcher), and answers either a boolean —
+a statement about the file — or a list of `{ subject, range? }`: declaration names in a
+`declaration` campaign, ledger keys of its own choosing in a `match` one. `CampaignPredicate`
+is exported from `@goodbones/core` so the module typechecks on its own. The function runs
+last, after every other term, and only when the cheaper ones have not already decided.
+
+## Probes
+
+Every campaign carries probes, and a campaign that fails one refuses to load — the same
+vacuity check every rule makes, with a second half. `probes.fires` (at least one) are
+sources the campaign must report; `probes.ignores` are sources it must stay silent on, and
+when one of those fires the error names the first leaf term that admitted it — which,
+for a detector that is composed, is the term to tighten.
+
+A probe is a `path` — the file it stands for, which must be inside the campaign's own
+`scope` — and, for a detector that reads the file, a `source`: a snippet parsed by the
+scope's language and matcher at load. `edges` maps each specifier in the snippet to its
+target in place of the live resolver, in the same three forms `imports.resolves` takes, and
+`files` lists the siblings that exist in place of the file system. A detector holding a
+`content`, `syntax`, `exports`, `members` or `fn` term is refused at lowering if any of its
+probes has no `source`, since a path alone cannot exercise it.
+
+```yaml
+probes:
+  fires:
+    - path: src/legacy/util.ts
+      source: 'import { sdk } from "vendor"; export const x = sdk();'
+      edges: { vendor: { external: vendor } }
+      files: [src/legacy/util.test.ts]
+  ignores:
+    - path: src/util.ts
+      source: "export const x = 1;"
+```
+
+## What it does not do
+
+A campaign joins no coverage row: its reach is its `scope`, so the coverage numbers and the
+residue are unchanged by adding one. It fixes nothing — a campaign says what and why;
+codemods say how. And it walks what the language pack walks: the TypeScript pack visits
+`.ts`, `.tsx`, `.mts` and `.cts`, so a campaign over `.js` files has nothing to see until
+the pack does.

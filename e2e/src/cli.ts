@@ -46,7 +46,8 @@ export const cli = (
 
 // The shape `check --json` prints. Declared here rather than imported, since
 // this is the contract under test.
-export type ViolationKind = "import" | "export" | "structure" | "member" | "surface" | "graph";
+export type ViolationKind =
+  "import" | "export" | "structure" | "member" | "surface" | "graph" | "campaign";
 
 export type CheckJson = {
   readonly version: 1;
@@ -62,6 +63,7 @@ export type CheckJson = {
     readonly subject: string | null;
     readonly message: string;
     readonly baselined: boolean;
+    readonly ledgered: boolean;
   }>;
   readonly unresolved: ReadonlyArray<{
     readonly file: string;
@@ -79,6 +81,18 @@ export type CheckJson = {
     readonly unrestricted: ReadonlyArray<string>;
     readonly partial: ReadonlyArray<string>;
   };
+  readonly campaigns: ReadonlyArray<{
+    readonly id: string;
+    readonly count: number;
+    readonly new: ReadonlyArray<string>;
+    readonly stale: ReadonlyArray<string>;
+    readonly drifted: number;
+    readonly missingLedger: boolean;
+    readonly arithmetic: boolean;
+    readonly complete: boolean;
+    readonly stalled: boolean;
+    readonly onComplete: "keep" | "remove";
+  }>;
 };
 
 export type CheckResult = CliResult & { readonly json: CheckJson };
@@ -108,6 +122,6 @@ export const fingerprintsOf = (json: CheckJson): ReadonlyArray<string> =>
 
 export const reportableOf = (json: CheckJson): ReadonlyArray<string> =>
   json.violations
-    .filter((one) => !one.baselined)
+    .filter((one) => !one.baselined && !one.ledgered)
     .map((one) => one.fingerprint)
     .sort();

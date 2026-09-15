@@ -21,6 +21,7 @@ const RULE_OF: Readonly<Record<string, string>> = {
   member: "architecture/members",
   structure: "architecture/structure",
   surface: "architecture/surface",
+  campaign: "architecture/campaigns",
 };
 
 let repo: Repo;
@@ -63,6 +64,25 @@ describe("plugin parity", () => {
     }
   });
 
+  // The campaign's ledger is read by both hosts: once the hit is ledgered,
+  // the plugin is as silent about it as check is.
+  it("is silent about a ledgered campaign hit in both hosts", () => {
+    const ledgered = createRepo({ files: everyFamilyFiles });
+    ledgered.writeManifest(everyFamilyManifest(ledgered.profile));
+    try {
+      const init = cli(ledgered, ["campaigns", "init", "legacy-to-modern", ...EVERY_FAMILY_ROOTS]);
+      expect(init.code, init.stderr).toBe(0);
+      const { json } = check(ledgered, EVERY_FAMILY_ROOTS);
+      const hit = json.violations.find((one) => one.kind === "campaign");
+      expect(hit?.ledgered).toBe(true);
+      const linted = oxlint(ledgered, EVERY_FAMILY_ROOTS);
+      expect(linted.loaded, linted.stdout + linted.stderr).toBe(true);
+      expect(linted.diagnostics.filter((one) => one.rule === "architecture/campaigns")).toEqual([]);
+    } finally {
+      ledgered.dispose();
+    }
+  });
+
   it("is clean under oxlint once check is clean of per-file findings", () => {
     const fixed = createRepo({
       files: {
@@ -73,6 +93,7 @@ describe("plugin parity", () => {
       },
     });
     fixed.remove("src/ports/stray.ts");
+    fixed.remove("src/legacy/old.ts");
     fixed.writeManifest(everyFamilyManifest(fixed.profile));
     try {
       const { json } = check(fixed, EVERY_FAMILY_ROOTS);

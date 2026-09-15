@@ -13,7 +13,14 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const PLUGIN = path.resolve(here, "../../packages/oxlint/build/esm/plugin.js");
 const OXLINT = path.resolve(here, "../node_modules/.bin/oxlint");
 
-export const RULES = ["imports", "exports", "members", "structure", "surface"] as const;
+export const RULES = [
+  "imports",
+  "exports",
+  "members",
+  "structure",
+  "surface",
+  "campaigns",
+] as const;
 
 export type Diagnostic = {
   readonly file: string;

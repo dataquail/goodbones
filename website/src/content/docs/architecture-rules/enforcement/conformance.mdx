@@ -141,7 +141,25 @@ carries a description in the schema.
     { "node": "cli", "kind": "allow", "entry": "packages/core/src/testing.ts" }
   ],
   "concentration": [],
-  "adoption": { "unrestricted": [], "partial": [] }
+  "adoption": { "unrestricted": [], "partial": [] },
+  "campaigns": [
+    {
+      "id": "lowering-reports-not-throws",
+      "title": "Lowering reports through Result, not by throwing",
+      "owner": "@dataquail",
+      "initial": 17,
+      "allowed": 0,
+      "count": 17,
+      "fixed": 0,
+      "progress": 0,
+      "lastProgress": "2026-09-15T21:56:54.278Z",
+      "regressions": 0,
+      "stalled": false,
+      "complete": false,
+      "onComplete": "keep",
+      "ledgered": true
+    }
+  ]
 }
 ```
 
@@ -163,6 +181,15 @@ would have exited with. The rest is the measurement:
   fragment's name.
 - `concentration` — every fragment entry used at some of the nodes granted it and not
   the rest, with `usedAt` and `of`. Not counted as slack.
+- `campaigns` — every [campaign](/goodbones/architecture-rules/manifest/campaigns/) the
+  manifest declares, with its [ledger](/goodbones/architecture-rules/enforcement/ledger/)'s
+  burn-down: `initial`, `allowed`, `count`, `fixed`, `progress`
+  (`1 − count / (initial + allowed)`), `lastProgress`, how many `regressions` were
+  recorded, and whether it is `stalled` (entries left, and `lastProgress` older than its
+  `staleAfter`) or `complete`. A campaign with no ledger yet says `ledgered: false`. The
+  text report leads its campaigns section with the stalled and the complete ones — a
+  migration nobody is working on, and one that is finished and still declared, are the two
+  things a reader of this report most needs told.
 
 Two things make a snapshot comparable across commits. `manifest.sha256` says whether the
 policy changed between them, so a coverage drop is attributable to the tree or to the

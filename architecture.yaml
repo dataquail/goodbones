@@ -114,11 +114,11 @@ limits:
   partial: 0
   # Every folder here is `layout: open`, so structure is 0% enumerated and
   # states no floor. The rest are the numbers on the day they were written:
-  # 2026-09-15, after the pack moved to oxc-parser — members is 58/95 (every
-  # file under the core's `src/`, which prints nothing), surface 91/95 (every
-  # file under a `src/`; the four `vitest.config.ts` are the remainder), graph
-  # 55/95 (every non-test file under a `src/`; the pack's new extractor test
-  # moved it from 58%).
+  # 2026-09-15, after the campaigns family and its matcher package landed —
+  # members is 66/109 (every file under the core's `src/`, which prints
+  # nothing), surface 104/109 (every file under a `src/`; the five
+  # `vitest.config.ts` are the remainder), graph 64/109 (every non-test file
+  # under a `src/`). A campaign joins no coverage row: its reach is its scope.
   coverage: { imports: 1, members: 0.6, surface: 0.95, graph: 0.57 }
 
 # The shape of the whole graph — evaluated by `architecture check`, which

@@ -16,7 +16,7 @@ const PatternList = Schema.Union([Schema.String, Schema.Array(Schema.String)]);
 // importer path. `to` is the target in one of three forms, and the form is its
 // dependency kind: a repo-relative resolved path is `local`, `{ external }`
 // names a third-party package, `{ builtin }` names a runtime module.
-const ImportProbeTarget = Schema.Union([
+export const ImportProbeTarget = Schema.Union([
   Schema.String,
   Schema.Struct({ external: Schema.String }),
   Schema.Struct({ builtin: Schema.String }),
@@ -295,6 +295,144 @@ export const GraphConfig = Schema.Struct({
   reach: Schema.optionalKey(Schema.Array(GraphReachRule)),
 });
 
+// A campaign: a migration tracked as an object in the repository. Where a
+// rule says what may never happen, a campaign names a pattern the code is
+// moving away from, ledgers every place it still occurs, and refuses to let
+// the count go up unrecorded. Lowered from the manifest's `campaigns` list
+// with its globs resolved; the detector below is what the evaluator compiles.
+
+// What a hit is: a whole file, a named declaration in it, or one matched
+// expression. The unit decides what a term from another level means (a
+// file-level term in a declaration campaign is a filter; a declaration-level
+// term in a file campaign is existential) and what the fingerprint anchors on.
+export const CampaignUnit = Schema.Literals(["file", "declaration", "match"]);
+
+// The detector's leaf terms. Every pattern is a regular-expression source,
+// as everywhere else in this config; the manifest writes globs and lowering
+// translates them. Each term answers at one level — `path`, `imports`,
+// `requires`, `content` and a boolean `fn` about the file; `exports` and
+// `members` about a declaration; `syntax` and a listing `fn` about a match.
+const PathTerm = Schema.Struct({
+  file: PatternList,
+  fileNot: Schema.optionalKey(PatternList),
+  // With `convention`: which capture group of `file` holds the name being
+  // judged, and the shape it must have for the term to hold.
+  subject: Schema.optionalKey(Schema.Finite),
+  convention: Schema.optionalKey(Schema.String),
+});
+export type PathTerm = (typeof PathTerm)["Type"];
+
+const ImportsTerm = Schema.Struct({
+  // Where an edge of the file must resolve to: a path pattern, a package
+  // name, or a builtin. Holds when at least one edge does.
+  resolves: ImportProbeTarget,
+  // Names that must be pulled across that edge; omit for any binding.
+  symbols: Schema.optionalKey(Schema.Array(Schema.String)),
+});
+export type ImportsTerm = (typeof ImportsTerm)["Type"];
+
+const ExportsTerm = Schema.Struct({
+  name: Schema.optionalKey(PatternList),
+  kinds: Schema.optionalKey(Schema.Array(BindingKind)),
+  declares: Schema.optionalKey(Schema.Array(DeclarationKind)),
+  reexport: Schema.optionalKey(Schema.Boolean),
+});
+export type ExportsTerm = (typeof ExportsTerm)["Type"];
+
+const MembersTerm = Schema.Struct({
+  subject: MemberSubject,
+  name: Schema.optionalKey(PatternList),
+  in: Schema.optionalKey(PatternList),
+  declares: Schema.optionalKey(Schema.Array(DeclarationKind)),
+});
+export type MembersTerm = (typeof MembersTerm)["Type"];
+
+const ContentTerm = Schema.Struct({ regex: Schema.String });
+type ContentTerm = (typeof ContentTerm)["Type"];
+
+// How a metavariable of a syntax rule is narrowed: by the text it captured,
+// or by what the identifier at its root is bound to — the module it was
+// imported from and the name it was imported as.
+const BindingNarrowing = Schema.Struct({
+  resolves: ImportProbeTarget,
+  member: Schema.optionalKey(Schema.Array(Schema.String)),
+});
+
+const CaptureNarrowing = Schema.Struct({
+  regex: Schema.optionalKey(Schema.String),
+  binding: Schema.optionalKey(BindingNarrowing),
+});
+
+const SyntaxTerm = Schema.Struct({
+  // The engine's rule object, carried opaquely: the matcher validates it.
+  rule: Schema.Unknown,
+  where: Schema.optionalKey(Schema.Record(Schema.String, CaptureNarrowing)),
+});
+export type SyntaxTerm = (typeof SyntaxTerm)["Type"];
+
+export type Detector =
+  | { readonly all: ReadonlyArray<Detector> }
+  | { readonly any: ReadonlyArray<Detector> }
+  | { readonly not: Detector }
+  | { readonly path: PathTerm }
+  | { readonly imports: ImportsTerm }
+  | { readonly exports: ExportsTerm }
+  | { readonly members: MembersTerm }
+  | { readonly requires: ReadonlyArray<string> }
+  | { readonly content: ContentTerm }
+  | { readonly syntax: SyntaxTerm }
+  // `module#export`, resolved by the host before the policy loads.
+  | { readonly fn: string };
+
+const DetectorRef = Schema.suspend((): Schema.Codec<Detector> => Detector);
+
+export const Detector = Schema.Union([
+  Schema.Struct({ all: Schema.Array(DetectorRef) }),
+  Schema.Struct({ any: Schema.Array(DetectorRef) }),
+  Schema.Struct({ not: DetectorRef }),
+  Schema.Struct({ path: PathTerm }),
+  Schema.Struct({ imports: ImportsTerm }),
+  Schema.Struct({ exports: ExportsTerm }),
+  Schema.Struct({ members: MembersTerm }),
+  Schema.Struct({ requires: Schema.Array(Schema.String) }),
+  Schema.Struct({ content: ContentTerm }),
+  Schema.Struct({ syntax: SyntaxTerm }),
+  Schema.Struct({ fn: Schema.String }),
+]);
+
+// A source the campaign is proven against: the path it would have, its text
+// when a term needs one, the target of each of its edges (in place of the live
+// resolver) and the files beside it (in place of the file system).
+export const CampaignProbe = Schema.Struct({
+  path: Schema.String,
+  source: Schema.optionalKey(Schema.String),
+  edges: Schema.optionalKey(Schema.Record(Schema.String, ImportProbeTarget)),
+  files: Schema.optionalKey(Schema.Array(Schema.String)),
+});
+
+export const CampaignRule = Schema.Struct({
+  // `campaign/<id>`, the rule name a violation carries.
+  name: Schema.String,
+  id: Schema.String,
+  title: Schema.optionalKey(Schema.String),
+  // The `how`: what a reader at a hit does about it.
+  message: Schema.String,
+  why: Schema.String,
+  owner: Schema.optionalKey(Schema.String),
+  scope: PatternList,
+  unit: CampaignUnit,
+  detect: Detector,
+  probes: Schema.Struct({
+    fires: Schema.Array(CampaignProbe),
+    ignores: Schema.Array(CampaignProbe),
+  }),
+  // Milliseconds without progress after which the campaign is stalled.
+  staleAfter: Schema.Finite,
+  // What `check` demands once the count is zero: keep the campaign as a
+  // guard against recurrence, or remove it from the manifest.
+  onComplete: Schema.Literals(["keep", "remove"]),
+});
+
 const PathProbe = Schema.Struct({ path: Schema.String });
 
 // The file taxonomy, as three questions rather than one nested tree.
@@ -387,6 +525,10 @@ export type StructureRoot = (typeof StructureRoot)["Type"];
 export type StructureFolder = (typeof StructureFolder)["Type"];
 export type StructureParity = (typeof StructureParity)["Type"];
 export type StructureNaming = (typeof StructureNaming)["Type"];
+export type CampaignUnit = (typeof CampaignUnit)["Type"];
+export type CampaignProbe = (typeof CampaignProbe)["Type"];
+export type CampaignRule = (typeof CampaignRule)["Type"];
+export type CaptureNarrowing = (typeof CaptureNarrowing)["Type"];
 
 // The file pattern an open folder's layout rule carries: it admits any name,
 // so it claims the folder without policing it. Coverage counts it apart.

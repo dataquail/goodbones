@@ -15,6 +15,24 @@ export {
   unbaselined,
 } from "./core/baseline.js";
 export {
+  type CampaignHit,
+  type CampaignInput,
+  campaignsFailingTheirProbe,
+  campaignsSelecting,
+  compileCampaignRule,
+  compileCampaignRules,
+  type CompiledCampaign,
+  type CompiledDetector,
+  evaluateCampaign,
+  evaluateCampaigns,
+  explainCampaign,
+  type FailedProbe,
+  leafTermsOf,
+  matchKeyOf,
+  probeInputOf,
+  type TermAnswer,
+} from "./core/campaigns.js";
+export {
   type Coverage,
   type CoverageFamily,
   type CoverageFloors,
@@ -65,6 +83,27 @@ export {
   type SelectedRule,
 } from "./core/imports.js";
 export {
+  allowed,
+  decodeLedger,
+  EMPTY_LEDGER,
+  entryOf,
+  isComplete,
+  isStalled,
+  type Ledger,
+  ledgerArithmeticHolds,
+  ledgerOf,
+  Ledger as LedgerSchema,
+  newEntriesOf,
+  progressOf,
+  pruned,
+  reconcile,
+  type Reconciliation,
+  type Regression,
+  type RegressionRecord,
+  serializeLedger,
+  staleEntriesOf as staleLedgerEntriesOf,
+} from "./core/ledger.js";
+export {
   type CompiledMemberRule,
   compileMemberRules,
   evaluateMemberSite,
@@ -96,7 +135,11 @@ export {
 export {
   type Allowance,
   type BindingKind,
+  type CampaignProbe,
+  type CampaignRule,
+  type CampaignUnit,
   type DeclarationKind,
+  type Detector,
   type ExportFix,
   type ExportRule,
   type GraphConfig,
@@ -136,6 +179,7 @@ export {
   type Snapshot,
   SNAPSHOT_SCHEMA_ID,
   SNAPSHOT_VERSION,
+  type SnapshotCampaign,
   type SnapshotConcentration,
   snapshotJsonSchema,
   Snapshot as SnapshotSchema,
@@ -149,6 +193,10 @@ export {
   type Violation,
   type ViolationKind,
 } from "./domain/violation.js";
+export {
+  loadCampaignFunctions,
+  type LoadedCampaignFunctions,
+} from "./infrastructure/campaign-functions.js";
 export { makeFileSystemLive } from "./infrastructure/file-system-live.js";
 export {
   findManifestFile,
@@ -204,13 +252,23 @@ export {
   manifestNodeJsonSchema,
 } from "./manifest/json-schema.js";
 export {
+  type CampaignSpec,
   type DecodedManifest,
   decodeManifest,
   type DecodeManifestOptions,
+  DEFAULT_LEDGER_DIR,
+  type DetectorSpec,
+  durationMs,
   type Manifest,
   type ManifestNode,
   Manifest as ManifestSchema,
 } from "./manifest/manifest.js";
+export {
+  type CampaignPredicate,
+  type CampaignPredicateInput,
+  type CampaignSubject,
+  type Range,
+} from "./ports/campaign-predicate.js";
 export { type FactExtractor } from "./ports/fact-extractor.js";
 export { type FileSystem } from "./ports/file-system.js";
 export { type Language } from "./ports/language.js";
@@ -219,3 +277,9 @@ export {
   type ModuleResolver,
   type ResolvedTarget,
 } from "./ports/module-resolver.js";
+export {
+  type Position,
+  type SyntaxMatch,
+  type SyntaxMatcher,
+  type SyntaxTree,
+} from "./ports/syntax-matcher.js";

@@ -34,6 +34,7 @@ const VIOLATION_KINDS = [
   "member",
   "surface",
   "graph",
+  "campaign",
 ] as const satisfies ReadonlyArray<ViolationKind>;
 
 const Path = describe(Schema.String, "Repo-relative, with forward slashes.");
@@ -63,6 +64,10 @@ export const SnapshotViolation = Schema.Struct({
   ),
   message: Schema.String,
   baselined: describe(Schema.Boolean, "Carried by the baseline, so `check` does not fail on it."),
+  ledgered: describe(
+    Schema.Boolean,
+    "For a campaign hit: carried by the campaign's ledger, so `check` does not fail on it.",
+  ),
 });
 
 const AllowanceKind = describe(
@@ -106,6 +111,48 @@ export const SnapshotVacancy = Schema.Struct({
   allowances: describe(
     Schema.Finite,
     "Distinct entries the node wrote, `allow` and `external` together.",
+  ),
+});
+
+// One campaign's burn-down: what its ledger says, and what the clock says
+// about it. Every count is over ledger entries, which are hits by fingerprint.
+export const SnapshotCampaign = Schema.Struct({
+  id: describe(Schema.String, "The campaign's id; its ledger is `<ledger>/<id>.json`."),
+  title: Schema.optionalKey(describe(Schema.String, "The campaign's title, when it states one.")),
+  owner: Schema.optionalKey(
+    describe(Schema.String, "Who is running the campaign, as the manifest names them."),
+  ),
+  initial: describe(Schema.Finite, "Entries the day the ledger was written."),
+  allowed: describe(
+    Schema.Finite,
+    "Entries added since by `campaigns allow`, each with a regression record.",
+  ),
+  count: describe(Schema.Finite, "Entries in the ledger now."),
+  fixed: describe(
+    Schema.Finite,
+    "Entries removed by `campaigns prune` since the ledger was written.",
+  ),
+  progress: describe(
+    Schema.Finite,
+    "`1 - count / (initial + allowed)`: how much of everything ever ledgered has been paid down.",
+  ),
+  lastProgress: describe(
+    Schema.String,
+    "When an entry last left the ledger, ISO 8601 — the stall clock's reading.",
+  ),
+  regressions: describe(Schema.Finite, "How many times the count was allowed to go up."),
+  stalled: describe(
+    Schema.Boolean,
+    "Entries remain and `lastProgress` is older than the campaign's `staleAfter`.",
+  ),
+  complete: describe(Schema.Boolean, "No entries remain."),
+  onComplete: describe(
+    Schema.Literals(["keep", "remove"]),
+    "What the manifest asks once complete: keep the campaign as a guard, or remove it.",
+  ),
+  ledgered: describe(
+    Schema.Boolean,
+    "Whether a ledger exists. A campaign with none has been declared and not yet initialised.",
   ),
 });
 
@@ -187,6 +234,10 @@ export const Snapshot = Schema.Struct({
     }),
     'The tiers that said "not tightened yet", by name; `limits` caps how many may.',
   ),
+  campaigns: describe(
+    Schema.Array(SnapshotCampaign),
+    "Every campaign the manifest declares, in manifest order, with its burn-down. Campaign hits are not counted in `coverage` or `residue`: a campaign is scoped by construction.",
+  ),
 });
 
 export type Snapshot = typeof Snapshot.Type;
@@ -194,6 +245,7 @@ export type SnapshotViolation = typeof SnapshotViolation.Type;
 export type SnapshotSlack = typeof SnapshotSlack.Type;
 export type SnapshotConcentration = typeof SnapshotConcentration.Type;
 export type SnapshotVacancy = typeof SnapshotVacancy.Type;
+export type SnapshotCampaign = typeof SnapshotCampaign.Type;
 
 // Decodes a document some other run wrote — the base of a pull request, a
 // stored one — refusing a key the shape does not declare, so a consumer never

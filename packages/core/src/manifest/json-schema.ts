@@ -31,9 +31,13 @@ const isObject = (value: JsonValue): value is JsonObject =>
 
 const isList = (value: JsonValue): value is ReadonlyArray<JsonValue> => Array.isArray(value);
 
-// The generator names the recursive node after its own internal wrapper. A
-// stable name is what a `$ref` in an error message or a docs page can point at.
-const DEFINITION_NAMES: Readonly<Record<string, string>> = { Suspend_: "ManifestNode" };
+// The generator names the recursive schemas after its own internal wrappers.
+// A stable name is what a `$ref` in an error message or a docs page can
+// point at: the tree's node, and a campaign's detector.
+const DEFINITION_NAMES: Readonly<Record<string, string>> = {
+  Suspend_: "ManifestNode",
+  Union_: "Detector",
+};
 
 const USE_REFERENCE = "#/$defs/Use";
 const INCLUDE_REFERENCE = "#/$defs/Include";

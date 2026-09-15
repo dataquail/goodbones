@@ -305,7 +305,8 @@
               "structure",
               "member",
               "surface",
-              "graph"
+              "graph",
+              "campaign"
             ]
           },
           "ruleName": {
@@ -333,6 +334,10 @@
           "baselined": {
             "type": "boolean",
             "description": "Carried by the baseline, so `check` does not fail on it."
+          },
+          "ledgered": {
+            "type": "boolean",
+            "description": "For a campaign hit: carried by the campaign's ledger, so `check` does not fail on it."
           }
         },
         "required": [
@@ -342,7 +347,8 @@
           "file",
           "subject",
           "message",
-          "baselined"
+          "baselined",
+          "ledgered"
         ],
         "additionalProperties": false
       },
@@ -522,6 +528,114 @@
       ],
       "additionalProperties": false,
       "description": "The tiers that said \"not tightened yet\", by name; `limits` caps how many may."
+    },
+    "campaigns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The campaign's id; its ledger is `<ledger>/<id>.json`."
+          },
+          "title": {
+            "type": "string",
+            "description": "The campaign's title, when it states one."
+          },
+          "owner": {
+            "type": "string",
+            "description": "Who is running the campaign, as the manifest names them."
+          },
+          "initial": {
+            "type": "number",
+            "allOf": [
+              {
+                "description": "Entries the day the ledger was written."
+              }
+            ]
+          },
+          "allowed": {
+            "type": "number",
+            "allOf": [
+              {
+                "description": "Entries added since by `campaigns allow`, each with a regression record."
+              }
+            ]
+          },
+          "count": {
+            "type": "number",
+            "allOf": [
+              {
+                "description": "Entries in the ledger now."
+              }
+            ]
+          },
+          "fixed": {
+            "type": "number",
+            "allOf": [
+              {
+                "description": "Entries removed by `campaigns prune` since the ledger was written."
+              }
+            ]
+          },
+          "progress": {
+            "type": "number",
+            "allOf": [
+              {
+                "description": "`1 - count / (initial + allowed)`: how much of everything ever ledgered has been paid down."
+              }
+            ]
+          },
+          "lastProgress": {
+            "type": "string",
+            "description": "When an entry last left the ledger, ISO 8601 — the stall clock's reading."
+          },
+          "regressions": {
+            "type": "number",
+            "allOf": [
+              {
+                "description": "How many times the count was allowed to go up."
+              }
+            ]
+          },
+          "stalled": {
+            "type": "boolean",
+            "description": "Entries remain and `lastProgress` is older than the campaign's `staleAfter`."
+          },
+          "complete": {
+            "type": "boolean",
+            "description": "No entries remain."
+          },
+          "onComplete": {
+            "type": "string",
+            "enum": [
+              "keep",
+              "remove"
+            ],
+            "description": "What the manifest asks once complete: keep the campaign as a guard, or remove it."
+          },
+          "ledgered": {
+            "type": "boolean",
+            "description": "Whether a ledger exists. A campaign with none has been declared and not yet initialised."
+          }
+        },
+        "required": [
+          "id",
+          "initial",
+          "allowed",
+          "count",
+          "fixed",
+          "progress",
+          "lastProgress",
+          "regressions",
+          "stalled",
+          "complete",
+          "onComplete",
+          "ledgered"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Every campaign the manifest declares, in manifest order, with its burn-down. Campaign hits are not counted in `coverage` or `residue`: a campaign is scoped by construction."
     }
   },
   "required": [
@@ -540,7 +654,8 @@
     "cycles",
     "slack",
     "concentration",
-    "adoption"
+    "adoption",
+    "campaigns"
   ],
   "additionalProperties": false
 }

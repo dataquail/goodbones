@@ -500,7 +500,12 @@ export const sourceFactsOf = (read: ReadFacts): SourceFacts => {
       bindings.set(edge.specifier, found);
       specifiers.push(edge.specifier);
     }
-    for (const { kind, symbol } of edge.bindings) found.push({ symbol, kind });
+    // The local name goes with the binding: it is how a campaign's `syntax`
+    // term traces an identifier back to its import. A form that binds no name
+    // (`import("m")`, `require("m")`) carries none.
+    for (const { kind, local, symbol } of edge.bindings) {
+      found.push(local === "" ? { symbol, kind } : { symbol, kind, local });
+    }
   }
   return {
     specifiers,

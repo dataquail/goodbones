@@ -191,16 +191,21 @@ const resolveSibling = (folder: string, relative: string): string => {
   return segments.join("/");
 };
 
-export const requiredSiblingsOf = (
-  rule: CompiledStructureParity,
+// The paths a list of `requires` templates names beside a file. Shared with
+// the campaigns evaluator, whose `requires` term asks the same question.
+export const siblingsOf = (
+  templates: ReadonlyArray<string>,
   file: string,
 ): ReadonlyArray<string> => {
   const base = baseOf(basenameOf(file));
   const folder = dirnameOf(file);
-  return rule.requires.map((template) =>
-    resolveSibling(folder, template.replaceAll("{base}", base)),
-  );
+  return templates.map((template) => resolveSibling(folder, template.replaceAll("{base}", base)));
 };
+
+export const requiredSiblingsOf = (
+  rule: CompiledStructureParity,
+  file: string,
+): ReadonlyArray<string> => siblingsOf(rule.requires, file);
 
 type NamingMatch = {
   readonly subject: string;

@@ -120,9 +120,97 @@ describe("the manifest JSON Schema", () => {
     ).toBe(true);
   });
 
-  it("names the recursive node", () => {
+  it("names the recursive node and the recursive detector", () => {
     const schema = manifestJsonSchema() as { $defs: Record<string, unknown> };
-    expect(Object.keys(schema.$defs).sort()).toEqual(["Include", "ManifestNode", "Use"]);
+    expect(Object.keys(schema.$defs).sort()).toEqual([
+      "Detector",
+      "Include",
+      "ManifestNode",
+      "Use",
+    ]);
+  });
+
+  // The campaign from the family's docs page, and a misspelled term key: the
+  // detector is a union of one-key objects, so the wrong key is refused rather
+  // than read as a term that matches nothing.
+  const campaigns = [
+    {
+      id: "react-class-components",
+      title: "Class components to hooks",
+      why: "Class lifecycle methods block concurrent features.",
+      how: "Convert to a function component.",
+      owner: "@dataquail/web-platform",
+      scope: ["apps/web/src/**/*.tsx"],
+      unit: "declaration",
+      detect: {
+        syntax: {
+          pattern: "class $NAME extends $BASE { $$$ }",
+          where: {
+            BASE: {
+              binding: { resolves: { external: "react" }, member: ["Component", "PureComponent"] },
+            },
+          },
+        },
+      },
+      probes: {
+        fires: [
+          {
+            path: "apps/web/src/a.tsx",
+            source: "import { Component } from 'react'; export class Foo extends Component {}",
+            edges: { react: { external: "react" } },
+          },
+        ],
+        ignores: [{ path: "apps/web/src/b.tsx", source: "class Foo extends Base {}" }],
+      },
+      staleAfter: "30d",
+      onComplete: "keep",
+    },
+    {
+      id: "rsc-boundaries",
+      why: "Server components render on the server.",
+      how: "Add the directive or move the hook.",
+      scope: ["app/**/*.tsx"],
+      unit: "file",
+      detect: {
+        all: [
+          { not: { content: { regex: "^[\"']use client[\"']" } } },
+          {
+            any: [
+              { syntax: { pattern: "$HOOK($$$)", where: { HOOK: { regex: "^use[A-Z]" } } } },
+              { imports: { resolves: { external: "framer-motion" } } },
+              { fn: "./campaigns/rsc.mjs#needsClientBoundary" },
+            ],
+          },
+        ],
+      },
+      probes: { fires: [{ path: "app/x.tsx", source: "export default () => { useState(); }" }] },
+      staleAfter: "30d",
+    },
+  ];
+
+  it("validates the campaign examples, and a ledger path", () => {
+    const validate = validator();
+    const manifest = {
+      resolve: { scopes: [{ files: "", language: "typescript" }] },
+      ledger: ".architecture-campaigns",
+      campaigns,
+      tree: {},
+    };
+    expect(validate(manifest), JSON.stringify(validate.errors, null, 2)).toBe(true);
+  });
+
+  it("rejects a misspelled term key, and a duration in the wrong shape", () => {
+    const validate = validator();
+    const base = { resolve: { scopes: [{ files: "", language: "typescript" }] }, tree: {} };
+    const first = campaigns[0];
+    expect(
+      validate({ ...base, campaigns: [{ ...first, detect: { syntaxx: { pattern: "x" } } }] }),
+    ).toBe(false);
+    expect(
+      validate({ ...base, campaigns: [{ ...first, detect: { content: { regexp: "x" } } }] }),
+    ).toBe(false);
+    expect(validate({ ...base, campaigns: [{ ...first, staleAfter: "30 days" }] })).toBe(false);
+    expect(validate({ ...base, campaigns: [{ ...first, unit: "line" }] })).toBe(false);
   });
 });
 

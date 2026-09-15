@@ -713,6 +713,334 @@
         }
       ]
     },
+    "campaigns": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Include"
+        },
+        {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Use"
+              },
+              {
+                "$ref": "#/$defs/Include"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "allOf": [
+                      {
+                        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                      }
+                    ]
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "why": {
+                    "type": "string"
+                  },
+                  "how": {
+                    "type": "string"
+                  },
+                  "owner": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/Include"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": [
+                      "file",
+                      "declaration",
+                      "match"
+                    ]
+                  },
+                  "detect": {
+                    "$ref": "#/$defs/Detector"
+                  },
+                  "probes": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/Use"
+                      },
+                      {
+                        "$ref": "#/$defs/Include"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "fires": {
+                            "anyOf": [
+                              {
+                                "$ref": "#/$defs/Include"
+                              },
+                              {
+                                "type": "array",
+                                "items": {
+                                  "anyOf": [
+                                    {
+                                      "$ref": "#/$defs/Use"
+                                    },
+                                    {
+                                      "$ref": "#/$defs/Include"
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string"
+                                        },
+                                        "source": {
+                                          "type": "string"
+                                        },
+                                        "edges": {
+                                          "type": "object",
+                                          "additionalProperties": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "anyOf": [
+                                                  {
+                                                    "$ref": "#/$defs/Use"
+                                                  },
+                                                  {
+                                                    "$ref": "#/$defs/Include"
+                                                  },
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "external": {
+                                                        "type": "string"
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "external"
+                                                    ],
+                                                    "additionalProperties": false
+                                                  }
+                                                ]
+                                              },
+                                              {
+                                                "anyOf": [
+                                                  {
+                                                    "$ref": "#/$defs/Use"
+                                                  },
+                                                  {
+                                                    "$ref": "#/$defs/Include"
+                                                  },
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "builtin": {
+                                                        "type": "string"
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "builtin"
+                                                    ],
+                                                    "additionalProperties": false
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        },
+                                        "files": {
+                                          "anyOf": [
+                                            {
+                                              "$ref": "#/$defs/Include"
+                                            },
+                                            {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string"
+                                              }
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "path"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          },
+                          "ignores": {
+                            "anyOf": [
+                              {
+                                "$ref": "#/$defs/Include"
+                              },
+                              {
+                                "type": "array",
+                                "items": {
+                                  "anyOf": [
+                                    {
+                                      "$ref": "#/$defs/Use"
+                                    },
+                                    {
+                                      "$ref": "#/$defs/Include"
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "path": {
+                                          "type": "string"
+                                        },
+                                        "source": {
+                                          "type": "string"
+                                        },
+                                        "edges": {
+                                          "type": "object",
+                                          "additionalProperties": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "anyOf": [
+                                                  {
+                                                    "$ref": "#/$defs/Use"
+                                                  },
+                                                  {
+                                                    "$ref": "#/$defs/Include"
+                                                  },
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "external": {
+                                                        "type": "string"
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "external"
+                                                    ],
+                                                    "additionalProperties": false
+                                                  }
+                                                ]
+                                              },
+                                              {
+                                                "anyOf": [
+                                                  {
+                                                    "$ref": "#/$defs/Use"
+                                                  },
+                                                  {
+                                                    "$ref": "#/$defs/Include"
+                                                  },
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "builtin": {
+                                                        "type": "string"
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "builtin"
+                                                    ],
+                                                    "additionalProperties": false
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        },
+                                        "files": {
+                                          "anyOf": [
+                                            {
+                                              "$ref": "#/$defs/Include"
+                                            },
+                                            {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string"
+                                              }
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "path"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "fires"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "staleAfter": {
+                    "type": "string",
+                    "allOf": [
+                      {
+                        "pattern": "^\\d+[dh]$"
+                      }
+                    ]
+                  },
+                  "onComplete": {
+                    "type": "string",
+                    "enum": [
+                      "keep",
+                      "remove"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "why",
+                  "how",
+                  "scope",
+                  "unit",
+                  "detect",
+                  "probes",
+                  "staleAfter"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "ledger": {
+      "type": "string"
+    },
     "aliases": {
       "type": "object",
       "additionalProperties": {
@@ -727,6 +1055,767 @@
     }
   },
   "$defs": {
+    "Detector": {
+      "anyOf": [
+        {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Use"
+            },
+            {
+              "$ref": "#/$defs/Include"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "all": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/Include"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/$defs/Detector"
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "all"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Use"
+            },
+            {
+              "$ref": "#/$defs/Include"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "any": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/Include"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/$defs/Detector"
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "any"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Use"
+            },
+            {
+              "$ref": "#/$defs/Include"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "not": {
+                  "$ref": "#/$defs/Detector"
+                }
+              },
+              "required": [
+                "not"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Use"
+            },
+            {
+              "$ref": "#/$defs/Include"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/Use"
+                    },
+                    {
+                      "$ref": "#/$defs/Include"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "file": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "anyOf": [
+                                {
+                                  "$ref": "#/$defs/Include"
+                                },
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "fileNot": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "anyOf": [
+                                {
+                                  "$ref": "#/$defs/Include"
+                                },
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "subject": {
+                          "type": "number"
+                        },
+                        "convention": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "kebab-case",
+                                "camelCase",
+                                "PascalCase",
+                                "snake_case"
+                              ]
+                            },
+                            {
+                              "anyOf": [
+                                {
+                                  "$ref": "#/$defs/Use"
+                                },
+                                {
+                                  "$ref": "#/$defs/Include"
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "regex": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "regex"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "file"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Use"
+            },
+            {
+              "$ref": "#/$defs/Include"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "imports": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/Use"
+                    },
+                    {
+                      "$ref": "#/$defs/Include"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "resolves": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "anyOf": [
+                                {
+                                  "$ref": "#/$defs/Use"
+                                },
+                                {
+                                  "$ref": "#/$defs/Include"
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "external": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "external"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              ]
+                            },
+                            {
+                              "anyOf": [
+                                {
+                                  "$ref": "#/$defs/Use"
+                                },
+                                {
+                                  "$ref": "#/$defs/Include"
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "builtin": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "builtin"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "symbols": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/$defs/Include"
+                            },
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "resolves"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "imports"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Use"
+            },
+            {
+              "$ref": "#/$defs/Include"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "exports": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/Use"
+                    },
+                    {
+                      "$ref": "#/$defs/Include"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "anyOf": [
+                                {
+                                  "$ref": "#/$defs/Include"
+                                },
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "kinds": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/$defs/Include"
+                            },
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": [
+                                  "named",
+                                  "default",
+                                  "namespace"
+                                ]
+                              }
+                            }
+                          ]
+                        },
+                        "declares": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/$defs/Include"
+                            },
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": [
+                                  "function",
+                                  "class",
+                                  "variable",
+                                  "type",
+                                  "interface",
+                                  "enum",
+                                  "expression",
+                                  "other"
+                                ]
+                              }
+                            }
+                          ]
+                        },
+                        "reexport": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "exports"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Use"
+            },
+            {
+              "$ref": "#/$defs/Include"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "members": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/Use"
+                    },
+                    {
+                      "$ref": "#/$defs/Include"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "subject": {
+                          "type": "string",
+                          "enum": [
+                            "members",
+                            "calls"
+                          ]
+                        },
+                        "name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "anyOf": [
+                                {
+                                  "$ref": "#/$defs/Include"
+                                },
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "in": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "anyOf": [
+                                {
+                                  "$ref": "#/$defs/Include"
+                                },
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "declares": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/$defs/Include"
+                            },
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": [
+                                  "function",
+                                  "class",
+                                  "variable",
+                                  "type",
+                                  "interface",
+                                  "enum",
+                                  "expression",
+                                  "other"
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "subject"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "members"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Use"
+            },
+            {
+              "$ref": "#/$defs/Include"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "requires": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/Include"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "requires"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Use"
+            },
+            {
+              "$ref": "#/$defs/Include"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "content": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/Use"
+                    },
+                    {
+                      "$ref": "#/$defs/Include"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "regex": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "regex"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "content"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Use"
+            },
+            {
+              "$ref": "#/$defs/Include"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "syntax": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/Use"
+                    },
+                    {
+                      "$ref": "#/$defs/Include"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "pattern": {},
+                        "kind": {},
+                        "regex": {},
+                        "nthChild": {},
+                        "inside": {},
+                        "has": {},
+                        "precedes": {},
+                        "follows": {},
+                        "all": {},
+                        "any": {},
+                        "not": {},
+                        "where": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "$ref": "#/$defs/Use"
+                              },
+                              {
+                                "$ref": "#/$defs/Include"
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "regex": {
+                                    "type": "string"
+                                  },
+                                  "binding": {
+                                    "anyOf": [
+                                      {
+                                        "$ref": "#/$defs/Use"
+                                      },
+                                      {
+                                        "$ref": "#/$defs/Include"
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "resolves": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "anyOf": [
+                                                  {
+                                                    "$ref": "#/$defs/Use"
+                                                  },
+                                                  {
+                                                    "$ref": "#/$defs/Include"
+                                                  },
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "external": {
+                                                        "type": "string"
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "external"
+                                                    ],
+                                                    "additionalProperties": false
+                                                  }
+                                                ]
+                                              },
+                                              {
+                                                "anyOf": [
+                                                  {
+                                                    "$ref": "#/$defs/Use"
+                                                  },
+                                                  {
+                                                    "$ref": "#/$defs/Include"
+                                                  },
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "builtin": {
+                                                        "type": "string"
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "builtin"
+                                                    ],
+                                                    "additionalProperties": false
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          },
+                                          "member": {
+                                            "anyOf": [
+                                              {
+                                                "$ref": "#/$defs/Include"
+                                              },
+                                              {
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string"
+                                                }
+                                              }
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "resolves"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    ]
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "syntax"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Use"
+            },
+            {
+              "$ref": "#/$defs/Include"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "fn": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "fn"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      ]
+    },
     "ManifestNode": {
       "anyOf": [
         {

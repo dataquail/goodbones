@@ -4,6 +4,7 @@ import type { ExportFix, ResolveScope } from "../domain/architecture-config.js";
 import type { ScopeInvalid } from "../domain/architecture-error.js";
 import type { FactExtractor } from "./fact-extractor.js";
 import type { ModuleResolver } from "./module-resolver.js";
+import type { SyntaxMatcher } from "./syntax-matcher.js";
 
 // Everything the policy needs from one programming language, behind one port.
 //
@@ -39,6 +40,11 @@ export type Language = {
   // carry out. A rewrite is written in one module syntax; a rule naming one no
   // loaded language implements is refused at load.
   readonly fixes: ReadonlyArray<ExportFix>;
+  // Finds expressions of a given shape in one file, for a campaign's `syntax`
+  // term. Optional: a pack without one still answers every other family, and
+  // a campaign that needs one in its scope is refused at load with a
+  // sentence naming the language.
+  readonly syntax?: SyntaxMatcher;
   // A resolver for the files one scope covers. Built once per scope per run;
   // resolution is the expensive half of linting an architecture. The scope's
   // `options` are this language's to read, and anything it does not

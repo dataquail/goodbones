@@ -159,3 +159,129 @@ describe("loadPolicy with a language that is not TypeScript", () => {
     ).toBe(true);
   });
 });
+
+describe("loadPolicy with campaigns", () => {
+  const campaign = (overrides: Record<string, unknown> = {}) => ({
+    id: "js-to-go",
+    why: "Every service is Go.",
+    how: "Port the file.",
+    scope: ["svc/**"],
+    unit: "file",
+    detect: { path: { file: "\\.js$" } },
+    probes: { fires: [{ path: "svc/legacy/util.js" }], ignores: [{ path: "svc/main.go" }] },
+    staleAfter: "14d",
+    ...overrides,
+  });
+  const withCampaigns = (campaigns: ReadonlyArray<unknown>, ledger?: string) => ({
+    ...manifest(),
+    ...(ledger === undefined ? {} : { ledger }),
+    campaigns,
+  });
+
+  it("compiles a campaign, with the duration in milliseconds and the defaults filled", () => {
+    const policy = unwrap(load(withCampaigns([campaign()]), [go()]));
+    expect(policy.campaignRules.map((rule) => rule.name)).toEqual(["campaign/js-to-go"]);
+    expect(policy.campaignRules[0]?.staleAfter).toBe(14 * 86_400_000);
+    expect(policy.campaignRules[0]?.onComplete).toBe("keep");
+    expect(policy.ledgerDir).toBe(".architecture-campaigns");
+    expect(policy.ledgers.size).toBe(0);
+  });
+
+  it("refuses a campaign whose fires probe does not fire", () => {
+    const outcome = load(
+      withCampaigns([campaign({ probes: { fires: [{ path: "svc/main.go" }] } })]),
+      [go()],
+    );
+    expect(Result.isFailure(outcome) && outcome.failure.message).toMatch(
+      /campaign\/js-to-go \(fires probe svc\/main.go did not fire\)/,
+    );
+  });
+
+  it("names the term that admitted an ignores probe", () => {
+    const outcome = load(
+      withCampaigns([
+        campaign({
+          detect: { any: [{ path: { file: "\\.js$" } }, { path: { file: "main" } }] },
+          probes: { fires: [{ path: "svc/legacy/util.js" }], ignores: [{ path: "svc/main.go" }] },
+        }),
+      ]),
+      [go()],
+    );
+    expect(Result.isFailure(outcome) && outcome.failure.message).toMatch(
+      /ignores probe svc\/main.go fired, admitted by `path \/main\/`/,
+    );
+  });
+
+  it("refuses a probe outside the campaign's own scope", () => {
+    const outcome = load(
+      withCampaigns([campaign({ probes: { fires: [{ path: "web/util.js" }] } })]),
+      [go()],
+    );
+    expect(Result.isFailure(outcome) && outcome.failure.message).toMatch(
+      /probe web\/util.js is outside the campaign's own scope/,
+    );
+  });
+
+  it("refuses a syntax term in a scope whose language has no matcher, naming the language", () => {
+    const outcome = load(
+      withCampaigns([
+        campaign({
+          detect: { syntax: { pattern: "$F($$$)" } },
+          probes: { fires: [{ path: "svc/a.go", source: "f()" }] },
+        }),
+      ]),
+      [go()],
+    );
+    expect(Result.isFailure(outcome) && outcome.failure.message).toMatch(
+      /`syntax` term in a scope whose language has no syntax matcher: campaign\/js-to-go \(svc\/a.go: go carries no syntax matcher\)/,
+    );
+  });
+
+  it("refuses a fn term the host did not load", () => {
+    const outcome = load(
+      withCampaigns([
+        campaign({
+          detect: { fn: "./campaigns/x.mjs#isLegacy" },
+          probes: { fires: [{ path: "svc/a.go", source: "x" }] },
+        }),
+      ]),
+      [go()],
+    );
+    expect(Result.isFailure(outcome) && outcome.failure.message).toMatch(
+      /predicate function the host did not load: \.\/campaigns\/x\.mjs#isLegacy/,
+    );
+  });
+
+  it("reads each ledger through the file system, and refuses a malformed one", () => {
+    const ledger = {
+      version: 1,
+      id: "js-to-go",
+      created: "2026-09-15T00:00:00.000Z",
+      initial: 1,
+      fixed: 0,
+      lastProgress: "2026-09-15T00:00:00.000Z",
+      regressions: [],
+      entries: ["svc/legacy/util.js"],
+    };
+    const files = makeFileSystemFake([], {
+      "ledgers/js-to-go.json": JSON.stringify(ledger),
+    });
+    const policy = unwrap(load(withCampaigns([campaign()], "ledgers"), [go()], files));
+    expect(policy.ledgerDir).toBe("ledgers");
+    expect(policy.ledgers.get("js-to-go")?.entries).toEqual(["svc/legacy/util.js"]);
+
+    const malformed = makeFileSystemFake([], { "ledgers/js-to-go.json": '{"entries": []}' });
+    const outcome = load(withCampaigns([campaign()], "ledgers"), [go()], malformed);
+    expect(Result.isFailure(outcome) && outcome.failure.message).toMatch(
+      /the ledger ledgers\/js-to-go.json does not decode/,
+    );
+  });
+
+  it("refuses a probe with no source when the detector reads the file", () => {
+    expect(() =>
+      load(withCampaigns([campaign({ detect: { content: { regex: "x" } } })]), [go()]),
+    ).toThrow(
+      /probe \(svc\/legacy\/util.js\) with no `source`, and its detector holds a `content` term/,
+    );
+  });
+});

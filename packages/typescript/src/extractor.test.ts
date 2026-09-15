@@ -24,7 +24,9 @@ describe("factsOfText", () => {
     );
     expect(facts.specifiers).toEqual(["dynamic", "equals"]);
     expect(facts.bindings.get("dynamic")).toEqual([{ symbol: "*", kind: "namespace" }]);
-    expect(facts.bindings.get("equals")).toEqual([{ symbol: "*", kind: "namespace" }]);
+    expect(facts.bindings.get("equals")).toEqual([
+      { symbol: "*", kind: "namespace", local: "legacy" },
+    ]);
     expect(facts.memberSites.filter((site) => site.subject === "members")).toEqual([
       { file: "x.ts", subject: "members", name: "run", in: "Port", declares: "class" },
       { file: "x.ts", subject: "members", name: "name", in: "Port", declares: "class" },
@@ -81,8 +83,8 @@ describe("factsOfText", () => {
     const facts = factsOfText("x.ts", 'import { a } from "m";\nimport { b } from "m";');
     expect(facts.specifiers).toEqual(["m"]);
     expect(facts.bindings.get("m")).toEqual([
-      { symbol: "a", kind: "named" },
-      { symbol: "b", kind: "named" },
+      { symbol: "a", kind: "named", local: "a" },
+      { symbol: "b", kind: "named", local: "b" },
     ]);
   });
 });

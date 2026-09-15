@@ -1,4 +1,7 @@
-export type ViolationKind = "import" | "export" | "structure" | "member" | "surface" | "graph";
+// `campaign` is the one kind whose entries live in a ledger rather than the
+// baseline: a hit is debt a campaign is paying down, not a rule being broken.
+export type ViolationKind =
+  "import" | "export" | "structure" | "member" | "surface" | "graph" | "campaign";
 
 export type Violation = {
   readonly kind: ViolationKind;

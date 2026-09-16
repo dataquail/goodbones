@@ -1,0 +1,58 @@
+{
+  "name": "@goodbones/ast-grep",
+  "version": "0.1.0-beta.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "The ast-grep syntax matcher for @goodbones/core: a campaign's `syntax` term, evaluated through @ast-grep/napi behind the core's SyntaxMatcher port.",
+  "author": "zacharyweidenbach",
+  "keywords": [
+    "architecture",
+    "lint",
+    "ast-grep",
+    "campaigns",
+    "monorepo"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dataquail/goodbones.git",
+    "directory": "packages/ast-grep"
+  },
+  "homepage": "https://dataquail.github.io/goodbones",
+  "bugs": {
+    "url": "https://github.com/dataquail/goodbones/issues"
+  },
+  "exports": {
+    ".": {
+      "types": "./build/dts/index.d.ts",
+      "default": "./build/esm/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./build/dts/index.d.ts",
+  "files": [
+    "build/dts",
+    "build/esm",
+    "src",
+    "!src/**/*.test.ts"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "check": "tsc -b tsconfig.json",
+    "clean": "rm -rf build .tsbuildinfo",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@ast-grep/napi": "^0.45.3",
+    "@goodbones/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.4"
+  },
+  "nx": {
+    "includedScripts": []
+  }
+}

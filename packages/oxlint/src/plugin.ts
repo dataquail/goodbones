@@ -1,3 +1,4 @@
+import { makeCampaignsRule } from "./campaigns-rule.js";
 import { loadPolicyFromFile } from "./config-loader.js";
 import { makeExportsRule } from "./exports-rule.js";
 import { makeImportsRule } from "./imports-rule.js";
@@ -28,12 +29,14 @@ export const rules: {
   readonly members: OxlintRule;
   readonly structure: OxlintRule;
   readonly surface: OxlintRule;
+  readonly campaigns: OxlintRule;
 } = {
   imports: makeImportsRule(policy),
   exports: makeExportsRule(policy),
   members: makeMembersRule(policy),
   structure: makeStructureRule(policy),
   surface: makeSurfaceRule(policy),
+  campaigns: makeCampaignsRule(policy),
 };
 
 const plugin: { readonly meta: { readonly name: string }; readonly rules: typeof rules } = {

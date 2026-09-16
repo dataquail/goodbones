@@ -2,7 +2,14 @@ import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as SchemaIssue from "effect/SchemaIssue";
 
-import { DeclarationKind, ResolveConfig } from "../domain/architecture-config.js";
+import {
+  CampaignUnit,
+  DeclarationKind,
+  ImportProbeTarget,
+  ProbeDiagnostic,
+  ReportFormat,
+  ResolveConfig,
+} from "../domain/architecture-config.js";
 import { ConfigInvalid } from "../domain/architecture-error.js";
 import {
   type ManifestLocator,
@@ -260,6 +267,175 @@ const Limits = Schema.Struct({
   coverage: Schema.optionalKey(CoverageFloors),
 });
 
+// A campaign: a migration the repository is running, tracked as an object —
+// a detector, a rationale, a guide, an owner, a definition of done, and a
+// ledger of every place the pattern still occurs. Where a rule says what may
+// never happen, a campaign names what the code is moving away from.
+//
+// The detector is a predicate algebra: `all`, `any` and `not` over leaf
+// terms, the same three words ast-grep uses. Leaf terms reuse the other
+// families' vocabularies where one exists.
+
+// A regular expression over the whole repo-relative path, matched as the
+// `structure` naming rules are: with `subject` and `convention`, the capture
+// group named holds the name being judged, and the term holds when the name
+// has the convention's shape.
+const PathTerm = Schema.Struct({
+  file: Globs,
+  fileNot: Schema.optionalKey(Globs),
+  subject: Schema.optionalKey(Schema.Finite),
+  convention: Schema.optionalKey(SurfaceConvention),
+});
+
+// Holds when some import of the file resolves to the target — a path glob,
+// `{ external: <package> }` or `{ builtin: <module> }` — and, with `symbols`,
+// pulls one of those names across it.
+const ImportsTerm = Schema.Struct({
+  resolves: ImportProbeTarget,
+  symbols: Schema.optionalKey(Schema.Array(Schema.String)),
+});
+
+// Holds for an export site the selectors admit — the `surface` selectors.
+const ExportsTerm = Schema.Struct({
+  name: Schema.optionalKey(Globs),
+  kinds: Schema.optionalKey(Schema.Array(Schema.Literals(["named", "default", "namespace"]))),
+  declares: Schema.optionalKey(Schema.Array(DeclarationKind)),
+  reexport: Schema.optionalKey(Schema.Boolean),
+});
+
+// Holds for a member site the selectors admit — the `members` selectors.
+const MembersTerm = Schema.Struct({
+  subject: Schema.Literals(["members", "calls"]),
+  name: Schema.optionalKey(Globs),
+  in: Schema.optionalKey(Globs),
+  declares: Schema.optionalKey(Schema.Array(DeclarationKind)),
+});
+
+// A regular expression over the file's text, multiline.
+const ContentTerm = Schema.Struct({ regex: Schema.String });
+
+// How a metavariable is narrowed: by the text it captured, or by what the
+// identifier at its root is bound to — the module it resolves to and the
+// name it was imported as (`member`), which is how `class $N extends $BASE`
+// says "a React component" rather than "any class with a base".
+const CaptureNarrowing = Schema.Struct({
+  regex: Schema.optionalKey(Schema.String),
+  binding: Schema.optionalKey(
+    Schema.Struct({
+      resolves: ImportProbeTarget,
+      member: Schema.optionalKey(Schema.Array(Schema.String)),
+    }),
+  ),
+});
+
+// An ast-grep rule object — `pattern`, `kind`, `regex`, `has`, `inside`,
+// `precedes`, `follows`, `nthChild`, `all`, `any`, `not` — with `where`
+// beside it. The rule is the engine's to validate; the manifest only knows
+// which keys are a rule's and which is the narrowing. `kind` names are the
+// engine's node kinds, which today are tree-sitter's.
+const SyntaxTerm = Schema.Struct({
+  pattern: Schema.optionalKey(Schema.Unknown),
+  kind: Schema.optionalKey(Schema.Unknown),
+  regex: Schema.optionalKey(Schema.Unknown),
+  nthChild: Schema.optionalKey(Schema.Unknown),
+  inside: Schema.optionalKey(Schema.Unknown),
+  has: Schema.optionalKey(Schema.Unknown),
+  precedes: Schema.optionalKey(Schema.Unknown),
+  follows: Schema.optionalKey(Schema.Unknown),
+  all: Schema.optionalKey(Schema.Unknown),
+  any: Schema.optionalKey(Schema.Unknown),
+  not: Schema.optionalKey(Schema.Unknown),
+  where: Schema.optionalKey(Schema.Record(Schema.String, CaptureNarrowing)),
+});
+
+// A finding of another program, read from the output of `command` (run
+// from the repository root, once per `check`) or from `file` (written by
+// an earlier step) in one of the known formats — `tsc`, `eslint --format
+// json`, `oxlint --format json` — or by a `regex` with named groups. Holds
+// for each diagnostic on the file whose code the term speaks to.
+const ReportTerm = Schema.Struct({
+  command: Schema.optionalKey(Schema.String),
+  file: Schema.optionalKey(Schema.String),
+  format: ReportFormat,
+  pattern: Schema.optionalKey(Schema.String),
+  codes: Schema.optionalKey(Schema.Array(Schema.String)),
+  codesNot: Schema.optionalKey(Schema.Array(Schema.String)),
+});
+
+export type DetectorSpec =
+  | { readonly all: ReadonlyArray<DetectorSpec> }
+  | { readonly any: ReadonlyArray<DetectorSpec> }
+  | { readonly not: DetectorSpec }
+  | { readonly path: typeof PathTerm.Type }
+  | { readonly imports: typeof ImportsTerm.Type }
+  | { readonly exports: typeof ExportsTerm.Type }
+  | { readonly members: typeof MembersTerm.Type }
+  // The `structure` parity strings: holds when every named sibling exists.
+  | { readonly requires: ReadonlyArray<string> }
+  | { readonly content: typeof ContentTerm.Type }
+  | { readonly syntax: typeof SyntaxTerm.Type }
+  | { readonly report: typeof ReportTerm.Type }
+  // `module#export`: a predicate function the host imports before loading.
+  | { readonly fn: string };
+
+// Each object carries exactly one term key, so a misspelled one is a decode
+// error that names the line rather than a term quietly dropped.
+const DetectorRef = Schema.suspend((): Schema.Codec<DetectorSpec> => DetectorSpec);
+
+const DetectorSpec = Schema.Union([
+  Schema.Struct({ all: Schema.Array(DetectorRef) }),
+  Schema.Struct({ any: Schema.Array(DetectorRef) }),
+  Schema.Struct({ not: DetectorRef }),
+  Schema.Struct({ path: PathTerm }),
+  Schema.Struct({ imports: ImportsTerm }),
+  Schema.Struct({ exports: ExportsTerm }),
+  Schema.Struct({ members: MembersTerm }),
+  Schema.Struct({ requires: Schema.Array(Schema.String) }),
+  Schema.Struct({ content: ContentTerm }),
+  Schema.Struct({ syntax: SyntaxTerm }),
+  Schema.Struct({ report: ReportTerm }),
+  Schema.Struct({ fn: Schema.String }),
+]);
+
+// A source the campaign is proven against at load. `path` alone proves a
+// path-shaped detector; `source` is parsed, `edges` answers the `imports`
+// term and a binding narrowing in place of the live resolver, `files`
+// answers `requires` in place of the file system, and `report` answers a
+// `report` term in place of running anything — one-based positions, as a
+// tool prints them.
+const CampaignProbe = Schema.Struct({
+  path: Schema.String,
+  source: Schema.optionalKey(Schema.String),
+  edges: Schema.optionalKey(Schema.Record(Schema.String, ImportProbeTarget)),
+  files: Schema.optionalKey(Schema.Array(Schema.String)),
+  report: Schema.optionalKey(Schema.Array(ProbeDiagnostic)),
+});
+
+// `30d`, `12h`: how long a campaign may go without progress before the
+// conformance report calls it stalled.
+const Duration = Schema.String.check(Schema.isPattern(/^\d+[dh]$/));
+
+const Campaign = Schema.Struct({
+  // The ledger file's name, and the rule name's tail: `campaign/<id>`.
+  id: Schema.String.check(Schema.isPattern(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)),
+  title: Schema.optionalKey(Schema.String),
+  why: Schema.String,
+  // What a reader at a hit does about it — the message every hit carries.
+  how: Schema.String,
+  owner: Schema.optionalKey(Schema.String),
+  // Which files the campaign selects. Alias-aware globs, as the graph rules
+  // take; a campaign's reach is its scope, so it joins no coverage row.
+  scope: Globs,
+  unit: CampaignUnit,
+  detect: DetectorSpec,
+  probes: Schema.Struct({
+    fires: Schema.Array(CampaignProbe),
+    ignores: Schema.optionalKey(Schema.Array(CampaignProbe)),
+  }),
+  staleAfter: Duration,
+  onComplete: Schema.optionalKey(Schema.Literals(["keep", "remove"])),
+});
+
 export const Manifest = Schema.Struct({
   // How an import specifier becomes a file. Every pattern below is matched
   // against a resolved path, so this is what makes the rest of the file mean
@@ -274,6 +450,10 @@ export const Manifest = Schema.Struct({
   exports: Schema.optionalKey(Schema.Array(ExportRestriction)),
   graph: Schema.optionalKey(Graph),
   limits: Schema.optionalKey(Limits),
+  campaigns: Schema.optionalKey(Schema.Array(Campaign)),
+  // Where each campaign's ledger is written: `<ledger>/<id>.json`, relative
+  // to the manifest. Defaults to `.architecture-campaigns`.
+  ledger: Schema.optionalKey(Schema.String),
   // Shorthands expanded in every glob, so a pattern reads the way the repo's own
   // imports do rather than repeating `packages/server/src` on every line.
   aliases: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
@@ -289,6 +469,17 @@ export type GraphSpec = typeof Graph.Type;
 export type LimitsSpec = typeof Limits.Type;
 export type NamingSpec = typeof Naming.Type;
 export type ExportRestriction = typeof ExportRestriction.Type;
+export type CampaignSpec = typeof Campaign.Type;
+export type CampaignProbeSpec = typeof CampaignProbe.Type;
+export type SyntaxTermSpec = typeof SyntaxTerm.Type;
+
+export const DEFAULT_LEDGER_DIR = ".architecture-campaigns";
+
+// `30d` → milliseconds. The schema has already refused any other shape.
+export const durationMs = (duration: string): number => {
+  const amount = Number(duration.slice(0, -1));
+  return amount * (duration.endsWith("h") ? 3_600_000 : 86_400_000);
+};
 
 export const globsOf = (globs: string | ReadonlyArray<string>): ReadonlyArray<string> =>
   typeof globs === "string" ? [globs] : globs;

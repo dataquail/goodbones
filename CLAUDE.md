@@ -5,21 +5,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 An Nx + pnpm monorepo publishing architecture-policy tooling: a policy written as one manifest of
-the repository (`architecture.yaml`), enforced by an oxlint plugin and a CLI. Four packages,
+the repository (`architecture.yaml`), enforced by an oxlint plugin and a CLI. Five packages,
 all under `packages/`:
 
 - **`@goodbones/core`** (`packages/core`) — the manifest schema, the evaluators for the five
-  per-file families (`imports`, `exports`, `members`, `surface`, `structure`) and the `graph` family
-  (cycles, orphans, transitive reach), the `limits` ratchets, the ports a language pack implements,
-  a fake per port under `@goodbones/core/testing`, and `loadPolicy`. It names no language.
+  per-file families (`imports`, `exports`, `members`, `surface`, `structure`), the `graph` family
+  (cycles, orphans, transitive reach) and the `campaigns` family (a migration as a detector and a
+  ledger), the `limits` ratchets, the ports a language pack implements, a fake per port under
+  `@goodbones/core/testing`, and `loadPolicy`. It names no language.
 - **`@goodbones/typescript`** (`packages/typescript`) — the TypeScript language pack: facts read
   through oxc-parser, specifiers resolved through `unrs-resolver`, behind the core's
   `Language` port.
 - **`@goodbones/cli`** (`packages/cli`) — the `architecture` bin: `check`, `conformance`, `baseline`,
-  `coverage`, `explain`, `facts`, `init`, `infer`, `migrate`. Being the one host that sees every file at
+  `campaigns`, `coverage`, `explain`, `facts`, `init`, `infer`, `migrate`. Being the one host that sees every file at
   once, it is where the graph family is evaluated, and where the conformance snapshot (residue, slack,
   cycle count, leaf-first violations; schema in `packages/core/schema/conformance.schema.json`) is built.
-- **`@goodbones/oxlint`** (`packages/oxlint`) — the plugin: five oxlint rules over the same manifest.
+- **`@goodbones/ast-grep`** (`packages/ast-grep`) — the syntax matcher: the core's `SyntaxMatcher`
+  port over `@ast-grep/napi`, for the `campaigns` family's `syntax` term. A host composes it into
+  the TypeScript pack (`typescriptLanguage({ syntax: astGrepMatcher() })`); the pack never names it.
+- **`@goodbones/oxlint`** (`packages/oxlint`) — the plugin: six oxlint rules over the same manifest.
 
 Both hosts depend on the core and the pack and never on each other. `website/` is an Astro + Starlight
 docs site deployed to GitHub Pages at <https://dataquail.github.io/goodbones>.
@@ -33,9 +37,27 @@ Every family is in it, deliberately — `imports` and `structure` for the layeri
 "a live adapter is constructed only at the composition root" and "no namespace import or `export *`
 between tiers", `surface` for "no default exports, no `export *`", `graph` for no cycles, no dead
 modules, "the pure tiers reach no adapter", "the core reaches no other package" and "the two hosts
-never reach each other", and `limits` with both adoption ceilings at zero and coverage floors at the
-numbers the day they were written — so a family whose extraction quietly narrows breaks this lint
-run, not a user's.
+never reach each other", `limits` with both adoption ceilings at zero and coverage floors at the
+numbers the day they were written, and one `campaigns` entry with a real ledger — so a family whose
+extraction quietly narrows breaks this lint run, not a user's.
+
+**The campaigns family tracks a migration as an object.** A campaign (`campaigns:` in the manifest)
+is a detector — `all`/`any`/`not` over `path`, `imports`, `exports`, `members`, `requires`, `content`,
+`syntax` (an ast-grep rule), `report` (another program's diagnostics — `tsc`, `eslint`/`oxlint` JSON,
+or a `regex` — run once per process through `infrastructure/report-source-live.ts` and anchored on
+declarations through `SyntaxTree.anchorAt`) and `fn` (`module#export`) terms — with a unit (`file`, `declaration`,
+`match`), probes it must fire on and stay silent on, and a ledger under `.architecture-campaigns/`
+(`<id>.json`) of every place the pattern still occurs. The ledger only shrinks on its own:
+`architecture campaigns prune` removes, `campaigns allow --reason` is the one way an entry is added
+and it records a regression, and `check` verifies `entries.length === initial + Σ delta − fixed`. A
+fixed entry is stale and fails `check` like a stale baseline entry. The plugin evaluates this family
+by parsing `sourceCode.text` with the same ast-grep matcher the CLI uses — the only family the
+plugin parses with anything but oxlint's tree — so its parity contract is "one engine", pinned by
+`packages/oxlint/src/campaigns-parity.test.ts`. This repository runs one campaign on itself
+(`lowering-reports-not-throws`, over `packages/core/src/manifest/**`); its ledger is committed, and
+changing the count means pruning or allowing, in the open. `ARCHITECTURE_NOW` pins the clock the
+stall check reads. The TypeScript pack walks `.ts`-family files only, so a campaign over `.js` files
+has nothing to see until the pack's extensions widen — a separate decision.
 
 ## Commands
 
@@ -93,6 +115,11 @@ both files repeat it.
 and `@goodbones/core/testing` is the fakes; the root policy refuses a deep import into a sibling's
 `src/`, as a consumer outside the repo would find one refused by the `exports` map. Tests alias the
 bare names to `src` (`vitest.shared.ts`); `TEST_DIST=1` points them at `build/esm`.
+
+**`@goodbones/ast-grep` is a native dependency.** `@ast-grep/napi` ships a platform binary as an
+optional dependency and is in `pnpm.onlyBuiltDependencies`; a fresh checkout on an unsupported platform
+fails at install, not at lint. The package has never been published and goes through First Publish
+before any host version that depends on it is released, as `@goodbones/explorer` did.
 
 **`packages/oxlint/build/esm/plugin.js` is the plugin entrypoint**, the package's default export (and
 its `./plugin` subpath). `packages/cli/build/esm/main.js` is the `architecture` bin. Both are in the
@@ -218,15 +245,18 @@ TS2451, and the compiler owns it.
 - `src/domain/` — the manifest schema, the error types, the `Violation` and its line-independent
   fingerprint. No I/O.
 - `src/core/` — the pure evaluators (`imports`, `exports`, `members`, `surface`, `structure`, `graph`,
-  `coverage`, `baseline`, `patterns`). Given facts, they return violations; they never read a file.
+  `campaigns`, `coverage`, `baseline`, `ledger`, `patterns`). Given facts, they return violations;
+  they never read a file.
 - `src/manifest/` — compiling the manifest tree down to flat, resolved rules (`lowerManifest`).
 - `src/load/` — `loadPolicy`: decode, lower, compile and probe a manifest the host has already
   read, with the language packs and the `FileSystem` the host hands in. Language-neutral; the
   resolver and the extractor it returns route each file to the scope's language.
-- `src/ports/` — the `FileSystem`, `ModuleResolver`, `FactExtractor` and `Language` ports.
+- `src/ports/` — the `FileSystem`, `ModuleResolver`, `FactExtractor`, `SyntaxMatcher`,
+  `ReportSource`, `CampaignPredicate` and `Language` ports.
 - `src/infrastructure/` — a fake per port (exported as `@goodbones/core/testing`; tests drive them),
-  and the three things the core does on this host without a language: the live file system, the
-  walker, and reading the manifest file.
+  and the five things the core does on this host without a language: the live file system, the
+  walker, reading the manifest file, importing the `fn` terms' modules (`campaign-functions.ts`),
+  and running a `report` term's command (`report-source-live.ts`).
 
 The other three packages sit around it:
 

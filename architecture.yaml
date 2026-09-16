@@ -36,6 +36,11 @@
 # baseline` would write an empty list rather than a place to hide.
 baseline: .architecture-baseline.json
 
+# Where each campaign below keeps its ledger: `<ledger>/<id>.json`, one file
+# per campaign, so two pull requests paying down different campaigns never
+# conflict, and finishing one is deleting its file.
+ledger: .architecture-campaigns
+
 resolve:
   # Only `packages/` is policed. The docs site is Astro, whose `astro:*`
   # virtual modules resolve to nothing on disk, and a scope that cannot
@@ -55,6 +60,7 @@ aliases:
   "@ts": packages/typescript/src
   "@cli": packages/cli/src
   "@ox": packages/oxlint/src
+  "@ag": packages/ast-grep/src
 
 # Which exported names may cross which edges — the family a path rule cannot
 # express, because every importer of a module resolves to the same file.
@@ -67,7 +73,15 @@ exports:
       - "@ts/extractor.ts"
       - "@ts/resolver.ts"
       - "@ts/index.ts"
-    symbols: [makeFileSystemLive, makeModuleResolverLive, makeFactExtractorLive]
+      - "@core/infrastructure/report-source-live.ts"
+      - "@ag/matcher.ts"
+      - "@ag/index.ts"
+    symbols:
+      - makeFileSystemLive
+      - makeModuleResolverLive
+      - makeFactExtractorLive
+      - makeReportSourceLive
+      - astGrepMatcher
     # The two hosts' composition roots; the barrels that re-export them; and
     # the pack, which is what assembles its own extractor and resolver.
     except:
@@ -75,6 +89,7 @@ exports:
       - "@ox/config-loader.ts"
       - "@core/index.ts"
       - "@ts/index.ts"
+      - "@ag/index.ts"
       - "**/*.test.ts"
     probe:
       source: 'import { makeFileSystemLive } from "./infrastructure/file-system-live.js";'
@@ -105,11 +120,11 @@ limits:
   partial: 0
   # Every folder here is `layout: open`, so structure is 0% enumerated and
   # states no floor. The rest are the numbers on the day they were written:
-  # 2026-09-15, after the pack moved to oxc-parser — members is 58/95 (every
-  # file under the core's `src/`, which prints nothing), surface 91/95 (every
-  # file under a `src/`; the four `vitest.config.ts` are the remainder), graph
-  # 55/95 (every non-test file under a `src/`; the pack's new extractor test
-  # moved it from 58%).
+  # 2026-09-15, after the campaigns family and its matcher package landed —
+  # members is 66/109 (every file under the core's `src/`, which prints
+  # nothing), surface 104/109 (every file under a `src/`; the five
+  # `vitest.config.ts` are the remainder), graph 64/109 (every non-test file
+  # under a `src/`). A campaign joins no coverage row: its reach is its scope.
   coverage: { imports: 1, members: 0.6, surface: 0.95, graph: 0.57 }
 
 # The shape of the whole graph — evaluated by `architecture check`, which
@@ -130,12 +145,13 @@ graph:
         - "@core/index.ts"
         - "@core/testing.ts"
         - "@ts/index.ts"
+        - "@ag/index.ts"
         - "@cli/main.ts"
         - "@ox/plugin.ts"
 
   reach:
     - name: pure-tiers-reach-no-adapter
-      message: "The pure tiers — domain, ports, core, manifest, load — reach no live implementation, no language pack and no host, through any number of hops. That is what makes them testable without one."
+      message: "The pure tiers — domain, ports, core, manifest, load — reach no live implementation, no language pack, no syntax matcher and no host, through any number of hops. That is what makes them testable without one."
       from:
         - "@core/domain/**"
         - "@core/ports/**"
@@ -147,7 +163,10 @@ graph:
         - "@core/infrastructure/file-system-live.ts"
         - "@core/infrastructure/walk.ts"
         - "@core/infrastructure/manifest-file.ts"
+        - "@core/infrastructure/campaign-functions.ts"
+        - "@core/infrastructure/report-source-live.ts"
         - "@ts/**"
+        - "@ag/**"
         - "@cli/**"
         - "@ox/**"
 
@@ -157,7 +176,14 @@ graph:
       message: "The core reaches no other package. A second language is a second pack that depends on the core; the core depends on none of them."
       from: "@core/**"
       fromNot: "**/*.test.ts"
-      to: ["@ts/**", "@cli/**", "@ox/**"]
+      to: ["@ts/**", "@ag/**", "@cli/**", "@ox/**"]
+
+    # The pack never names the matcher: a host composes the two, so a second
+    # engine is a second package the pack need not know about.
+    - name: pack-never-reaches-the-matcher
+      message: "The language pack reaches no syntax matcher. The host composes the pack with one (`typescriptLanguage({ syntax })`), which is what lets a second engine arrive as a second package."
+      from: "@ts/**"
+      to: "@ag/**"
 
     - name: cli-never-reaches-the-plugin
       message: "The two hosts answer to the same core, never to each other — so an alpha plugin API is not a single point of failure for the CLI."
@@ -215,5 +241,37 @@ defs:
 tree:
   "~/core/": { include: packages/core/architecture.yaml }
   "~/typescript/": { include: packages/typescript/architecture.yaml }
+  "~/ast-grep/": { include: packages/ast-grep/architecture.yaml }
   "~/cli/": { include: packages/cli/architecture.yaml }
   "~/oxlint/": { include: packages/oxlint/architecture.yaml }
+
+# Migrations this repository is running, each tracked as an object: a
+# detector, a rationale, a guide, a definition of done, and a ledger under
+# `.architecture-campaigns/` of every place the pattern still occurs. The
+# ledger only shrinks on its own; growth is recorded with a reason, or the
+# build fails. This one is real — `manifest/` still throws where the rest of
+# the loader returns a `Result` — and it is also the family's largest test:
+# both hosts evaluate it against this tree on every lint run.
+campaigns:
+  - id: lowering-reports-not-throws
+    title: Lowering reports through Result, not by throwing
+    why: "`loadPolicy` returns a `Result`, but a manifest that lowers badly escapes it as a thrown `Error` — so a host that handles the failure value still has an exception to catch, and the message carries no line."
+    how: "Return `Result.fail(new ConfigInvalid({ configPath, detail }))` from the lowering, threading the path the manifest was read from, and let `loadPolicy` pass it up. Keep the sentence; move it into `detail`."
+    owner: "@dataquail"
+    scope: ["@core/manifest/**"]
+    unit: match
+    detect:
+      all:
+        - path: { file: "\\.ts$", fileNot: "\\.test\\.ts$" }
+        - syntax: { pattern: "throw new Error($$$)" }
+    probes:
+      fires:
+        - path: packages/core/src/manifest/zzprobe.ts
+          source: 'const lower = () => { throw new Error("bad manifest"); };'
+      ignores:
+        - path: packages/core/src/manifest/zzprobe.test.ts
+          source: 'const lower = () => { throw new Error("bad manifest"); };'
+        - path: packages/core/src/manifest/zzprobe.ts
+          source: "const lower = () => Result.fail(new ConfigInvalid({ configPath, detail }));"
+    staleAfter: 90d
+    onComplete: keep

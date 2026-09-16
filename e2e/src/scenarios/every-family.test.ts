@@ -10,7 +10,7 @@ import {
 import { createRepo, type Repo } from "../repo.js";
 
 // One planted violation per family, each with its expected fingerprint: the
-// one place all six are proven through the bin.
+// one place all seven are proven through the bin.
 
 let repo: Repo;
 
@@ -29,7 +29,7 @@ describe("every family fires", () => {
 
     expect(result.code).toBe(1);
     expect(result.json.ok).toBe(false);
-    expect(result.json.files).toBe(10);
+    expect(result.json.files).toBe(11);
     expect(result.json.unresolved).toEqual([]);
     expect(fingerprintsOf(result.json)).toEqual([...Object.values(everyFamilyFingerprints)].sort());
   });
@@ -46,7 +46,13 @@ describe("every family fires", () => {
       surface: 1,
       structure: 2,
       graph: 3,
+      campaign: 1,
     });
+    // The campaign has no ledger yet, so its hit is not carried, and the
+    // report says which campaign to init.
+    expect(json.campaigns).toEqual([
+      expect.objectContaining({ id: "legacy-to-modern", count: 1, missingLedger: true }),
+    ]);
     // The route a reach violation took is in the message, not the subject,
     // so the fingerprint survives the route changing.
     const reach = json.violations.find((one) => one.ruleName === "pure-reaches-no-adapter");

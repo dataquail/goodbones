@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { decodeSnapshot, type Snapshot } from "@goodbones/core";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Result from "effect/Result";
@@ -10,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { loadPolicyFromFile as loadPolicy } from "./config-loader.js";
 import {
+  campaigns,
   check as checkWith,
   type CheckReport,
   type CliFailure,
@@ -714,5 +716,447 @@ describe.sequential("resolution and a damaged baseline", () => {
     rmSync(baselineAt, { force: true });
 
     expect(Exit.isSuccess(exit)).toBe(true);
+  });
+});
+
+// A repository running two campaigns: a `file` one over a path shape, and a
+// `match` one through the real ast-grep matcher. Driven through the ledger's
+// whole life: no ledger, init, a fix, the stale failure, prune, a regression,
+// the unrecorded-growth failure, allow, and what conformance says.
+const campaignRoot = path.resolve(here, "../../../.tmp-cli-campaign-tests");
+const ledgerAt = (id: string) => path.join(campaignRoot, ".architecture-campaigns", `${id}.json`);
+
+const CAMPAIGN_MANIFEST = `export default {
+  resolve: { scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.json" } }], unresolved: "off" },
+  campaigns: [
+    {
+      id: "legacy-to-modern",
+      why: "Nothing new is written under legacy/, and what is there moves out.",
+      how: "Move the module under src/modern/ and update its importers.",
+      owner: "@team/platform",
+      scope: ["src/**"],
+      unit: "file",
+      detect: { path: { file: "^src/legacy/" } },
+      probes: { fires: [{ path: "src/legacy/util.ts" }], ignores: [{ path: "src/util.ts" }] },
+      staleAfter: "14d",
+      onComplete: "remove",
+    },
+    {
+      id: "no-throw",
+      why: "Errors are returned, not thrown.",
+      how: "Return a Result instead of throwing.",
+      scope: ["src/**"],
+      unit: "match",
+      detect: { syntax: { pattern: "throw new Error($$$)" } },
+      probes: {
+        fires: [{ path: "src/a.ts", source: "function f() { throw new Error('x'); }" }],
+        ignores: [{ path: "src/b.ts", source: "function f() { return 1; }" }],
+      },
+      staleAfter: "30d",
+    },
+  ],
+  tree: { "src/": { layout: "open", children: {} } },
+};
+`;
+
+const campaignPolicy = (now?: string) => {
+  if (now !== undefined) process.env.ARCHITECTURE_NOW = now;
+  else delete process.env.ARCHITECTURE_NOW;
+  return loadPolicy(campaignRoot);
+};
+
+const checkCampaigns = async (format: "text" | "json" = "text") =>
+  captureReport(check(await campaignPolicy(), ["src"], format));
+
+beforeAll(() => {
+  mkdirSync(campaignRoot, { recursive: true });
+  writeIn(campaignRoot, "architecture.config.mjs", CAMPAIGN_MANIFEST);
+  writeIn(campaignRoot, "tsconfig.json", JSON.stringify({ compilerOptions: { baseUrl: "." } }));
+  writeIn(campaignRoot, "src/legacy/one.ts", "export const one = 1;\n");
+  writeIn(campaignRoot, "src/legacy/two.ts", "export const two = 2;\n");
+  writeIn(campaignRoot, "src/fine.ts", "export const fine = 1;\n");
+  writeIn(
+    campaignRoot,
+    "src/thrower.ts",
+    'export function parse(x: string) { if (x === "") throw new Error("empty"); return x; }\n',
+  );
+});
+
+afterAll(() => {
+  delete process.env.ARCHITECTURE_NOW;
+  rmSync(campaignRoot, { force: true, recursive: true });
+});
+
+describe.sequential("campaigns", () => {
+  it("fails check on a campaign with hits and no ledger, and says how to init it", async () => {
+    const { exit, output } = await checkCampaigns();
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(output).toContain("campaign legacy-to-modern: 2 hits and no ledger");
+    expect(output).toContain("architecture campaigns init legacy-to-modern");
+    const { output: json } = await checkCampaigns("json");
+    const report = JSON.parse(json) as CheckReport;
+    expect(report.ok).toBe(false);
+    expect(report.campaigns.map((one) => [one.id, one.count, one.missingLedger])).toEqual([
+      ["legacy-to-modern", 2, true],
+      ["no-throw", 1, true],
+    ]);
+    expect(
+      report.violations.filter((one) => one.kind === "campaign").map((one) => one.fingerprint),
+    ).toEqual([
+      "campaign|campaign/legacy-to-modern|src/legacy/one.ts|",
+      "campaign|campaign/legacy-to-modern|src/legacy/two.ts|",
+      expect.stringMatching(/^campaign\|campaign\/no-throw\|src\/thrower\.ts\|parse#[0-9a-f]{8}$/),
+    ]);
+  });
+
+  it("init writes a ledger from what fires today, and refuses to overwrite it", async () => {
+    const policy = await campaignPolicy("2026-09-01T00:00:00Z");
+    const first = await captureReport(campaigns(policy, ["src"], ["init", "legacy-to-modern"]));
+    expect(Exit.isSuccess(first.exit)).toBe(true);
+    expect(first.output).toContain(
+      "2 hits recorded in .architecture-campaigns/legacy-to-modern.json",
+    );
+    const ledger = JSON.parse(readFileSync(ledgerAt("legacy-to-modern"), "utf8")) as {
+      initial: number;
+      entries: Array<string>;
+      created: string;
+    };
+    expect(ledger.initial).toBe(2);
+    expect(ledger.entries).toEqual(["src/legacy/one.ts", "src/legacy/two.ts"]);
+    expect(ledger.created).toBe("2026-09-01T00:00:00.000Z");
+
+    const again = await captureReport(
+      campaigns(await campaignPolicy(), ["src"], ["init", "legacy-to-modern"]),
+    );
+    expect(Exit.isFailure(again.exit)).toBe(true);
+    await captureReport(
+      campaigns(await campaignPolicy("2026-09-01T00:00:00Z"), ["src"], ["init", "no-throw"]),
+    );
+  });
+
+  it("is ok once every hit is ledgered, with each marked ledgered in JSON", async () => {
+    const { exit, output } = await checkCampaigns("json");
+    const report = JSON.parse(output) as CheckReport;
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(report.ok).toBe(true);
+    expect(
+      report.violations.filter((one) => one.kind === "campaign").every((one) => one.ledgered),
+    ).toBe(true);
+  });
+
+  it("fails on a fixed entry until it is pruned, and prune stamps progress", async () => {
+    rmSync(path.join(campaignRoot, "src/legacy/two.ts"));
+    const { exit, output } = await checkCampaigns();
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(output).toContain("campaign legacy-to-modern: 1 ledger entry no longer fire");
+    expect(output).toContain("architecture campaigns prune legacy-to-modern");
+
+    const pruned = await captureReport(
+      campaigns(await campaignPolicy("2026-09-10T00:00:00Z"), ["src"], ["prune"]),
+    );
+    expect(Exit.isSuccess(pruned.exit)).toBe(true);
+    expect(pruned.output).toContain("legacy-to-modern: 1 entry pruned; 1 entry left.");
+    expect(pruned.output).toContain("no-throw: nothing to prune.");
+    const ledger = JSON.parse(readFileSync(ledgerAt("legacy-to-modern"), "utf8")) as {
+      fixed: number;
+      lastProgress: string;
+      entries: Array<string>;
+    };
+    expect(ledger.fixed).toBe(1);
+    expect(ledger.lastProgress).toBe("2026-09-10T00:00:00.000Z");
+    expect(ledger.entries).toEqual(["src/legacy/one.ts"]);
+    expect(Exit.isSuccess((await checkCampaigns()).exit)).toBe(true);
+  });
+
+  it("treats an edit inside the anchored declaration as the same match entry", async () => {
+    writeIn(
+      campaignRoot,
+      "src/thrower.ts",
+      'export function parse(x: string) {\n  if (x === "") throw new Error("nothing given");\n  return x;\n}\n',
+    );
+    const { exit, output } = await checkCampaigns("json");
+    const report = JSON.parse(output) as CheckReport;
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(report.campaigns.find((one) => one.id === "no-throw")?.drifted).toBe(1);
+    const pruned = await captureReport(
+      campaigns(await campaignPolicy(), ["src"], ["prune", "no-throw"]),
+    );
+    expect(pruned.output).toContain("no-throw: 0 entries pruned, 1 entry rewritten; 1 entry left.");
+  });
+
+  it("fails on unrecorded growth, and allow records the regression with a reason and an author", async () => {
+    writeIn(campaignRoot, "src/legacy/three.ts", "export const three = 3;\n");
+    const { exit, output } = await checkCampaigns();
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(output).toContain("campaign legacy-to-modern: 1 new hit the ledger does not carry");
+    expect(output).toContain("Move the module under src/modern/ and update its importers.");
+    expect(output).toContain('architecture campaigns allow legacy-to-modern --reason "<why>"');
+
+    const refused = await captureReport(
+      campaigns(await campaignPolicy(), ["src"], ["allow", "legacy-to-modern"]),
+    );
+    expect(Exit.isFailure(refused.exit)).toBe(true);
+
+    const allowedRun = await captureReport(
+      campaigns(
+        await campaignPolicy("2026-09-12T00:00:00Z"),
+        ["src"],
+        [
+          "allow",
+          "legacy-to-modern",
+          "--reason",
+          "vendored until v4",
+          "--by",
+          "someone@example.com",
+        ],
+      ),
+    );
+    expect(Exit.isSuccess(allowedRun.exit)).toBe(true);
+    expect(allowedRun.output).toContain(
+      "legacy-to-modern: 1 entry allowed, recorded as a regression by someone@example.com",
+    );
+    const ledger = JSON.parse(readFileSync(ledgerAt("legacy-to-modern"), "utf8")) as {
+      regressions: Array<{ delta: number; reason: string; by: string; entries: Array<string> }>;
+      entries: Array<string>;
+    };
+    expect(ledger.regressions).toEqual([
+      {
+        at: "2026-09-12T00:00:00.000Z",
+        by: "someone@example.com",
+        delta: 1,
+        reason: "vendored until v4",
+        entries: ["src/legacy/three.ts"],
+      },
+    ]);
+    expect(ledger.entries).toEqual(["src/legacy/one.ts", "src/legacy/three.ts"]);
+    expect(Exit.isSuccess((await checkCampaigns()).exit)).toBe(true);
+  });
+
+  it("fails when the ledger does not add up", async () => {
+    const at = ledgerAt("legacy-to-modern");
+    const ledger = JSON.parse(readFileSync(at, "utf8")) as { entries: Array<string> };
+    writeIn(campaignRoot, "src/legacy/four.ts", "export const four = 4;\n");
+    writeFileSync(
+      at,
+      JSON.stringify({ ...ledger, entries: [...ledger.entries, "src/legacy/four.ts"] }),
+    );
+    const { exit, output } = await checkCampaigns();
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(output).toContain("the ledger does not add up");
+    rmSync(path.join(campaignRoot, "src/legacy/four.ts"));
+    writeFileSync(at, `${JSON.stringify(ledger, null, 2)}\n`);
+  });
+
+  it("reports progress and a stall in conformance, ordered stalled first", async () => {
+    const stalled = await captureReport(
+      conformanceWith(await campaignPolicy("2026-10-15T00:00:00Z"), ["src"], {
+        format: "json",
+        manifestPath: path.join(campaignRoot, "architecture.config.mjs"),
+      }),
+    );
+    const snapshot = JSON.parse(stalled.output) as Snapshot;
+    expect(Result.isSuccess(decodeSnapshot(snapshot))).toBe(true);
+    expect(
+      snapshot.campaigns.map((one) => [one.id, one.count, one.fixed, one.allowed, one.stalled]),
+    ).toEqual([
+      ["legacy-to-modern", 2, 1, 1, true],
+      ["no-throw", 1, 0, 0, true],
+    ]);
+    // 2 left of 3 ever ledgered.
+    expect(snapshot.campaigns[0]?.progress).toBeCloseTo(1 / 3);
+    expect(snapshot.campaigns[0]?.owner).toBe("@team/platform");
+
+    const text = await captureReport(
+      conformanceWith(await campaignPolicy("2026-10-15T00:00:00Z"), ["src"], {
+        format: "text",
+        manifestPath: path.join(campaignRoot, "architecture.config.mjs"),
+      }),
+    );
+    expect(text.output).toContain("campaigns: 2 campaigns, 2 stalled");
+    expect(text.output).toMatch(
+      /legacy-to-modern\s+33%\s+2 left\s+1 fixed\s+1 allowed\s+@team\/platform\s+stalled/,
+    );
+  });
+
+  it("notices a stall in check without failing, and fails a complete campaign declared remove", async () => {
+    const { exit, output } = await captureReport(
+      check(await campaignPolicy("2026-10-15T00:00:00Z"), ["src"], "text"),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(output).toContain("notice: campaign legacy-to-modern has stalled");
+
+    rmSync(path.join(campaignRoot, "src/legacy/one.ts"));
+    rmSync(path.join(campaignRoot, "src/legacy/three.ts"));
+    await captureReport(campaigns(await campaignPolicy(), ["src"], ["prune", "legacy-to-modern"]));
+    const done = await checkCampaigns();
+    expect(Exit.isFailure(done.exit)).toBe(true);
+    expect(done.output).toContain(
+      "campaign legacy-to-modern is complete and declares onComplete: remove",
+    );
+  });
+
+  it("prints the status table, and explains a file's campaigns with a truth table", async () => {
+    const status = await captureReport(campaigns(await campaignPolicy(), ["src"], []));
+    expect(status.output).toContain("2 campaigns under src");
+    expect(status.output).toMatch(/legacy-to-modern\s+100%\s+0 left.*complete/);
+    const explained = await captureReport(explain(await campaignPolicy(), "src/thrower.ts"));
+    expect(explained.output).toContain("campaigns:");
+    expect(explained.output).toContain(
+      "campaign/no-throw — Errors are returned, not thrown. (match; 1 hit)",
+    );
+    expect(explained.output).toMatch(/✓ syntax \{"pattern":"throw new Error\(\$\$\$\)"\} \(1\)/);
+  });
+
+  it("routes the campaigns command through run", async () => {
+    const { exit, output } = await captureReport(
+      run(campaignRoot, ["campaigns", "src"], "architecture.config.mjs"),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(output).toContain("2 campaigns under src");
+  });
+});
+
+// A `report` term through the live source: one campaign runs a command that
+// prints tsc-style lines, another reads an oxlint JSON report a build wrote.
+// Each diagnostic is anchored on the declaration at its position.
+const reportRoot = path.resolve(here, "../../../.tmp-cli-report-tests");
+
+const REPORT_MANIFEST = `export default {
+  resolve: { scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.json" } }], unresolved: "off" },
+  campaigns: [
+    {
+      id: "type-errors",
+      why: "The strict tsconfig cannot land while these remain.",
+      how: "Fix the type error; do not add a cast.",
+      scope: ["src/**"],
+      unit: "match",
+      detect: { report: { command: "node report.mjs", format: "tsc", codesNot: ["TS6133"] } },
+      probes: {
+        fires: [{ path: "src/a.ts", report: [{ line: 1, code: "TS2551", message: "m" }] }],
+        ignores: [{ path: "src/b.ts", report: [{ line: 1, code: "TS6133", message: "unused" }] }],
+      },
+      staleAfter: "30d",
+    },
+    {
+      id: "lint-debt",
+      why: "Every finding the linter carries is a finding nobody reads.",
+      how: "Fix the finding, or disable the rule with a reason.",
+      scope: ["src/**"],
+      unit: "match",
+      detect: { report: { file: "oxlint.json", format: "oxlint" } },
+      probes: { fires: [{ path: "src/a.ts", report: [{ line: 1, code: "eslint(no-debugger)" }] }] },
+      staleAfter: "30d",
+    },
+  ],
+  tree: { "src/": { layout: "open", children: {} } },
+};
+`;
+
+beforeAll(() => {
+  mkdirSync(reportRoot, { recursive: true });
+  writeIn(reportRoot, "architecture.config.mjs", REPORT_MANIFEST);
+  writeIn(reportRoot, "tsconfig.json", JSON.stringify({ compilerOptions: { baseUrl: "." } }));
+  writeIn(
+    reportRoot,
+    "src/a.ts",
+    "export function parse(x: string) {\n  return x.nope;\n}\nexport const top = 1;\n",
+  );
+  writeIn(
+    reportRoot,
+    "report.mjs",
+    [
+      "process.stdout.write(\"src/a.ts(2,12): error TS2551: Property 'nope' does not exist on type 'string'.\\n\");",
+      "process.stdout.write(\"src/a.ts(2,12): error TS2551: Property 'nope' does not exist on type 'string'.\\n\");",
+      "process.stdout.write(\"src/a.ts(4,14): error TS6133: 'top' is declared but never used.\\n\");",
+      "process.stdout.write(\"src/a.ts(9,1): error TS1005: ';' expected.\\n\");",
+      "process.exitCode = 2;",
+      "",
+    ].join("\n"),
+  );
+  writeIn(
+    reportRoot,
+    "oxlint.json",
+    JSON.stringify({
+      diagnostics: [
+        {
+          message: "`debugger` statement is not allowed",
+          code: "eslint(no-debugger)",
+          severity: "error",
+          filename: path.join(reportRoot, "src/a.ts"),
+          labels: [{ span: { offset: 0, length: 1, line: 2, column: 3 } }],
+        },
+      ],
+    }),
+  );
+});
+
+afterAll(() => {
+  rmSync(reportRoot, { force: true, recursive: true });
+});
+
+describe.sequential("a report term", () => {
+  it("runs the command once, reads the file, and anchors each diagnostic on its declaration", async () => {
+    const { exit, output } = await captureReport(
+      check(await loadPolicy(reportRoot), ["src"], "json"),
+    );
+    const report = JSON.parse(output) as CheckReport;
+    expect(Exit.isFailure(exit)).toBe(true);
+    const subjects = report.violations
+      .filter((one) => one.kind === "campaign")
+      .map((one) => `${one.ruleName}|${one.subject ?? ""}`);
+    expect(subjects).toEqual([
+      // Two identical diagnostics in `parse` are two entries; TS6133 is
+      // excluded by `codesNot`; the one past the end of the file has no anchor.
+      expect.stringMatching(/^campaign\/type-errors\|#TS1005#[0-9a-f]{8}$/),
+      expect.stringMatching(/^campaign\/type-errors\|parse#TS2551#[0-9a-f]{8}$/),
+      expect.stringMatching(/^campaign\/type-errors\|parse#TS2551#[0-9a-f]{8}~2$/),
+      expect.stringMatching(/^campaign\/lint-debt\|parse#eslint\(no-debugger\)#[0-9a-f]{8}$/),
+    ]);
+    expect(report.campaigns.map((one) => [one.id, one.count])).toEqual([
+      ["type-errors", 3],
+      ["lint-debt", 1],
+    ]);
+  });
+
+  it("explains the term and its answer", async () => {
+    const { output } = await captureReport(explain(await loadPolicy(reportRoot), "src/a.ts"));
+    expect(output).toContain("✓ report tsc `node report.mjs` (3)");
+    expect(output).toContain("✓ report oxlint file oxlint.json (1)");
+  });
+
+  it("is ledgered like any other campaign, and a reworded message is a drifted entry", async () => {
+    const policy = await loadPolicy(reportRoot);
+    await captureReport(campaigns(policy, ["src"], ["init", "type-errors"]));
+    await captureReport(campaigns(policy, ["src"], ["init", "lint-debt"]));
+    const ok = await captureReport(check(await loadPolicy(reportRoot), ["src"], "json"));
+    expect(Exit.isSuccess(ok.exit), ok.output).toBe(true);
+
+    writeIn(
+      reportRoot,
+      "report.mjs",
+      [
+        "process.stdout.write(\"src/a.ts(2,12): error TS2551: Property 'nope' does not exist on type 'string'. Did you mean 'normalize'?\\n\");",
+        "process.stdout.write(\"src/a.ts(9,1): error TS1005: ';' expected.\\n\");",
+        "",
+      ].join("\n"),
+    );
+    const { exit, output } = await captureReport(
+      check(await loadPolicy(reportRoot), ["src"], "json"),
+    );
+    const report = JSON.parse(output) as CheckReport;
+    const typeErrors = report.campaigns.find((one) => one.id === "type-errors");
+    // One TS2551 reworded (drifted, still carried), the other gone (stale).
+    expect(typeErrors?.drifted).toBe(1);
+    expect(typeErrors?.stale).toHaveLength(1);
+    expect(typeErrors?.new).toEqual([]);
+    expect(Exit.isFailure(exit)).toBe(true);
+  });
+
+  it("fails to load when the report file is missing, naming it", async () => {
+    rmSync(path.join(reportRoot, "oxlint.json"));
+    const { exit } = await captureReport(check(await loadPolicy(reportRoot), ["src"], "json"));
+    expect(Exit.isFailure(exit)).toBe(true);
+    const cause = Exit.isFailure(exit) ? String(Cause.squash(exit.cause)) : "";
+    expect(cause).toContain("the report file oxlint.json cannot be read");
   });
 });

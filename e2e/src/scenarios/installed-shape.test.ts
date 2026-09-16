@@ -73,7 +73,7 @@ describe("installed shape", () => {
     });
     expect(run.error).toBeUndefined();
     expect(run.status).toBe(1);
-    expect((JSON.parse(run.stdout) as { files: number }).files).toBe(10);
+    expect((JSON.parse(run.stdout) as { files: number }).files).toBe(11);
   });
 
   it("init and explain run from the install too", () => {
@@ -98,6 +98,7 @@ describe("installed shape", () => {
     expect(linted.code).toBe(1);
     expect(linted.diagnostics.map((one) => `${one.rule} ${one.file}`).sort()).toEqual(
       [
+        "architecture/campaigns src/legacy/old.ts",
         "architecture/exports src/ports/thing.repository.ts",
         "architecture/imports src/ports/thing.repository.ts",
         "architecture/members src/ports/thing.repository.ts",
@@ -118,6 +119,7 @@ describe("installed shape", () => {
         'import { fingerprintOf, loadPolicy } from "@goodbones/core";',
         'import { makeFileSystemFake } from "@goodbones/core/testing";',
         'import { typescriptLanguage } from "@goodbones/typescript";',
+        'import { astGrepMatcher } from "@goodbones/ast-grep";',
         "process.stdout.write(JSON.stringify({",
         "  plugin: plugin.meta.name,",
         "  rules: Object.keys(plugin.rules).sort(),",
@@ -125,6 +127,7 @@ describe("installed shape", () => {
         "  core: typeof fingerprintOf === 'function' && typeof loadPolicy === 'function',",
         "  testing: typeof makeFileSystemFake === 'function',",
         "  language: typescriptLanguage().id,",
+        "  matcher: astGrepMatcher().parse('a.ts', 'let x = 1;') !== null,",
         "}));",
         "",
       ].join("\n"),
@@ -133,11 +136,12 @@ describe("installed shape", () => {
     expect(run.status, run.stderr).toBe(0);
     expect(JSON.parse(run.stdout)).toEqual({
       plugin: "architecture",
-      rules: ["exports", "imports", "members", "structure", "surface"],
+      rules: ["campaigns", "exports", "imports", "members", "structure", "surface"],
       same: true,
       core: true,
       testing: true,
       language: "typescript",
+      matcher: true,
     });
   });
 });

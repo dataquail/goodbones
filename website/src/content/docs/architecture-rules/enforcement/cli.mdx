@@ -130,6 +130,33 @@ came through `use`. `--json` emits the snapshot document, and `--against <manife
 same tree against a target manifest instead of the repository's own. It never fails; it
 is a measurement. See [Conformance](/goodbones/architecture-rules/enforcement/conformance/).
 
+## `campaigns`
+
+The ledgers of the [campaigns](/goodbones/architecture-rules/manifest/campaigns/) the
+manifest declares. Alone, the status table — each campaign's progress, what is left, what
+was fixed, what was allowed, its owner, and whether it is stalled or complete:
+
+```
+$ architecture campaigns
+
+1 campaign under packages
+
+  lowering-reports-not-throws    0%     17 left  0 fixed  0 allowed  @dataquail
+```
+
+```bash
+architecture campaigns init <id>                                    # the first ledger, from what fires today
+architecture campaigns prune [<id>]                                 # drop entries that no longer fire
+architecture campaigns allow <id> --reason "<why>" [--by <email>]   # record why the count may rise
+```
+
+`init` refuses to overwrite a ledger. `prune` only removes, and stamps the campaign's
+`lastProgress` when it does. `allow` is the one way an entry is added, and it always appends
+a regression record — the entries, the reason, a timestamp and the author, which defaults to
+git's `user.email`; `--entries a,b` allows a subset and leaves the rest failing. See
+[Ledger](/goodbones/architecture-rules/enforcement/ledger/) for what `check` demands of the
+file. Roots follow the subcommand, as they do everywhere else.
+
 ## `coverage`
 
 How much of the tree the policy reaches, per family, with the tiers that said "not tightened
@@ -172,6 +199,18 @@ the file with the first sentence of its reason, the folder rule that admits it, 
 it owes — and then, one section per family that has something to say about the file, the
 `exports` restrictions, `members` vocabularies, `surface` rules and `graph` scopes that
 select it. `facts` is the other half: what those rules are evaluated against.
+
+A campaign selecting the file is printed with its **truth table**: one line per leaf term of
+its detector and what that term answered for this file, every term evaluated with no
+short-circuit, so a detector that "should fire" and does not shows which term is not saying
+what its author thinks:
+
+```
+  campaigns:
+    campaign/lowering-reports-not-throws — `loadPolicy` returns a `Result`, but … (match; 1 hit)
+        ✓ path /\.ts$/
+        ✓ syntax {"pattern":"throw new Error($$$)"} (1)
+```
 
 The allowlist is shown as compiled regular expressions rather than as the globs you wrote,
 because what is in force after inheritance is not any single line of the manifest. `$1` is a

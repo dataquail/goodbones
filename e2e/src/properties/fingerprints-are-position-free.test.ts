@@ -5,17 +5,19 @@ import { check, fingerprintsOf } from "../cli.js";
 import { typescript } from "../profile.js";
 import {
   arbTree,
+  campaignManifest,
   parameters,
   PROPERTY_TIMEOUT,
   repoOf,
   specsOf,
   tick,
-  tightManifest,
 } from "./generators.js";
 
 // Fingerprints are position-free. Reorder every file's imports and pad every
 // file with blank lines: the set of fingerprints is unchanged, which is what
-// lets a baseline entry survive a reformat.
+// lets a baseline entry survive a reformat — and a ledger entry too, so the
+// manifest carries a `match` campaign, whose subject is the enclosing
+// declaration and a hash of the matched text, never a line.
 
 // A permutation of each file's imports, and how many blank lines go between
 // its lines.
@@ -48,9 +50,10 @@ describe("fingerprints are position-free", () => {
             await tick();
             const repo = repoOf(tree);
             try {
-              repo.writeManifest(tightManifest(repo.profile));
+              repo.writeManifest(campaignManifest(repo.profile));
               const before = check(repo, ["src"]);
               expect(before.json.unresolved, before.stderr).toEqual([]);
+              expect(before.json.violations.some((one) => one.kind === "campaign")).toBe(true);
 
               for (const [file, spec] of Object.entries(specsOf(tree, repo.profile))) {
                 const { order, padding } = shuffle[file] ?? { order: [], padding: 0 };

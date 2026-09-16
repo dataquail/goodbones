@@ -101,6 +101,42 @@ export const tightManifest = (profile: Profile): Readonly<Record<string, unknown
   },
 });
 
+// The tight policy with two campaigns over the generated tree: a `file` one
+// on the handlers and services, and a `match` one on the `const … = 1` every
+// generated file declares — so the second is answered through the syntax
+// matcher, and every file yields a match anchored on its declaration.
+export const campaignManifest = (profile: Profile): Readonly<Record<string, unknown>> => ({
+  ...tightManifest(profile),
+  campaigns: [
+    {
+      id: "handlers-and-services",
+      why: "Handlers and services move behind the command bus.",
+      how: "Register the module with the bus and delete the direct import.",
+      scope: ["src/**"],
+      unit: "file",
+      detect: { path: { file: `/(handler|service)\\${profile.extension}$` } },
+      probes: {
+        fires: [{ path: `src/handler${profile.extension}` }],
+        ignores: [{ path: `src/main${profile.extension}` }],
+      },
+      staleAfter: "30d",
+    },
+    {
+      id: "no-literal-ones",
+      why: "A literal one is a placeholder.",
+      how: "Give the value a name.",
+      scope: ["src/**"],
+      unit: "match",
+      detect: { syntax: { pattern: "const $N = 1" } },
+      probes: {
+        fires: [{ path: `src/a${profile.extension}`, source: "export const value = 1;" }],
+        ignores: [{ path: `src/b${profile.extension}`, source: "export const value = 2;" }],
+      },
+      staleAfter: "30d",
+    },
+  ],
+});
+
 // Runs per property, and the seed: overridable so a failure's seed can be
 // replayed with `FC_SEED=<n> FC_NUM_RUNS=1`. Shrinking a forty-file tree is
 // hundreds more runs of the bin; `FC_END_ON_FAILURE=1` skips it, and the time

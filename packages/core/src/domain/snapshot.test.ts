@@ -38,6 +38,7 @@ const SAMPLE: Snapshot = {
       subject: "lib/b.ts",
       message: "…",
       baselined: false,
+      ledgered: false,
     },
     {
       fingerprint: "structure|src/layout|src/x.ts|",
@@ -47,6 +48,7 @@ const SAMPLE: Snapshot = {
       subject: null,
       message: "…",
       baselined: true,
+      ledgered: false,
     },
   ],
   unresolved: [{ file: "src/a.ts", specifier: "ghost", detail: "not found" }],
@@ -61,6 +63,24 @@ const SAMPLE: Snapshot = {
     { fragment: "test-file", kind: "external", entry: "@effect/sql-pg", usedAt: 1, of: 24 },
   ],
   adoption: { unrestricted: ["src/legacy"], partial: [] },
+  campaigns: [
+    {
+      id: "react-class-components",
+      title: "Class components to hooks",
+      owner: "@dataquail/web-platform",
+      initial: 412,
+      allowed: 2,
+      count: 388,
+      fixed: 26,
+      progress: 0.0628,
+      lastProgress: "2026-09-14T09:11:00.000Z",
+      regressions: 1,
+      stalled: false,
+      complete: false,
+      onComplete: "keep",
+      ledgered: true,
+    },
+  ],
 };
 
 const validator = () => {
@@ -116,5 +136,26 @@ describe("the conformance snapshot", () => {
       }),
     ).toBe(false);
     expect(validate({ ...SAMPLE, slack: [{ node: "src", kind: "deny", entry: "x" }] })).toBe(false);
+  });
+
+  it("describes every campaign field, and refuses one it does not declare", () => {
+    const schema = snapshotJsonSchema() as {
+      $defs?: Record<string, unknown>;
+      properties: Record<string, unknown>;
+    };
+    const campaign = SAMPLE.campaigns[0];
+    if (campaign === undefined) throw new Error("no sample campaign");
+    const text = JSON.stringify(schema);
+    for (const field of Object.keys(campaign)) {
+      expect(text.includes(`"${field}":{`), field).toBe(true);
+    }
+    const validate = validator();
+    expect(validate({ ...SAMPLE, campaigns: [{ ...campaign, velocity: 1 }] })).toBe(false);
+    expect(validate({ ...SAMPLE, campaigns: [{ ...campaign, onComplete: "archive" }] })).toBe(
+      false,
+    );
+    expect(
+      Result.isFailure(decodeSnapshot({ ...SAMPLE, campaigns: [{ ...campaign, velocity: 1 }] })),
+    ).toBe(true);
   });
 });

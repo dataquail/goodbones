@@ -8,6 +8,7 @@ import {
   EMPTY_STRUCTURE,
   type LoadedPolicy,
   makeBaselineFilter,
+  NO_REPORTS,
 } from "@goodbones/core";
 import {
   makeFactExtractorFake,
@@ -73,6 +74,13 @@ const policy = (): LoadedPolicy => {
     adoption: { unrestricted: [], partial: [] },
     fileSystem: makeFileSystemFake([]),
     languages: [],
+    campaignRules: [],
+    ledgers: new Map(),
+    ledgerDir: ".architecture-campaigns",
+    functions: new Map(),
+    now: 0,
+    syntax: { parse: () => null },
+    reports: NO_REPORTS,
     extractor: makeFactExtractorFake({}),
     resolver: makeModuleResolverFake({
       "@effect-server-utils/cqrs": CQRS_BARREL,

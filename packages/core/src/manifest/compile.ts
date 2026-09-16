@@ -1,5 +1,7 @@
 import {
   type Allowance,
+  type CampaignRule,
+  type Detector,
   type ExportRule,
   type GraphConfig,
   type ImportRule,
@@ -15,11 +17,15 @@ import type { ManifestPath } from "../domain/manifest-location.js";
 import { fragmentOf, type Substitution } from "./expand.js";
 import { anchored, type CaptureIndex, globToRegexSource, prefixed } from "./glob.js";
 import {
+  type CampaignSpec,
+  type DetectorSpec,
+  durationMs,
   globsOf,
   type ImportsSpec,
   type Manifest,
   type ManifestNode,
   type NamingSpec,
+  type SyntaxTermSpec,
 } from "./manifest.js";
 
 // The manifest is the authoring surface; these flat rules are the machine's.
@@ -31,6 +37,8 @@ export type LoweredRules = {
   readonly members: ReadonlyArray<MemberRule>;
   readonly surface: ReadonlyArray<SurfaceRule>;
   readonly graph: GraphConfig;
+  // Campaigns pass through by their own id, as top-level `exports` rules do.
+  readonly campaigns: ReadonlyArray<CampaignRule>;
   // The nodes that said "not tightened yet", by name — the adoption backlog,
   // and what `limits` puts a ceiling on.
   readonly adoption: {
@@ -1050,13 +1058,226 @@ export const lowerManifest = (
     })),
   };
 
+  const campaigns = (manifest.campaigns ?? []).map((campaign) => lowerCampaign(campaign, aliases));
+
   return {
     imports,
     exports,
     members,
     surface,
     graph,
+    campaigns,
     adoption: { unrestricted: unrestrictedNodes, partial: partialNodes },
     structure: { roots, folders, parity, naming: namingRules },
+  };
+};
+
+// The keys of a `syntax` term that belong to the engine's rule; `where` is
+// the one that does not.
+const SYNTAX_RULE_KEYS = [
+  "pattern",
+  "kind",
+  "regex",
+  "nthChild",
+  "inside",
+  "has",
+  "precedes",
+  "follows",
+  "all",
+  "any",
+  "not",
+] as const;
+
+const syntaxRuleOf = (term: SyntaxTermSpec): unknown =>
+  Object.fromEntries(
+    SYNTAX_RULE_KEYS.flatMap((key) => (term[key] === undefined ? [] : [[key, term[key]]])),
+  );
+
+// The leaf terms a path alone cannot exercise: each reads the file's text,
+// its syntax, or its facts, so a probe for a detector holding one must carry
+// a `source`.
+const TERMS_NEEDING_SOURCE = ["content", "syntax", "exports", "members", "fn"] as const;
+
+const leafTermsOf = (detector: DetectorSpec): ReadonlyArray<string> => {
+  if ("all" in detector) return detector.all.flatMap(leafTermsOf);
+  if ("any" in detector) return detector.any.flatMap(leafTermsOf);
+  if ("not" in detector) return leafTermsOf(detector.not);
+  return Object.keys(detector);
+};
+
+// A campaign's globs resolved: `scope` and a path-shaped `resolves` the way
+// graph rules resolve theirs, `exports`/`members` names the way `surface` and
+// `members` rules do, and the rest carried as written. The `fn` string is
+// kept verbatim for the loader, which holds the function it names.
+const lowerCampaign = (
+  campaign: CampaignSpec,
+  aliases: Readonly<Record<string, string>>,
+): CampaignRule => {
+  const asPath = (glob: string): string =>
+    prefixed(
+      globToRegexSource(expandAliases(glob, aliases), {}, { declaring: false, nextGroup: 1 })
+        .source,
+    );
+  const asName = (globs: string | ReadonlyArray<string>): ReadonlyArray<string> =>
+    globsOf(globs).map((one) =>
+      anchored(globToRegexSource(one, {}, { declaring: false, nextGroup: 1 }).source),
+    );
+  const name = `campaign/${campaign.id}`;
+
+  const lower = (detector: DetectorSpec): Detector => {
+    if ("all" in detector) return { all: detector.all.map(lower) };
+    if ("any" in detector) return { any: detector.any.map(lower) };
+    if ("not" in detector) return { not: lower(detector.not) };
+    if ("path" in detector) {
+      const { convention, ...rest } = detector.path;
+      const conventionSource =
+        convention === undefined
+          ? undefined
+          : typeof convention === "string"
+            ? CONVENTIONS[convention]?.source
+            : convention.regex;
+      if (convention !== undefined && conventionSource === undefined) {
+        throw new Error(`campaign "${campaign.id}" names an unknown convention "${convention}".`);
+      }
+      if (conventionSource !== undefined && rest.subject === undefined) {
+        throw new Error(
+          `campaign "${campaign.id}" states a path convention with no \`subject\`: say which ` +
+            `capture group of \`file\` holds the name the convention is about.`,
+        );
+      }
+      return {
+        path: {
+          file: globsOf(rest.file),
+          ...(rest.fileNot === undefined ? {} : { fileNot: globsOf(rest.fileNot) }),
+          ...(rest.subject === undefined ? {} : { subject: rest.subject }),
+          ...(conventionSource === undefined ? {} : { convention: conventionSource }),
+        },
+      };
+    }
+    if ("imports" in detector) {
+      const { resolves, symbols } = detector.imports;
+      return {
+        imports: {
+          resolves: typeof resolves === "string" ? asPath(resolves) : resolves,
+          ...(symbols === undefined ? {} : { symbols: [...symbols] }),
+        },
+      };
+    }
+    if ("exports" in detector) {
+      const term = detector.exports;
+      return {
+        exports: {
+          ...(term.name === undefined ? {} : { name: asName(term.name) }),
+          ...(term.kinds === undefined ? {} : { kinds: [...term.kinds] }),
+          ...(term.declares === undefined ? {} : { declares: [...term.declares] }),
+          ...(term.reexport === undefined ? {} : { reexport: term.reexport }),
+        },
+      };
+    }
+    if ("members" in detector) {
+      const term = detector.members;
+      return {
+        members: {
+          subject: term.subject,
+          ...(term.name === undefined ? {} : { name: asName(term.name) }),
+          ...(term.in === undefined ? {} : { in: asName(term.in) }),
+          ...(term.declares === undefined ? {} : { declares: [...term.declares] }),
+        },
+      };
+    }
+    if ("requires" in detector) return { requires: [...detector.requires] };
+    if ("content" in detector) return { content: { regex: detector.content.regex } };
+    if ("report" in detector) {
+      const term = detector.report;
+      if ((term.command === undefined) === (term.file === undefined)) {
+        throw new Error(
+          `campaign "${campaign.id}" has a report term that must name exactly one of ` +
+            `\`command\` (a program to run) and \`file\` (a report already written).`,
+        );
+      }
+      if (term.format === "regex" && term.pattern === undefined) {
+        throw new Error(
+          `campaign "${campaign.id}" has a \`regex\` report term with no \`pattern\`: give ` +
+            `one with named groups \`file\` and \`line\`.`,
+        );
+      }
+      return {
+        report: {
+          ...(term.command === undefined ? {} : { command: term.command }),
+          ...(term.file === undefined ? {} : { file: term.file }),
+          format: term.format,
+          ...(term.pattern === undefined ? {} : { pattern: term.pattern }),
+          ...(term.codes === undefined ? {} : { codes: [...term.codes] }),
+          ...(term.codesNot === undefined ? {} : { codesNot: [...term.codesNot] }),
+        },
+      };
+    }
+    if ("syntax" in detector) {
+      const { where } = detector.syntax;
+      const narrowed =
+        where === undefined
+          ? {}
+          : {
+              where: Object.fromEntries(
+                Object.entries(where).map(([capture, narrowing]) => [
+                  capture,
+                  {
+                    ...(narrowing.regex === undefined ? {} : { regex: narrowing.regex }),
+                    ...(narrowing.binding === undefined
+                      ? {}
+                      : {
+                          binding: {
+                            resolves:
+                              typeof narrowing.binding.resolves === "string"
+                                ? asPath(narrowing.binding.resolves)
+                                : narrowing.binding.resolves,
+                            ...(narrowing.binding.member === undefined
+                              ? {}
+                              : { member: [...narrowing.binding.member] }),
+                          },
+                        }),
+                  },
+                ]),
+              ),
+            };
+      return { syntax: { rule: syntaxRuleOf(detector.syntax), ...narrowed } };
+    }
+    return { fn: detector.fn };
+  };
+
+  // A probe without a source proves only the path; a detector that reads the
+  // file needs the file. Refused here, with the term named, rather than at
+  // load as a probe that mysteriously never fires.
+  const leaves = leafTermsOf(campaign.detect);
+  const needsSource = TERMS_NEEDING_SOURCE.filter((term) => leaves.includes(term));
+  const probes = [...campaign.probes.fires, ...(campaign.probes.ignores ?? [])];
+  const sourceless = probes.find((probe) => probe.source === undefined);
+  if (needsSource.length > 0 && sourceless !== undefined) {
+    throw new Error(
+      `campaign "${campaign.id}" has a probe (${sourceless.path}) with no \`source\`, and its ` +
+        `detector holds a ${needsSource.map((term) => `\`${term}\``).join(", ")} term, which ` +
+        `a path alone cannot exercise. Give every probe a source.`,
+    );
+  }
+  if (campaign.probes.fires.length === 0) {
+    throw new Error(
+      `campaign "${campaign.id}" carries no \`probes.fires\`. A campaign proves it can fire ` +
+        `the way every rule does; write at least one source it must report.`,
+    );
+  }
+
+  return {
+    name,
+    id: campaign.id,
+    ...(campaign.title === undefined ? {} : { title: campaign.title }),
+    message: campaign.how,
+    why: campaign.why,
+    ...(campaign.owner === undefined ? {} : { owner: campaign.owner }),
+    scope: globsOf(campaign.scope).map(asPath),
+    unit: campaign.unit,
+    detect: lower(campaign.detect),
+    probes: { fires: [...campaign.probes.fires], ignores: [...(campaign.probes.ignores ?? [])] },
+    staleAfter: durationMs(campaign.staleAfter),
+    onComplete: campaign.onComplete ?? "keep",
   };
 };

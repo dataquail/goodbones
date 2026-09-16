@@ -1,0 +1,19 @@
+{
+  // The packages this one imports by bare specifier, so `tsc -b` builds their
+  // declarations first: a bare `@goodbones/*` import resolves through the
+  // workspace link to `build/dts`, never through a path alias.
+  "references": [{ "path": "../core/tsconfig.build.json" }],
+  "extends": "../../tsconfig.base.json",
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"],
+  "compilerOptions": {
+    "types": ["node"],
+    "outDir": "build/src",
+    "tsBuildInfoFile": ".tsbuildinfo/src.tsbuildinfo",
+    "rootDir": "src",
+    // No `@/*` alias here on purpose: oxlint loads this plugin's emitted
+    // JavaScript with a bare `import()`, and tsc does not rewrite path aliases
+    // on emit. Relative specifiers are what actually run.
+    "paths": {}
+  }
+}

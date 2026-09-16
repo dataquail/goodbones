@@ -10,6 +10,11 @@ import type { BindingKind, DeclarationKind, MemberSubject } from "./architecture
 export type Binding = {
   readonly symbol: string;
   readonly kind: BindingKind;
+  // The name the binding is known by in the importing file — `C` for
+  // `import { Component as C }`, `React` for a default import — which is how
+  // an identifier in the file's own syntax is traced back to the module it
+  // came from. Absent for a form that binds no name.
+  readonly local?: string;
 };
 
 // One declared or called name. For `members`, the declaration it is written in

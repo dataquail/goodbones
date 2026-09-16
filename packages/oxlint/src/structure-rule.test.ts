@@ -7,6 +7,7 @@ import {
   EMPTY_GRAPH_RULES,
   type LoadedPolicy,
   makeBaselineFilter,
+  NO_REPORTS,
 } from "@goodbones/core";
 import {
   makeFactExtractorFake,
@@ -76,6 +77,13 @@ const policy = (present: ReadonlyArray<string>): LoadedPolicy => {
     structure: structure.success,
     fileSystem: makeFileSystemFake(present),
     languages: [],
+    campaignRules: [],
+    ledgers: new Map(),
+    ledgerDir: ".architecture-campaigns",
+    functions: new Map(),
+    now: 0,
+    syntax: { parse: () => null },
+    reports: NO_REPORTS,
     extractor: makeFactExtractorFake({}),
     resolver: makeModuleResolverFake({}),
     ignoreUnresolved: [],

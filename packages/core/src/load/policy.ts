@@ -8,6 +8,13 @@ import {
   makeBaselineFilter,
 } from "../core/baseline.js";
 import {
+  type CampaignPredicate,
+  campaignsFailingTheirProbe,
+  compileCampaignRules,
+  type CompiledCampaign,
+  leafTermsOf,
+} from "../core/campaigns.js";
+import {
   type CompiledExportRule,
   compileExportRules,
   exportRulesFailingTheirProbe,
@@ -22,6 +29,7 @@ import {
   compileImportRules,
   rulesFailingTheirProbe,
 } from "../core/imports.js";
+import { decodeLedger, type Ledger } from "../core/ledger.js";
 import {
   type CompiledMemberRule,
   compileMemberRules,
@@ -46,11 +54,13 @@ import {
 import type { SourceFacts } from "../domain/facts.js";
 import type { ManifestLocator } from "../domain/manifest-location.js";
 import { type LoweredRules, lowerManifest } from "../manifest/compile.js";
-import { decodeManifest, type Manifest } from "../manifest/manifest.js";
+import { decodeManifest, DEFAULT_LEDGER_DIR, type Manifest } from "../manifest/manifest.js";
 import type { FactExtractor } from "../ports/fact-extractor.js";
 import type { FileSystem } from "../ports/file-system.js";
 import type { Language } from "../ports/language.js";
 import type { ModuleResolver } from "../ports/module-resolver.js";
+import { NO_REPORTS, type ReportSource } from "../ports/report-source.js";
+import type { SyntaxMatcher } from "../ports/syntax-matcher.js";
 
 // A manifest, read by a host, turned into the policy both adapters evaluate.
 // Decoding, lowering, compiling and probing happen here, once, with whatever
@@ -70,6 +80,19 @@ export type LoadedPolicy = {
   readonly graph: CompiledGraph;
   readonly adoption: LoweredRules["adoption"];
   readonly structure: CompiledStructure;
+  // Evaluated by both hosts, one file at a time; the ledgers say which hits
+  // are already counted. A campaign with no ledger is one `campaigns init`
+  // has not been run for, and `check` says so.
+  readonly campaignRules: ReadonlyArray<CompiledCampaign>;
+  readonly ledgers: ReadonlyMap<string, Ledger>;
+  // Repo-relative; `<ledgerDir>/<id>.json` is a campaign's ledger.
+  readonly ledgerDir: string;
+  // The predicate functions the host imported for the `fn` terms.
+  readonly functions: ReadonlyMap<string, CampaignPredicate>;
+  // Answers the `report` terms: the host's live source, or nothing.
+  readonly reports: ReportSource;
+  // The clock the campaigns are judged by — stalls, timestamps.
+  readonly now: number;
   readonly fileSystem: FileSystem;
   // The language packs this policy is evaluated with. The walker takes its
   // extensions from them, and lowering the shape of its probes.
@@ -82,6 +105,9 @@ export type LoadedPolicy = {
   // Routes each file to the extractor of the language whose scope covers it.
   // The CLI reads every file through this; the plugin reads oxlint's tree.
   readonly extractor: FactExtractor;
+  // Routes each file to the syntax matcher of the language whose scope
+  // covers it; `parse` answers `null` for a file whose language has none.
+  readonly syntax: SyntaxMatcher;
   readonly ignoreUnresolved: ReadonlyArray<RegExp>;
   // Deprecation notices from reading the manifest. The host prints them once.
   readonly notices: ReadonlyArray<string>;
@@ -99,6 +125,15 @@ export type LoadPolicyInput = {
   readonly locate?: ManifestLocator | undefined;
   readonly languages: ReadonlyArray<Language>;
   readonly fileSystem: FileSystem;
+  // The predicate functions the manifest's `fn` terms name, imported by the
+  // host before loading — the core touches no module loader.
+  readonly functions?: ReadonlyMap<string, CampaignPredicate> | undefined;
+  // The host's report source, for the `report` terms. Absent, a term
+  // answers nothing — a policy with one is refused, since it would be a
+  // campaign that can never fire.
+  readonly reports?: ReportSource | undefined;
+  // For tests and for a CI that pins the clock; defaults to `Date.now()`.
+  readonly now?: number | undefined;
 };
 
 const NOTHING: SourceFacts = {
@@ -144,6 +179,20 @@ const routesOf = (
 const routeFor = (routes: ReadonlyArray<Route>, file: string): Route | undefined =>
   routes.find((route) => route.matches.test(file));
 
+const referencedFunctions = (detect: CompiledCampaign["detect"]): ReadonlyArray<string> => {
+  switch (detect.kind) {
+    case "all":
+    case "any":
+      return detect.terms.flatMap(referencedFunctions);
+    case "not":
+      return referencedFunctions(detect.term);
+    case "fn":
+      return [detect.name];
+    default:
+      return [];
+  }
+};
+
 // One resolver per scope, built by the scope's language, behind one port that
 // picks the scope by the importing file.
 const makeRouter = (
@@ -183,6 +232,58 @@ const makeRoutingExtractor = (routes: ReadonlyArray<Route>): FactExtractor => ({
   factsOf: (file, text) =>
     routeFor(routes, file)?.language.extractor.factsOf(file, text) ?? NOTHING,
 });
+
+// One matcher per scope, behind one port that picks the scope by the file. A
+// language without one parses nothing, which a `syntax` term reads as no
+// matches — and which the probe check below refuses for a campaign that
+// depends on it.
+const makeRoutingMatcher = (routes: ReadonlyArray<Route>): SyntaxMatcher => ({
+  parse: (file, text) => routeFor(routes, file)?.language.syntax?.parse(file, text) ?? null,
+});
+
+// The ledgers, read through the port. An absent file is a campaign with no
+// ledger yet; a malformed one is refused, since reading it as empty would
+// report every hit as unrecorded growth.
+const readLedgers = (
+  configPath: string,
+  fileSystem: FileSystem,
+  ledgerDir: string,
+  campaigns: ReadonlyArray<CompiledCampaign>,
+): Result.Result<ReadonlyMap<string, Ledger>, ConfigInvalid> => {
+  const ledgers = new Map<string, Ledger>();
+  for (const campaign of campaigns) {
+    const at = `${ledgerDir}/${campaign.id}.json`;
+    const text = fileSystem.readText(at);
+    if (text === null) continue;
+    let raw: unknown;
+    try {
+      raw = JSON.parse(text);
+    } catch (cause) {
+      return Result.fail(
+        new ConfigInvalid({ configPath, detail: `the ledger ${at} is not JSON: ${String(cause)}` }),
+      );
+    }
+    const decoded = decodeLedger(raw);
+    if (Result.isFailure(decoded)) {
+      return Result.fail(
+        new ConfigInvalid({
+          configPath,
+          detail: `the ledger ${at} does not decode:\n${decoded.failure}`,
+        }),
+      );
+    }
+    if (decoded.success.id !== campaign.id) {
+      return Result.fail(
+        new ConfigInvalid({
+          configPath,
+          detail: `the ledger ${at} says it belongs to "${decoded.success.id}", not "${campaign.id}".`,
+        }),
+      );
+    }
+    ledgers.set(campaign.id, decoded.success);
+  }
+  return Result.succeed(ledgers);
+};
 
 // The baseline is read through the port, so this tier touches no file itself.
 // An absent or unreadable one carries nothing, which is the safe direction:
@@ -280,6 +381,67 @@ export const loadPolicy = (
   const structure = compileStructure(rules.structure);
   if (Result.isFailure(structure)) return Result.fail(structure.failure);
 
+  const campaignRules = compileCampaignRules(rules.campaigns);
+  if (Result.isFailure(campaignRules)) return Result.fail(campaignRules.failure);
+
+  // A `fn` term names a function the host was to import. One it did not is
+  // a term that would answer false for every file, and is refused.
+  const functions = input.functions ?? new Map<string, CampaignPredicate>();
+  const missing = campaignRules.success.flatMap((rule) =>
+    referencedFunctions(rule.detect).filter((name) => !functions.has(name)),
+  );
+  if (missing.length > 0) {
+    return Result.fail(
+      new ConfigInvalid({
+        configPath,
+        detail:
+          `these campaigns name a predicate function the host did not load: ` +
+          `${[...new Set(missing)].join(", ")}. A \`fn\` term is \`module#export\`, resolved ` +
+          `relative to the manifest, and the export must be a function.`,
+      }),
+    );
+  }
+
+  // A `report` term is answered by the host's source. Without one every
+  // such campaign would report nothing and look complete.
+  const reporting = campaignRules.success.filter((rule) =>
+    leafTermsOf(rule.detect).includes("report"),
+  );
+  if (input.reports === undefined && reporting.length > 0) {
+    return Result.fail(
+      new ConfigInvalid({
+        configPath,
+        detail:
+          `these campaigns hold a \`report\` term and the host provided no report source: ` +
+          `${reporting.map((rule) => rule.name).join(", ")}.`,
+      }),
+    );
+  }
+
+  // A `syntax` term needs a matcher for the language of every file in its
+  // scope. The probes are the files the campaign is proven on; a probe whose
+  // language has none would pass no probe and mean nothing.
+  const syntaxless = campaignRules.success.flatMap((rule) => {
+    if (!leafTermsOf(rule.detect).includes("syntax")) return [];
+    return [...rule.probes.fires, ...rule.probes.ignores].flatMap((probe) => {
+      const route = routeFor(routes.success, probe.path);
+      return route === undefined || route.language.syntax !== undefined
+        ? []
+        : [`${rule.name} (${probe.path}: ${route.language.id} carries no syntax matcher)`];
+    });
+  });
+  if (syntaxless.length > 0) {
+    return Result.fail(
+      new ConfigInvalid({
+        configPath,
+        detail:
+          `these campaigns hold a \`syntax\` term in a scope whose language has no syntax ` +
+          `matcher: ${[...new Set(syntaxless)].join(", ")}. Compose the language pack with ` +
+          `one (\`@goodbones/ast-grep\` for TypeScript), or write the detector without it.`,
+      }),
+    );
+  }
+
   // A probe carrying a source snippet is parsed by the extractor of the
   // language whose scope covers the probe's file — the same extractor the CLI
   // reads that file through. The plugin reads through oxlint's tree instead,
@@ -304,6 +466,19 @@ export const loadPolicy = (
     ),
     ...structureRulesFailingTheirProbe(structure.success),
     ...graphRulesFailingTheirProbe(graph.success),
+    ...campaignsFailingTheirProbe(
+      campaignRules.success,
+      extractor,
+      (file) => routeFor(routes.success, file)?.language.syntax ?? null,
+      functions,
+    ).map((failed) =>
+      failed.outOfScope === true
+        ? `${failed.name} (its probe ${failed.probe.path} is outside the campaign's own scope)`
+        : failed.expected === "fires"
+          ? `${failed.name} (fires probe ${failed.probe.path} did not fire)`
+          : `${failed.name} (ignores probe ${failed.probe.path} fired` +
+            (failed.admittedBy === undefined ? ")" : `, admitted by \`${failed.admittedBy}\`)`),
+    ),
   ];
   if (vacuous.length > 0) {
     return Result.fail(
@@ -325,6 +500,10 @@ export const loadPolicy = (
   const resolver = makeRouter(configPath, repoRoot, routes.success);
   if (Result.isFailure(resolver)) return Result.fail(resolver.failure);
 
+  const ledgerDir = config.ledger ?? DEFAULT_LEDGER_DIR;
+  const ledgers = readLedgers(configPath, fileSystem, ledgerDir, campaignRules.success);
+  if (Result.isFailure(ledgers)) return Result.fail(ledgers.failure);
+
   return Result.succeed({
     repoRoot,
     config,
@@ -335,11 +514,18 @@ export const loadPolicy = (
     graph: graph.success,
     adoption: rules.adoption,
     structure: structure.success,
+    campaignRules: campaignRules.success,
+    ledgers: ledgers.success,
+    ledgerDir,
+    functions,
+    reports: input.reports ?? NO_REPORTS,
+    now: input.now ?? Date.now(),
     fileSystem,
     languages,
     baseline: makeBaselineFilter(readBaseline(fileSystem, config.baseline)),
     resolver: resolver.success,
     extractor,
+    syntax: makeRoutingMatcher(routes.success),
     ignoreUnresolved: (config.resolve.ignoreUnresolved ?? []).map(
       (pattern: string) => new RegExp(pattern),
     ),

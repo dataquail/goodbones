@@ -66,15 +66,19 @@ describe("a report term", () => {
 
     const linted = oxlint(repo, ["src"]);
     expect(linted.loaded, linted.stdout + linted.stderr).toBe(true);
-    expect(linted.diagnostics.map((one) => `${one.rule} ${one.file}`)).toEqual([
-      "architecture/campaigns src/a.ts",
-    ]);
+    expect(
+      linted.diagnostics.map((one) => `${one.rule} ${one.file}`),
+      JSON.stringify(linted.diagnostics, null, 2) + linted.stderr,
+    ).toEqual(["architecture/campaigns src/a.ts"]);
 
     const init = cli(repo, ["campaigns", "init", "type-errors", "src"]);
     expect(init.code, init.stderr).toBe(0);
     const after = check(repo, ["src"]);
     expect(after.code, after.stderr).toBe(0);
-    expect(oxlint(repo, ["src"]).diagnostics).toEqual([]);
+    const again = oxlint(repo, ["src"]);
+    expect(again.diagnostics, JSON.stringify(again.diagnostics, null, 2) + again.stderr).toEqual(
+      [],
+    );
   });
 
   it("fails to load when the command cannot run", () => {

@@ -19,9 +19,10 @@ import type { ReportSource, ReportSpec } from "../ports/report-source.js";
 // which is the case the term exists for. A command that cannot be spawned,
 // or a file that is not there, is — and that failure is cached as the report
 // would have been, so the second file to ask gets the same answer without a
-// second spawn. The command runs inside the asking process; under the oxlint
-// plugin that is the linter, and a fork of it can be refused on a small
-// runner. Retrying per file would turn one refusal into one per file.
+// second spawn. The command is forked from the asking process; under the
+// oxlint plugin that is the linter, which Linux refuses to fork once its AST
+// buffers have merged into one mapping larger than RAM and swap — so the
+// plugin asks at load, and retrying per file would only repeat the refusal.
 
 const MAX_BUFFER = 256 * 1024 * 1024;
 

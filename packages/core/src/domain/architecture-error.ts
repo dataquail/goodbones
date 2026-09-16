@@ -63,9 +63,10 @@ export class ImportUnresolved extends Schema.TaggedErrorClass<ImportUnresolved>(
 // spec and keeps it, as it would have kept the report, so a lint over eight
 // hundred files does not attempt the spawn eight hundred times; the plugin
 // catches it and reports it once. The message says what to do, because a
-// command is run inside whichever process asks — the CLI, or oxlint with
-// the plugin loaded, which is the linter itself — and that is where a spawn
-// fails for memory the linter holds.
+// command is forked from whichever process asks — the CLI, or oxlint with
+// the plugin loaded, which is the linter itself — and Linux's default
+// overcommit heuristic refuses to fork a process holding one mapping larger
+// than RAM and swap, which the linter's AST buffers become mid-lint.
 export class ReportUnavailable extends Schema.TaggedErrorClass<ReportUnavailable>(
   "ReportUnavailable",
 )("ReportUnavailable", {
@@ -77,10 +78,11 @@ export class ReportUnavailable extends Schema.TaggedErrorClass<ReportUnavailable
   override get message(): string {
     return this.kind === "command"
       ? `the report command \`${this.source}\` could not be run: ${this.detail}. The command ` +
-          `runs inside the process that asks for the report — \`architecture check\`, or oxlint ` +
-          `with the plugin loaded, which is the linter itself — so on a CI runner it can fail ` +
-          `for memory the linter is holding. A report an earlier step writes, named by \`file:\` ` +
-          `instead of \`command:\`, is the form for CI and the editor.`
+          `is forked from the process that asks for the report — \`architecture check\`, or ` +
+          `oxlint with the plugin loaded, which is the linter itself, and Linux can refuse to ` +
+          `fork the linter once it holds more memory than the machine could back. A report an ` +
+          `earlier step writes, named by \`file:\` instead of \`command:\`, is the form for CI ` +
+          `and the editor.`
       : `the report file ${this.source} cannot be read: ${this.detail}. A \`report\` term's ` +
           `\`file\` is written by an earlier step; run that first, or name a \`command\`.`;
   }

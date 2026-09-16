@@ -1,10 +1,10 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Through the core's barrel on purpose: this is the surface a host sees, and a
 // re-export that stops resolving is a break no internal test would notice.
-import { ConfigInvalid } from "@goodbones/core";
+import { ConfigInvalid, ReportUnavailable } from "@goodbones/core";
 import * as Result from "effect/Result";
 import { afterAll, describe, expect, it } from "vitest";
 
@@ -303,6 +303,48 @@ describe("loadPolicy", () => {
 
 // The plugin reads a data manifest through the same loader as a module one,
 // and adds what only a data file can give: the line a mistake is on.
+// A `report` command forks the process that asks for it. Under oxlint that
+// process is the linter, and once it is linting Linux can refuse the fork —
+// so the plugin reads every report at load, before a file is seen, and the
+// rules read the cached answer. A report that cannot be read is not a load
+// failure: the campaigns rule says so once, on a file.
+describe("loadPolicy reads every report at load", () => {
+  const campaign = (report: string) => `campaigns: [{
+    id: "type-errors", why: "w", how: "h", scope: ["packages/**"], unit: "match",
+    detect: { report: { ${report}, format: "tsc" } },
+    probes: { fires: [{ path: "packages/x.ts", report: [{ line: 1, code: "TS1", message: "m" }] }] },
+    staleAfter: "30d",
+  }]`;
+
+  it("runs a command before any file is linted, once", async () => {
+    const stamp = path.join(scratch, "ran-at-load");
+    rmSync(stamp, { force: true });
+    const command = `node -e "require('fs').appendFileSync('${stamp}', 'x')"`;
+    const policy = await loadPolicy(
+      repoRoot,
+      writeConfig(
+        `export default { ${RESOLVE}, ${campaign(`command: ${JSON.stringify(command)}`)}, tree: {} };`,
+      ),
+    );
+    expect(readFileSync(stamp, "utf8")).toBe("x");
+    // The rules ask the same source and get the cached answer, not a second run.
+    policy.reports.diagnosticsOf({ command, format: "tsc" }, "packages/x.ts");
+    expect(readFileSync(stamp, "utf8")).toBe("x");
+  });
+
+  it("still loads when the report cannot be read; the rule reports that", async () => {
+    const policy = await loadPolicy(
+      repoRoot,
+      writeConfig(
+        `export default { ${RESOLVE}, ${campaign(`file: "no-such-report.txt"`)}, tree: {} };`,
+      ),
+    );
+    expect(() =>
+      policy.reports.diagnosticsOf({ file: "no-such-report.txt", format: "tsc" }, "packages/x.ts"),
+    ).toThrow(ReportUnavailable);
+  });
+});
+
 describe("loadPolicy from a YAML manifest", () => {
   const YAML = `resolve:
   scopes:

@@ -235,13 +235,15 @@ matcher, is keyed by code and message alone.
 
 The command runs once per process and the output is cached: the CLI is one process per
 `check`, and oxlint's language server is one process per editor session, which sees the
-report as of when it loaded the plugin. The process it runs inside is whichever one asked —
-under the plugin, that is oxlint itself, holding the linter's state for the whole tree at
-the moment the first campaign asks — so on a small CI runner the spawn can be refused for
-memory the linter is using, where the same command from a shell would run. A report an
-earlier step writes to a file — `file: tsc-report.txt` — is the form for CI as well as for
-the editor, and the one to use when the command is slow; `command:` is the CLI's form,
-where `check` is the only thing in the process.
+report as of when it loaded the plugin. Under the plugin the command is forked from oxlint
+itself, and the plugin runs it as it loads, before a file is linted — once the linter is
+running, its per-thread AST buffers can add up to one mapping larger than the machine's
+RAM and swap, and Linux's default overcommit heuristic refuses to fork such a process
+(`spawnSync /bin/sh ENOMEM`); at load, the process is small. Running at load means the
+command runs on every plugin load, an editor session included, whether or not a selected
+file is opened. A report an earlier step writes to a file — `file: tsc-report.txt` — is the
+form for CI as well as for the editor, and the one to use when the command is slow;
+`command:` is the CLI's form, where `check` is the only thing in the process.
 
 A command that cannot be spawned, or a file no step wrote, is one failure per run, not one
 per file: the source keeps the failure as it would have kept the report, `check` stops with

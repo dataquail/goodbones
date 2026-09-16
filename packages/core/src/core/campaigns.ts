@@ -18,7 +18,7 @@ import type { CampaignPredicate, Range } from "../ports/campaign-predicate.js";
 import type { FactExtractor } from "../ports/fact-extractor.js";
 import type { FileSystem } from "../ports/file-system.js";
 import type { ModuleResolver, ResolvedTarget } from "../ports/module-resolver.js";
-import type { ReportSource } from "../ports/report-source.js";
+import type { ReportSource, ReportSpec } from "../ports/report-source.js";
 import type { SyntaxMatch, SyntaxMatcher, SyntaxTree } from "../ports/syntax-matcher.js";
 import { probeTargetOf } from "./imports.js";
 import { compilePatterns } from "./patterns.js";
@@ -644,13 +644,7 @@ const evaluateLeaf = (term: CompiledDetector, input: CampaignInput): LeafAnswer 
       // moving and changes when the message does.
       const unique = uniqueKeys();
       const candidates: Array<Candidate> = [];
-      const spec = {
-        ...(term.command === null ? {} : { command: term.command }),
-        ...(term.file === null ? {} : { file: term.file }),
-        format: term.format,
-        ...(term.pattern === null ? {} : { pattern: term.pattern }),
-      };
-      for (const diagnostic of input.reports.diagnosticsOf(spec, input.file)) {
+      for (const diagnostic of input.reports.diagnosticsOf(specOf(term), input.file)) {
         if (term.codes !== null && !term.codes.has(diagnostic.code)) continue;
         if (term.codesNot.has(diagnostic.code)) continue;
         const position = { line: diagnostic.line, column: diagnostic.column };
@@ -844,6 +838,47 @@ export const evaluateCampaign = (
   return universeOf(evaluation, rule.unit)
     .filter((candidate) => judge(rule.detect, candidate, rule.unit, evaluation))
     .map((candidate) => hitOf(rule, input.file, candidate));
+};
+
+// What a `report` term asks its source for: the command or file, the format
+// and, for `regex`, the pattern. The codes are the term's own filter.
+const specOf = (term: Extract<CompiledDetector, { kind: "report" }>): ReportSpec => ({
+  ...(term.command === null ? {} : { command: term.command }),
+  ...(term.file === null ? {} : { file: term.file }),
+  format: term.format,
+  ...(term.pattern === null ? {} : { pattern: term.pattern }),
+});
+
+// Every distinct report the campaigns name, for a host that asks for them
+// before any file: the plugin does, at load, because a `command` forks the
+// process that asks, and the linter's process is one Linux can refuse to
+// fork once it is linting — its per-thread AST buffers merge into a mapping
+// larger than the machine has to give, and the heuristic overcommit mode
+// refuses that at fork. At load, the process is small.
+export const reportSpecsOf = (
+  rules: ReadonlyArray<CompiledCampaign>,
+): ReadonlyArray<ReportSpec> => {
+  const seen = new Map<string, ReportSpec>();
+  const walk = (detector: CompiledDetector): void => {
+    switch (detector.kind) {
+      case "all":
+      case "any":
+        for (const term of detector.terms) walk(term);
+        return;
+      case "not":
+        walk(detector.term);
+        return;
+      case "report": {
+        const spec = specOf(detector);
+        seen.set(JSON.stringify(spec), spec);
+        return;
+      }
+      default:
+        return;
+    }
+  };
+  for (const rule of rules) walk(rule.detect);
+  return [...seen.values()];
 };
 
 export const evaluateCampaigns = (

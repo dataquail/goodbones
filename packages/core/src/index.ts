@@ -30,6 +30,7 @@ export {
   leafTermsOf,
   matchKeyOf,
   probeInputOf,
+  reportSpecsOf,
   type TermAnswer,
 } from "./core/campaigns.js";
 export {

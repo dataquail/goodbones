@@ -9,6 +9,8 @@ import {
   makeFileSystemLive,
   makeReportSourceLive,
   readManifestFile,
+  reportSpecsOf,
+  ReportUnavailable,
 } from "@goodbones/core";
 import { typescriptLanguage } from "@goodbones/typescript";
 import * as Result from "effect/Result";
@@ -62,5 +64,43 @@ export const loadPolicyFromFile = async (
     now: hostNow(),
   });
   if (Result.isFailure(loaded)) throw loaded.failure;
-  return loaded.success;
+  const policy = loaded.success;
+  // Every `report` a campaign names is read now, while oxlint has linted
+  // nothing. A `command` forks this process, and once the linter is running
+  // Linux can refuse the fork: the linter's per-thread AST buffers merge
+  // into one mapping larger than RAM and swap together, which the default
+  // overcommit heuristic refuses to duplicate. The source caches the answer,
+  // and a failure, so the rules read what was read here. A report that
+  // cannot be read is not a load failure — the campaigns rule reports it
+  // once, on the first file a campaign naming it selects.
+  for (const spec of reportSpecsOf(policy.campaignRules)) {
+    try {
+      policy.reports.diagnosticsOf(spec, "");
+    } catch (cause) {
+      if (!(cause instanceof ReportUnavailable)) throw cause;
+    }
+  }
+  // DIAGNOSTIC (not for merge): what this process looks like at load.
+  if (process.platform === "linux") {
+    try {
+      const { readFileSync } = await import("node:fs");
+      const status = readFileSync("/proc/self/status", "utf8")
+        .split("\n")
+        .filter((line) => /^(VmSize|VmData|VmRSS|Threads)/.test(line))
+        .map((line) => line.replace(/\s+/g, " "))
+        .join("; ");
+      const biggest = readFileSync("/proc/self/maps", "utf8")
+        .split("\n")
+        .map((line) => /^([0-9a-f]+)-([0-9a-f]+) (\S+)/.exec(line))
+        .filter((found): found is RegExpExecArray => found !== null)
+        .map((found) => parseInt(found[2] ?? "0", 16) - parseInt(found[1] ?? "0", 16))
+        .sort((left, right) => right - left)[0];
+      process.stderr.write(
+        `[goodbones-diag:load] ${status}; biggest map ${((biggest ?? 0) / 1048576).toFixed(0)}MB\n`,
+      );
+    } catch {
+      // best effort
+    }
+  }
+  return policy;
 };

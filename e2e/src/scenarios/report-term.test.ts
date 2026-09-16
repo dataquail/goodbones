@@ -65,6 +65,7 @@ describe("a report term", () => {
     ]);
 
     const linted = oxlint(repo, ["src"]);
+    process.stderr.write(linted.stderr);
     expect(linted.loaded, linted.stdout + linted.stderr).toBe(true);
     expect(
       linted.diagnostics.map((one) => `${one.rule} ${one.file}`),

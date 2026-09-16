@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import * as path from "node:path";
 
+import { ReportUnavailable } from "../domain/architecture-error.js";
 import { type Diagnostic, indexByFile, parseReport } from "../domain/report.js";
 import type { ReportSource, ReportSpec } from "../ports/report-source.js";
 
@@ -12,11 +13,15 @@ import type { ReportSource, ReportSpec } from "../ports/report-source.js";
 // spec for the life of the process: the CLI is one process per `check`, and
 // oxlint's language server is one process per editor session, which sees the
 // report as of when it loaded the plugin. A report the build writes to a file
-// is the predictable form for the editor.
+// is the predictable form for the editor, and for CI.
 //
 // A non-zero exit is not a failure — `tsc` exits 2 when there are errors,
 // which is the case the term exists for. A command that cannot be spawned,
-// or a file that is not there, is.
+// or a file that is not there, is — and that failure is cached as the report
+// would have been, so the second file to ask gets the same answer without a
+// second spawn. The command runs inside the asking process; under the oxlint
+// plugin that is the linter, and a fork of it can be refused on a small
+// runner. Retrying per file would turn one refusal into one per file.
 
 const MAX_BUFFER = 256 * 1024 * 1024;
 
@@ -26,10 +31,7 @@ const textOf = (repoRoot: string, spec: ReportSpec): string => {
     try {
       return readFileSync(at, "utf8");
     } catch (cause) {
-      throw new Error(
-        `the report file ${spec.file} cannot be read: ${String(cause)}. A \`report\` term's ` +
-          `\`file\` is written by an earlier step; run that first, or name a \`command\`.`,
-      );
+      throw new ReportUnavailable({ kind: "file", source: spec.file, detail: String(cause) });
     }
   }
   const command = spec.command ?? "";
@@ -41,26 +43,37 @@ const textOf = (repoRoot: string, spec: ReportSpec): string => {
     stdio: ["ignore", "pipe", "pipe"],
   });
   if (run.error !== undefined) {
-    throw new Error(`the report command \`${command}\` could not be run: ${run.error.message}`);
+    throw new ReportUnavailable({ kind: "command", source: command, detail: run.error.message });
   }
   return run.stdout;
 };
 
 const keyOf = (spec: ReportSpec): string => JSON.stringify(spec);
 
+type Indexed = ReadonlyMap<string, ReadonlyArray<Diagnostic>>;
+
 export const makeReportSourceLive = (repoRoot: string): ReportSource => {
-  const cache = new Map<string, ReadonlyMap<string, ReadonlyArray<Diagnostic>>>();
+  const cache = new Map<string, Indexed | ReportUnavailable>();
+  const answerOf = (spec: ReportSpec): Indexed | ReportUnavailable => {
+    try {
+      return indexByFile(
+        parseReport(spec.format, textOf(repoRoot, spec), { repoRoot, pattern: spec.pattern }),
+      );
+    } catch (cause) {
+      if (cause instanceof ReportUnavailable) return cause;
+      throw cause;
+    }
+  };
   return {
     diagnosticsOf: (spec, file) => {
       const key = keyOf(spec);
-      let indexed = cache.get(key);
-      if (indexed === undefined) {
-        indexed = indexByFile(
-          parseReport(spec.format, textOf(repoRoot, spec), { repoRoot, pattern: spec.pattern }),
-        );
-        cache.set(key, indexed);
+      let answer = cache.get(key);
+      if (answer === undefined) {
+        answer = answerOf(spec);
+        cache.set(key, answer);
       }
-      return indexed.get(file) ?? [];
+      if (answer instanceof ReportUnavailable) throw answer;
+      return answer.get(file) ?? [];
     },
   };
 };

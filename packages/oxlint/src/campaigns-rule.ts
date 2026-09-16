@@ -7,6 +7,7 @@ import {
   leafTermsOf,
   type LoadedPolicy,
   reconcile,
+  ReportUnavailable,
 } from "@goodbones/core";
 import { sourceFactsOf } from "@goodbones/typescript";
 
@@ -43,56 +44,86 @@ const unledgered = (
   return hits.filter((hit) => !carried.has(hit.violation));
 };
 
-export const makeCampaignsRule = (policy: LoadedPolicy): OxlintRule => ({
-  meta: {
-    type: "problem" as const,
-    docs: {
-      description:
-        "the campaigns: every place a pattern the repository is migrating away from still occurs, that its ledger does not carry",
+// A `report` a campaign names that cannot be read — a command the kernel
+// refused to spawn, a file no step wrote — is one fact about the run, not
+// one about each file the campaign selects. The live source keeps the
+// failure per spec; this keeps which failures have been said, so the first
+// selected file carries the notice and the rest stay quiet. Without it, a
+// lint of eight hundred files is eight hundred copies of oxlint's generic
+// "error running JS plugin", with the cause dropped by the terser formats.
+const aside = (cause: ReportUnavailable): string =>
+  `A report a campaign names could not be read, so no campaign naming it is judged in this ` +
+  `run: ${cause.message}`;
+
+export const makeCampaignsRule = (policy: LoadedPolicy): OxlintRule => {
+  // Per rule instance, which is per plugin load — one process — rather than
+  // per `createOnce`, which a host may call more often than that.
+  const said = new Set<string>();
+  return {
+    meta: {
+      type: "problem" as const,
+      docs: {
+        description:
+          "the campaigns: every place a pattern the repository is migrating away from still occurs, that its ledger does not carry",
+      },
+      schema: [],
     },
-    schema: [],
-  },
 
-  createOnce(context: RuleContext) {
-    let file = "";
-    let selected: ReadonlyArray<CompiledCampaign> = [];
+    createOnce(context: RuleContext) {
+      let file = "";
+      let selected: ReadonlyArray<CompiledCampaign> = [];
 
-    return {
-      before() {
-        file = toRepoRelative(policy.repoRoot, context.filename);
-        if (file.startsWith("..")) return false;
-        selected = campaignsSelecting(policy.campaignRules, file);
-        return selected.length > 0;
-      },
+      return {
+        before() {
+          file = toRepoRelative(policy.repoRoot, context.filename);
+          if (file.startsWith("..")) return false;
+          selected = campaignsSelecting(policy.campaignRules, file);
+          return selected.length > 0;
+        },
 
-      Program(node: Program) {
-        const text = context.sourceCode.text;
-        const needsSyntax = selected.some((rule) =>
-          leafTermsOf(rule.detect).some(
-            (leaf) => leaf === "syntax" || leaf === "report" || leaf === "fn",
-          ),
-        );
-        const hits = evaluateCampaigns(selected, {
-          file,
-          text,
-          facts: sourceFactsOf(factsOfProgram(file, node)),
-          resolver: policy.resolver,
-          fileSystem: policy.fileSystem,
-          syntax: needsSyntax ? policy.syntax.parse(file, text) : null,
-          functions: policy.functions,
-          reports: policy.reports,
-        });
+        Program(node: Program) {
+          const text = context.sourceCode.text;
+          const needsSyntax = selected.some((rule) =>
+            leafTermsOf(rule.detect).some(
+              (leaf) => leaf === "syntax" || leaf === "report" || leaf === "fn",
+            ),
+          );
+          const input = {
+            file,
+            text,
+            facts: sourceFactsOf(factsOfProgram(file, node)),
+            resolver: policy.resolver,
+            fileSystem: policy.fileSystem,
+            syntax: needsSyntax ? policy.syntax.parse(file, text) : null,
+            functions: policy.functions,
+            reports: policy.reports,
+          };
+          // One campaign at a time, so a report one of them cannot read costs
+          // that campaign's answer for this file and not its neighbours'.
+          const hits: Array<CampaignHit> = [];
+          for (const rule of selected) {
+            try {
+              for (const hit of evaluateCampaigns([rule], input)) hits.push(hit);
+            } catch (cause) {
+              if (!(cause instanceof ReportUnavailable)) throw cause;
+              const message = aside(cause);
+              if (said.has(message)) continue;
+              said.add(message);
+              context.report({ message, loc: { line: 1, column: 0 } });
+            }
+          }
 
-        for (const hit of unledgered(policy, selected, hits)) {
-          // A match lands where it was found; a file-unit hit, on line 1, as
-          // the structure rule places a finding about the file itself.
-          const at = hit.range ?? { start: { line: 0, column: 0 } };
-          context.report({
-            message: formatMessage(hit.violation),
-            loc: { line: at.start.line + 1, column: at.start.column },
-          });
-        }
-      },
-    };
-  },
-});
+          for (const hit of unledgered(policy, selected, hits)) {
+            // A match lands where it was found; a file-unit hit, on line 1, as
+            // the structure rule places a finding about the file itself.
+            const at = hit.range ?? { start: { line: 0, column: 0 } };
+            context.report({
+              message: formatMessage(hit.violation),
+              loc: { line: at.start.line + 1, column: at.start.column },
+            });
+          }
+        },
+      };
+    },
+  };
+};

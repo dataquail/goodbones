@@ -240,9 +240,24 @@ const compileDetector = (
     return Result.succeed({ kind: "requires", templates: [...detector.requires] });
   }
   if ("content" in detector) {
+    // The codec refuses a bare string here; a caller that built the rule by
+    // hand can still pass one, and `new RegExp(undefined)` is `/(?:)/`, which
+    // matches every file. A detector that fires on everything is refused,
+    // not compiled.
+    const source: unknown = detector.content.regex;
+    if (typeof source !== "string") {
+      return Result.fail(
+        new PatternInvalid({
+          ruleName: name,
+          field: "content.regex",
+          pattern: String(source),
+          detail: "a content term is { regex: <string> }",
+        }),
+      );
+    }
     let regex: RegExp;
     try {
-      regex = new RegExp(detector.content.regex, "m");
+      regex = new RegExp(source, "m");
     } catch (cause) {
       return Result.fail(
         new PatternInvalid({

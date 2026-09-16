@@ -639,4 +639,24 @@ describe("selection, probes and the truth table", () => {
     });
     expect(Result.isFailure(failed) && failed.failure.field).toBe("content.regex");
   });
+
+  // Built by hand rather than decoded, `content: "TODO"` reaches the compiler
+  // with no `regex` field, and an undefined pattern is the empty regex — a
+  // detector that fires on every file, silently. Refused instead.
+  it("refuses a content term that is not { regex }", () => {
+    const failed = compileCampaignRule({
+      name: "campaign/x",
+      id: "x",
+      message: "m",
+      why: "w",
+      scope: "^src/",
+      unit: "file",
+      detect: { content: "TODO" as never },
+      probes: { fires: [], ignores: [] },
+      staleAfter: 1,
+      onComplete: "keep",
+    });
+    expect(Result.isFailure(failed) && failed.failure.field).toBe("content.regex");
+    expect(Result.isFailure(failed) && failed.failure.detail).toContain("{ regex: <string> }");
+  });
 });

@@ -104,3 +104,29 @@ jobs:
 
       - name: Typecheck affected projects
         run: pnpm exec nx affected -t check --base=origin/main --head=${{ github.event.pull_request.head.sha || github.sha }}
+
+  # TEMPORARY: the report-term e2e scenario on the PR runner, to read the message.
+  e2e-report-term:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build every package
+        run: pnpm run build:packages
+
+      - name: Run the report-term scenario
+        working-directory: e2e
+        run: pnpm exec vitest run src/scenarios/report-term.test.ts

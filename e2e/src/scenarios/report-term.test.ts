@@ -66,9 +66,10 @@ describe("a report term", () => {
 
     const linted = oxlint(repo, ["src"]);
     expect(linted.loaded, linted.stdout + linted.stderr).toBe(true);
-    expect(linted.diagnostics.map((one) => `${one.rule} ${one.file}`)).toEqual([
-      "architecture/campaigns src/a.ts",
-    ]);
+    expect(
+      linted.diagnostics.map((one) => `${one.rule} ${one.file}`),
+      JSON.stringify(linted.diagnostics, null, 2) + linted.stderr,
+    ).toEqual(["architecture/campaigns src/a.ts"]);
 
     const init = cli(repo, ["campaigns", "init", "type-errors", "src"]);
     expect(init.code, init.stderr).toBe(0);

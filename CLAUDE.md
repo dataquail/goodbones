@@ -13,7 +13,7 @@ all under `packages/`:
   (cycles, orphans, transitive reach), the `limits` ratchets, the ports a language pack implements,
   a fake per port under `@goodbones/core/testing`, and `loadPolicy`. It names no language.
 - **`@goodbones/typescript`** (`packages/typescript`) — the TypeScript language pack: facts read
-  through the TypeScript parser, specifiers resolved through `unrs-resolver`, behind the core's
+  through oxc-parser, specifiers resolved through `unrs-resolver`, behind the core's
   `Language` port.
 - **`@goodbones/cli`** (`packages/cli`) — the `architecture` bin: `check`, `conformance`, `baseline`,
   `coverage`, `explain`, `facts`, `init`, `infer`, `migrate`. Being the one host that sees every file at
@@ -169,13 +169,21 @@ and that patch targets one exact oxlint version, so a bump is the pair (`1.81.0`
 quick-fix for any JS-plugin diagnostic (oxc #25278), so the architecture rules ran in CI and never
 surfaced in the editor. `.vscode/` points the editor at `oxc.oxc-vscode` for the same reason.
 
-**Every package builds with the workspace's `tsc`, which is tsgo.** The root's `typescript` is
-`@typescript/native` (7.x), so `tsc` resolves to it in every package but one: `packages/typescript`
-depends on real `typescript` 5.x for its parser API, and that package's bin shadows the root's. Its
-`build` and `check` scripts therefore name `../../node_modules/.bin/tsc` explicitly. Letting it build
-with 5.x is what made CI flaky: `tsc -b` in `cli` and `oxlint`, each seeing the pack's outputs "generated
-with a different version", re-emitted them in parallel, and one read the other's half-written
-declaration file ("`index.d.ts` is not a module").
+**`oxlint` and `oxc-parser` move together.** The pack parses with `oxc-parser`, pinned exactly to
+the version released with the pinned `oxlint` (`1.81.0` with `oxc-parser` `0.148.0`; both carry
+`@oxc-project/types@0.148.0`), because the plugin reads oxlint's tree through the pack's reader
+and the reader is written against one ESTree. `packages/oxlint/src/parity.test.ts` is what fails
+when either is bumped alone — a node renamed or a field moved in one parser and not the other —
+so a bump of either runs it. `oxc-parser` ships prebuilt platform binaries as optional dependencies
+with no install script, so it needs no `onlyBuiltDependencies` entry.
+
+**No package depends on `typescript`, and none should.** Every package builds with the workspace's
+`tsc`, which is tsgo (the root's `typescript` is `@typescript/native` 7.x). The pack once depended on
+real `typescript` 5.x for its parser API, and that package's bin shadowed the root's: letting it build
+with 5.x made CI flaky — `tsc -b` in `cli` and `oxlint`, each seeing the pack's outputs "generated with
+a different version", re-emitted them in parallel, and one read the other's half-written declaration
+file. The root keeps a `typescript` 5.x devDependency for tooling only; a package that adds one brings
+the shadow back.
 
 **`no-redeclare` is off on purpose.** From oxlint 1.79.0 the rule reports TypeScript declaration
 merging — `export const X = Schema.Struct(…)` beside `export type X = …`, which is how every schema in
@@ -224,12 +232,17 @@ The other three packages sit around it:
 
 - `@goodbones/typescript` implements the ports for one language and assembles them into
   `typescriptLanguage()`. Its extractor is what the CLI reads every file through and what the
-  loader parses authored probes with. Only the two hosts' `config-loader.ts` construct it; the
-  core never imports it (a `reach` rule in the repo policy says so).
+  loader parses authored probes with. It parses with `oxc-parser` and exports the reader,
+  `readProgram`, that turns an ESTree `Program` into facts with the node each came from; the
+  plugin calls the same reader on oxlint's tree, so there is one reader over one tree shape. A
+  syntax error does not throw: oxc returns an empty program, so a file that does not parse
+  contributes no facts. Only the two hosts' `config-loader.ts` construct the pack; the core never
+  imports it (a `reach` rule in the repo policy says so).
 - `@goodbones/cli` and `@goodbones/oxlint` — the two hosts. Both answer to the same core,
   deliberately, so an alpha oxlint plugin API is not a single point of failure. The plugin reads
-  oxlint's tree instead of the pack's extractor, and `packages/oxlint/src/parity.test.ts` holds the
-  two to one answer — it lives in the plugin because it is the plugin's contract with the pack.
+  oxlint's tree through the pack's reader rather than parsing again, and
+  `packages/oxlint/src/parity.test.ts` holds oxlint's parse and oxc-parser's to one answer — it
+  lives in the plugin because it is the plugin's contract with the pack.
 
 Two properties are load-bearing and pinned by tests:
 

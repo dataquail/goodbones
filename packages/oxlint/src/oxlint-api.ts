@@ -1,5 +1,11 @@
 import * as path from "node:path";
 
+import {
+  type ProgramBody,
+  type ReadFacts,
+  readProgram,
+  type SyntaxNode,
+} from "@goodbones/typescript";
 import type { RuleTester } from "oxlint/plugins-dev";
 
 // oxlint publishes no plugin types, so the exact `Context`, node and fixer shapes
@@ -12,55 +18,33 @@ type Diagnostic = Parameters<RuleContext["report"]>[0];
 export type ReportableNode = Extract<Diagnostic, { node: unknown }>["node"];
 export type Fixer = Parameters<NonNullable<Diagnostic["fix"]>>[0];
 
-export type SourceNode = ReportableNode & {
-  readonly source?: { readonly value?: unknown } | null;
-};
+// The root of the tree oxlint hands a rule, and the one the pack's reader
+// walks.
+export type Program = RuleContext["sourceCode"]["ast"];
 
 export const toRepoRelative = (repoRoot: string, filename: string): string =>
   path.relative(repoRoot, filename).replaceAll(path.sep, "/");
 
-export const specifierOf = (node: SourceNode): string | null => {
-  const value = node.source?.value;
-  return typeof value === "string" ? value : null;
-};
+// A diagnostic is placed by the node's range, which every node of oxlint's
+// tree carries; a node from another parse carries `start` and `end`.
+export const at = (node: SyntaxNode): ReportableNode => ({
+  range: node.range ?? [node.start, node.end],
+});
 
-// The three forms that name a module without an `import … from`. Each is an
-// edge for the import rule and a whole-module binding for the export rule, so
-// both read them through these.
+// The facts of one file, read once and shared by every rule that runs on it:
+// oxlint deserialises a file's tree once and hands the same `Program` to each
+// rule, so the tree is the key.
+const read = new WeakMap<Program, ReadFacts>();
 
-// `require("m")` — a CallExpression whose callee is the bare identifier.
-export type CallNode = ReportableNode & {
-  readonly callee?: { readonly type: string; readonly name?: unknown } | null;
-  readonly arguments?: ReadonlyArray<{ readonly type: string; readonly value?: unknown }> | null;
-};
-
-// `import("m")` — `source` is any expression; only a string literal is an edge.
-export type ImportExpressionNode = ReportableNode & {
-  readonly source?: { readonly type?: string; readonly value?: unknown } | null;
-};
-
-// `import x = require("m")` — the module is under `moduleReference`, not `source`.
-export type ImportEqualsNode = ReportableNode & {
-  readonly moduleReference?: {
-    readonly type: string;
-    readonly expression?: { readonly value?: unknown } | null;
-  } | null;
-};
-
-export const requireSpecifierOf = (node: CallNode): string | null => {
-  if (node.callee?.type !== "Identifier" || node.callee.name !== "require") return null;
-  const [first] = node.arguments ?? [];
-  return first?.type === "Literal" && typeof first.value === "string" ? first.value : null;
-};
-
-export const importExpressionSpecifierOf = (node: ImportExpressionNode): string | null => {
-  const source = node.source;
-  return source?.type === "Literal" && typeof source.value === "string" ? source.value : null;
-};
-
-export const importEqualsSpecifierOf = (node: ImportEqualsNode): string | null => {
-  const reference = node.moduleReference;
-  if (reference?.type !== "TSExternalModuleReference") return null;
-  const value = reference.expression?.value;
-  return typeof value === "string" ? value : null;
+export const factsOfProgram = (file: string, program: Program): ReadFacts => {
+  const found = read.get(program);
+  if (found !== undefined) return found;
+  // oxlint's node types are `@oxc-project/types`' with `parent` required on
+  // every node — the same tree, generated from the same source. Each node
+  // type assigns on its own; the compiler gives up relating the two
+  // ~190-member recursive unions as wholes, so the boundary is asserted once,
+  // here. The parity suite is what proves the trees are one.
+  const facts = readProgram(file, program as ProgramBody);
+  read.set(program, facts);
+  return facts;
 };

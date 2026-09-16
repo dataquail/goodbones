@@ -8,7 +8,7 @@ enforced by an oxlint plugin in the editor and a CLI in CI. Published as indepen
 | Package                                        | What it does                                                                                                        |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | [`@goodbones/core`](packages/core)             | The manifest schema, the evaluators, the ports a language pack implements, and the loader. Names no language.       |
-| [`@goodbones/typescript`](packages/typescript) | The TypeScript language pack: facts through the TypeScript parser, resolution through `unrs-resolver`.              |
+| [`@goodbones/typescript`](packages/typescript) | The TypeScript language pack: facts through oxc-parser, resolution through `unrs-resolver`.              |
 | [`@goodbones/cli`](packages/cli)               | The `architecture` CLI: `check`, `baseline`, `coverage`, `explain`, `facts`, and the graph family.                  |
 | [`@goodbones/oxlint`](packages/oxlint)         | The oxlint plugin: `imports`, `exports`, `members`, `structure` and `surface` as five rules over the same manifest. |
 

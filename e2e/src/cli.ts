@@ -22,6 +22,9 @@ export type CliOptions = {
   readonly env?: Readonly<Record<string, string>>;
   // The bin to run; defaults to this checkout's build.
   readonly bin?: string;
+  // The most stdout a run may print; `--json` over a large tree exceeds Node's
+  // default of one megabyte.
+  readonly maxBuffer?: number;
 };
 
 export const cli = (
@@ -35,6 +38,7 @@ export const cli = (
     env: { ...process.env, ...options.env },
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    ...(options.maxBuffer === undefined ? {} : { maxBuffer: options.maxBuffer }),
   });
   if (run.error !== undefined) throw run.error;
   return { code: run.status ?? -1, stdout: run.stdout, stderr: run.stderr };

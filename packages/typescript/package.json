@@ -3,7 +3,7 @@
   "version": "0.1.0-beta.6",
   "type": "module",
   "license": "MIT",
-  "description": "The TypeScript language pack for @goodbones/core: facts read through the TypeScript parser, specifiers resolved through unrs-resolver, behind the core's Language port.",
+  "description": "The TypeScript language pack for @goodbones/core: facts read through oxc-parser, specifiers resolved through unrs-resolver, behind the core's Language port.",
   "author": "zacharyweidenbach",
   "keywords": [
     "architecture",
@@ -39,8 +39,8 @@
     "!src/**/*.test.ts"
   ],
   "scripts": {
-    "build": "../../node_modules/.bin/tsc -b tsconfig.build.json",
-    "check": "../../node_modules/.bin/tsc -b tsconfig.json",
+    "build": "tsc -b tsconfig.build.json",
+    "check": "tsc -b tsconfig.json",
     "clean": "rm -rf build .tsbuildinfo",
     "test": "vitest run",
     "coverage": "vitest run --coverage"
@@ -48,7 +48,7 @@
   "dependencies": {
     "@goodbones/core": "workspace:*",
     "effect": "4.0.0-beta.94",
-    "typescript": "^5.9.3",
+    "oxc-parser": "0.148.0",
     "unrs-resolver": "^1.12.2"
   },
   "devDependencies": {

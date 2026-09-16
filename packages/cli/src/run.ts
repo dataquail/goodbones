@@ -61,10 +61,10 @@ import { sourceFactsOf } from "./source-facts.js";
 // second way to ask the same question — and the only way to write a baseline,
 // since that needs every finding at once rather than one file at a time.
 //
-// It covers all four families. The two that need a syntax tree read TypeScript's
-// rather than oxlint's; both adapters meet at the same vocabulary — a specifier,
-// a binding, a member site — so they answer to the same core rather than to each
-// other.
+// It covers all four families. The ones that need a syntax tree read it through
+// the language pack's own parse rather than oxlint's; both adapters meet at the
+// same vocabulary — a specifier, a binding, a member site — so they answer to
+// the same core rather than to each other.
 
 export type CliFailure = { readonly _tag: "CliFailure"; readonly message: string };
 

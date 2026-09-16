@@ -18,6 +18,7 @@ import {
   type LoadedPolicy,
   makeBaselineFilter,
   memberRulesSelecting,
+  NO_REPORTS,
   rulesSelecting,
   surfaceRulesSelecting,
 } from "@goodbones/core";
@@ -301,6 +302,7 @@ const policy: LoadedPolicy = {
   functions: new Map(),
   now: 0,
   syntax: { parse: () => null },
+  reports: NO_REPORTS,
   extractor: makeFactExtractorFake({}),
   resolver,
   ignoreUnresolved: [],

@@ -13,6 +13,7 @@ import {
   ledgerOf,
   type LoadedPolicy,
   makeBaselineFilter,
+  NO_REPORTS,
 } from "@goodbones/core";
 import { makeFactExtractorFake, makeFileSystemFake } from "@goodbones/core/testing";
 import { factsOfText } from "@goodbones/typescript";
@@ -134,6 +135,7 @@ const policyWith = (ledgers: LoadedPolicy["ledgers"]): LoadedPolicy => ({
   functions: new Map(),
   now: 0,
   syntax: matcher,
+  reports: NO_REPORTS,
   fileSystem: makeFileSystemFake([]),
   languages: [],
   extractor: makeFactExtractorFake({}),
@@ -152,6 +154,7 @@ const hits = evaluateCampaigns(compiled.success, {
   fileSystem: makeFileSystemFake([]),
   syntax: matcher.parse(FIXTURE.file, FIXTURE.code),
   functions: new Map(),
+  reports: NO_REPORTS,
 });
 
 describe("the evaluator's own answer", () => {

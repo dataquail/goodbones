@@ -59,6 +59,7 @@ import type { FactExtractor } from "../ports/fact-extractor.js";
 import type { FileSystem } from "../ports/file-system.js";
 import type { Language } from "../ports/language.js";
 import type { ModuleResolver } from "../ports/module-resolver.js";
+import { NO_REPORTS, type ReportSource } from "../ports/report-source.js";
 import type { SyntaxMatcher } from "../ports/syntax-matcher.js";
 
 // A manifest, read by a host, turned into the policy both adapters evaluate.
@@ -88,6 +89,8 @@ export type LoadedPolicy = {
   readonly ledgerDir: string;
   // The predicate functions the host imported for the `fn` terms.
   readonly functions: ReadonlyMap<string, CampaignPredicate>;
+  // Answers the `report` terms: the host's live source, or nothing.
+  readonly reports: ReportSource;
   // The clock the campaigns are judged by — stalls, timestamps.
   readonly now: number;
   readonly fileSystem: FileSystem;
@@ -125,6 +128,10 @@ export type LoadPolicyInput = {
   // The predicate functions the manifest's `fn` terms name, imported by the
   // host before loading — the core touches no module loader.
   readonly functions?: ReadonlyMap<string, CampaignPredicate> | undefined;
+  // The host's report source, for the `report` terms. Absent, a term
+  // answers nothing — a policy with one is refused, since it would be a
+  // campaign that can never fire.
+  readonly reports?: ReportSource | undefined;
   // For tests and for a CI that pins the clock; defaults to `Date.now()`.
   readonly now?: number | undefined;
 };
@@ -395,6 +402,22 @@ export const loadPolicy = (
     );
   }
 
+  // A `report` term is answered by the host's source. Without one every
+  // such campaign would report nothing and look complete.
+  const reporting = campaignRules.success.filter((rule) =>
+    leafTermsOf(rule.detect).includes("report"),
+  );
+  if (input.reports === undefined && reporting.length > 0) {
+    return Result.fail(
+      new ConfigInvalid({
+        configPath,
+        detail:
+          `these campaigns hold a \`report\` term and the host provided no report source: ` +
+          `${reporting.map((rule) => rule.name).join(", ")}.`,
+      }),
+    );
+  }
+
   // A `syntax` term needs a matcher for the language of every file in its
   // scope. The probes are the files the campaign is proven on; a probe whose
   // language has none would pass no probe and mean nothing.
@@ -495,6 +518,7 @@ export const loadPolicy = (
     ledgers: ledgers.success,
     ledgerDir,
     functions,
+    reports: input.reports ?? NO_REPORTS,
     now: input.now ?? Date.now(),
     fileSystem,
     languages,

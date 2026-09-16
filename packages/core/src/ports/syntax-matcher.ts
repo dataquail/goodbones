@@ -29,6 +29,10 @@ export type SyntaxTree = {
   // Every node the rule matches, in source order. A rule the engine cannot
   // read throws, with the engine's own sentence.
   readonly findAll: (rule: unknown) => ReadonlyArray<SyntaxMatch>;
+  // The name of the innermost named declaration enclosing a position, or
+  // `null` at the top level — how a diagnostic another tool reported at a
+  // line is anchored on a declaration rather than on the line.
+  readonly anchorAt: (position: Position) => string | null;
 };
 
 export type SyntaxMatcher = {

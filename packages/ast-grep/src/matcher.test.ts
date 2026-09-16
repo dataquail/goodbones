@@ -103,6 +103,29 @@ describe("astGrepMatcher", () => {
     expect(tree.findAll({ kind: "variable_declarator" }).map((one) => one.anchor)).toEqual(["v"]);
   });
 
+  it("anchors a position on the innermost named declaration containing it", () => {
+    const tree = parse(
+      [
+        "export function outer() {",
+        "  const inner = () => {",
+        "    return 1;",
+        "  };",
+        "  return inner;",
+        "}",
+        "const top = 1;",
+        "",
+      ].join("\n"),
+      "src/a.ts",
+    );
+    expect(tree.anchorAt({ line: 2, column: 4 })).toBe("inner");
+    expect(tree.anchorAt({ line: 4, column: 2 })).toBe("outer");
+    expect(tree.anchorAt({ line: 6, column: 8 })).toBe("top");
+    expect(tree.anchorAt({ line: 7, column: 0 })).toBeNull();
+    // A JavaScript file has no type aliases in its grammar, and anchors regardless.
+    const js = parse("function f() { return 1; }", "src/a.js");
+    expect(js.anchorAt({ line: 0, column: 16 })).toBe("f");
+  });
+
   it("refuses a rule the engine cannot read, with the engine's own sentence", () => {
     const tree = parse("let x = 1;");
     expect(() => tree.findAll({ kind: "nonsense_kind" })).toThrow(/invalid/i);

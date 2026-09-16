@@ -1,5 +1,5 @@
 import { Lang, parse, type SgNode } from "@ast-grep/napi";
-import type { SyntaxMatch, SyntaxMatcher, SyntaxTree } from "@goodbones/core";
+import type { Position, SyntaxMatch, SyntaxMatcher, SyntaxTree } from "@goodbones/core";
 
 // The core's `SyntaxMatcher` port over ast-grep. A campaign's `syntax` term is
 // an ast-grep rule object, passed through as the `rule` of a `NapiConfig`;
@@ -115,6 +115,55 @@ const matchOf = (node: SgNode, names: ReadonlyArray<string>): SyntaxMatch => {
   };
 };
 
+// Every named declaration in the tree, innermost last, for anchoring a
+// position. Found once per tree; a kind the grammar does not have (a type
+// alias in JavaScript) is skipped.
+type Declared = {
+  readonly name: string;
+  readonly start: Position;
+  readonly end: Position;
+};
+
+const declarationsOf = (root: SgNode): ReadonlyArray<Declared> => {
+  const found: Array<Declared> = [];
+  for (const kind of DECLARATION_KINDS) {
+    let nodes: ReadonlyArray<SgNode>;
+    try {
+      nodes = root.findAll({ rule: { kind } });
+    } catch {
+      continue;
+    }
+    for (const node of nodes) {
+      const name = nameOf(node);
+      if (name === null) continue;
+      const range = node.range();
+      found.push({
+        name,
+        start: { line: range.start.line, column: range.start.column },
+        end: { line: range.end.line, column: range.end.column },
+      });
+    }
+  }
+  return found;
+};
+
+const before = (left: Position, right: Position): boolean =>
+  left.line < right.line || (left.line === right.line && left.column <= right.column);
+
+const contains = (one: Declared, at: Position): boolean =>
+  before(one.start, at) && before(at, one.end);
+
+// The innermost declaration containing the position: of those that do, the
+// one that starts last.
+const anchorAtOf = (declared: ReadonlyArray<Declared>, at: Position): string | null => {
+  let innermost: Declared | null = null;
+  for (const one of declared) {
+    if (!contains(one, at)) continue;
+    if (innermost === null || before(innermost.start, one.start)) innermost = one;
+  }
+  return innermost === null ? null : innermost.name;
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -131,7 +180,12 @@ export const astGrepMatcher = (
     const language = options.languages[extensionOf(file)];
     if (language === undefined) return null;
     const root = parse(language, text).root();
+    let declared: ReadonlyArray<Declared> | null = null;
     return {
+      anchorAt: (position) => {
+        declared ??= declarationsOf(root);
+        return anchorAtOf(declared, position);
+      },
       findAll: (rule) => {
         if (!isRecord(rule)) {
           throw new Error(`a syntax rule is an object of ast-grep rule keys, not ${typeof rule}`);

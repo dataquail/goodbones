@@ -171,7 +171,9 @@ export const collectFindings = (
     if (selectedCampaigns.length > 0) {
       const text = textOf(file);
       const needsSyntax = selectedCampaigns.some((rule) =>
-        leafTermsOf(rule.detect).some((leaf) => leaf === "syntax" || leaf === "fn"),
+        leafTermsOf(rule.detect).some(
+          (leaf) => leaf === "syntax" || leaf === "report" || leaf === "fn",
+        ),
       );
       for (const hit of evaluateCampaigns(selectedCampaigns, {
         file,
@@ -181,6 +183,7 @@ export const collectFindings = (
         fileSystem: policy.fileSystem,
         syntax: needsSyntax ? policy.syntax.parse(file, text) : null,
         functions: policy.functions,
+        reports: policy.reports,
       })) {
         campaigns.push(hit);
       }
@@ -1006,6 +1009,7 @@ export const explain = (policy: LoadedPolicy, file: string): Effect.Effect<void,
         fileSystem: policy.fileSystem,
         syntax: policy.syntax.parse(relative, text),
         functions: policy.functions,
+        reports: policy.reports,
       };
       const hits = evaluateCampaigns([rule], input);
       return [

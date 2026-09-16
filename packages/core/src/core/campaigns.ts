@@ -9,6 +9,7 @@ import type {
   Detector,
   ImportProbeTarget,
   MemberSubject,
+  ReportFormat,
 } from "../domain/architecture-config.js";
 import { ImportUnresolved, PatternInvalid } from "../domain/architecture-error.js";
 import type { ExportSite, MemberSite, SourceFacts } from "../domain/facts.js";
@@ -17,6 +18,7 @@ import type { CampaignPredicate, Range } from "../ports/campaign-predicate.js";
 import type { FactExtractor } from "../ports/fact-extractor.js";
 import type { FileSystem } from "../ports/file-system.js";
 import type { ModuleResolver, ResolvedTarget } from "../ports/module-resolver.js";
+import type { ReportSource } from "../ports/report-source.js";
 import type { SyntaxMatch, SyntaxMatcher, SyntaxTree } from "../ports/syntax-matcher.js";
 import { probeTargetOf } from "./imports.js";
 import { compilePatterns } from "./patterns.js";
@@ -101,6 +103,15 @@ export type CompiledDetector =
       readonly kind: "syntax";
       readonly rule: unknown;
       readonly where: ReadonlyArray<CompiledNarrowing>;
+    }
+  | {
+      readonly kind: "report";
+      readonly command: string | null;
+      readonly file: string | null;
+      readonly format: ReportFormat;
+      readonly pattern: string | null;
+      readonly codes: ReadonlySet<string> | null;
+      readonly codesNot: ReadonlySet<string>;
     }
   | { readonly kind: "fn"; readonly name: string };
 
@@ -266,6 +277,22 @@ const compileDetector = (
     }
     return Result.succeed({ kind: "syntax", rule: detector.syntax.rule, where });
   }
+  if ("report" in detector) {
+    const term = detector.report;
+    if (term.pattern !== undefined) {
+      const pattern = patterns("report.pattern", term.pattern);
+      if (Result.isFailure(pattern)) return Result.fail(pattern.failure);
+    }
+    return Result.succeed({
+      kind: "report",
+      command: term.command ?? null,
+      file: term.file ?? null,
+      format: term.format,
+      pattern: term.pattern ?? null,
+      codes: term.codes === undefined ? null : new Set(term.codes),
+      codesNot: new Set(term.codesNot ?? []),
+    });
+  }
   return Result.succeed({ kind: "fn", name: detector.fn });
 };
 
@@ -322,6 +349,7 @@ const LEAF_ORDER = [
   "requires",
   "content",
   "syntax",
+  "report",
   "fn",
 ] as const;
 
@@ -365,6 +393,9 @@ export type CampaignInput = {
   readonly fileSystem: FileSystem;
   readonly syntax: SyntaxTree | null;
   readonly functions: ReadonlyMap<string, CampaignPredicate>;
+  // Answers a `report` term: the live source runs the command once per
+  // process; a probe answers from the diagnostics it lists.
+  readonly reports: ReportSource;
 };
 
 export type CampaignHit = {
@@ -410,6 +441,20 @@ const contentHash = (text: string): string => {
 
 export const matchKeyOf = (anchor: string | null, text: string): string =>
   `${anchor ?? ""}#${contentHash(text)}`;
+
+// Two matches with the same key — the same text twice in one declaration,
+// the same diagnostic twice on one line — are two entries, not one: the
+// second is `key~2`, the third `key~3`. The ordinal is positional only among
+// duplicates, so a ledger keeps its count under any edit that leaves them
+// duplicates.
+const uniqueKeys = (): ((key: string) => string) => {
+  const seen = new Map<string, number>();
+  return (key) => {
+    const count = (seen.get(key) ?? 0) + 1;
+    seen.set(key, count);
+    return count === 1 ? key : `${key}~${String(count)}`;
+  };
+};
 
 const targetMatches = (target: Target, resolved: ResolvedTarget): boolean => {
   switch (target.kind) {
@@ -565,14 +610,42 @@ const evaluateLeaf = (term: CompiledDetector, input: CampaignInput): LeafAnswer 
       return { level: "file", holds: term.regex.test(input.text) };
     case "syntax": {
       if (input.syntax === null) return matchesOf([]);
-      const seen = new Set<string>();
+      const unique = uniqueKeys();
       const candidates: Array<Candidate> = [];
       for (const match of input.syntax.findAll(term.rule)) {
         if (!narrowed(term.where, match, input)) continue;
-        const key = matchKeyOf(match.anchor, match.text);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        candidates.push({ key, anchor: match.anchor, range: match.range });
+        candidates.push({
+          key: unique(matchKeyOf(match.anchor, match.text)),
+          anchor: match.anchor,
+          range: match.range,
+        });
+      }
+      return matchesOf(candidates);
+    }
+    case "report": {
+      // Each diagnostic is a match: anchored on the declaration at its
+      // position (or none, at the top level or without a matcher), keyed by
+      // its code and a hash of its message — so an entry survives the line
+      // moving and changes when the message does.
+      const unique = uniqueKeys();
+      const candidates: Array<Candidate> = [];
+      const spec = {
+        ...(term.command === null ? {} : { command: term.command }),
+        ...(term.file === null ? {} : { file: term.file }),
+        format: term.format,
+        ...(term.pattern === null ? {} : { pattern: term.pattern }),
+      };
+      for (const diagnostic of input.reports.diagnosticsOf(spec, input.file)) {
+        if (term.codes !== null && !term.codes.has(diagnostic.code)) continue;
+        if (term.codesNot.has(diagnostic.code)) continue;
+        const position = { line: diagnostic.line, column: diagnostic.column };
+        const anchor = input.syntax?.anchorAt(position) ?? null;
+        const code = diagnostic.code === "" ? "" : `${diagnostic.code}#`;
+        candidates.push({
+          key: unique(`${anchor ?? ""}#${code}${contentHash(diagnostic.message)}`),
+          anchor,
+          range: { start: position, end: position },
+        });
       }
       return matchesOf(candidates);
     }
@@ -600,7 +673,12 @@ const evaluateLeaf = (term: CompiledDetector, input: CampaignInput): LeafAnswer 
 const isFileLevel = (term: CompiledDetector, unit: CampaignUnit): boolean =>
   unit === "file" ||
   leafTermsOf(term).every(
-    (leaf) => leaf !== "exports" && leaf !== "members" && leaf !== "syntax" && leaf !== "fn",
+    (leaf) =>
+      leaf !== "exports" &&
+      leaf !== "members" &&
+      leaf !== "syntax" &&
+      leaf !== "report" &&
+      leaf !== "fn",
   );
 
 type Evaluation = {
@@ -784,6 +862,8 @@ const describeTerm = (term: CompiledDetector): string => {
       return `content /${term.regex.source}/`;
     case "syntax":
       return `syntax ${JSON.stringify(term.rule)}`;
+    case "report":
+      return `report ${term.format} ${term.command === null ? `file ${term.file ?? ""}` : `\`${term.command}\``}${term.codes === null ? "" : ` [${[...term.codes].join(", ")}]`}`;
     case "fn":
       return `fn ${term.name}`;
     default:
@@ -849,6 +929,14 @@ export const probeInputOf = (
   const edges = probe.edges ?? {};
   const files = new Set(probe.files ?? []);
   const text = probe.source ?? "";
+  // The probe's diagnostics, one-based as written, on the probe's own file.
+  const reported = (probe.report ?? []).map((one) => ({
+    file: probe.path,
+    line: Math.max(0, one.line - 1),
+    column: Math.max(0, (one.column ?? 1) - 1),
+    code: one.code ?? "",
+    message: one.message ?? "",
+  }));
   return {
     file: probe.path,
     text,
@@ -866,6 +954,7 @@ export const probeInputOf = (
     fileSystem: { exists: (at) => files.has(at), readText: () => null },
     syntax: probe.source === undefined || matcher === null ? null : matcher.parse(probe.path, text),
     functions,
+    reports: { diagnosticsOf: (_spec, file) => (file === probe.path ? reported : []) },
   };
 };
 

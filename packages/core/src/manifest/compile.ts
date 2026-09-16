@@ -1187,6 +1187,31 @@ const lowerCampaign = (
     }
     if ("requires" in detector) return { requires: [...detector.requires] };
     if ("content" in detector) return { content: { regex: detector.content.regex } };
+    if ("report" in detector) {
+      const term = detector.report;
+      if ((term.command === undefined) === (term.file === undefined)) {
+        throw new Error(
+          `campaign "${campaign.id}" has a report term that must name exactly one of ` +
+            `\`command\` (a program to run) and \`file\` (a report already written).`,
+        );
+      }
+      if (term.format === "regex" && term.pattern === undefined) {
+        throw new Error(
+          `campaign "${campaign.id}" has a \`regex\` report term with no \`pattern\`: give ` +
+            `one with named groups \`file\` and \`line\`.`,
+        );
+      }
+      return {
+        report: {
+          ...(term.command === undefined ? {} : { command: term.command }),
+          ...(term.file === undefined ? {} : { file: term.file }),
+          format: term.format,
+          ...(term.pattern === undefined ? {} : { pattern: term.pattern }),
+          ...(term.codes === undefined ? {} : { codes: [...term.codes] }),
+          ...(term.codesNot === undefined ? {} : { codesNot: [...term.codesNot] }),
+        },
+      };
+    }
     if ("syntax" in detector) {
       const { where } = detector.syntax;
       const narrowed =

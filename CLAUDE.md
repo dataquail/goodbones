@@ -43,7 +43,9 @@ extraction quietly narrows breaks this lint run, not a user's.
 
 **The campaigns family tracks a migration as an object.** A campaign (`campaigns:` in the manifest)
 is a detector — `all`/`any`/`not` over `path`, `imports`, `exports`, `members`, `requires`, `content`,
-`syntax` (an ast-grep rule) and `fn` (`module#export`) terms — with a unit (`file`, `declaration`,
+`syntax` (an ast-grep rule), `report` (another program's diagnostics — `tsc`, `eslint`/`oxlint` JSON,
+or a `regex` — run once per process through `infrastructure/report-source-live.ts` and anchored on
+declarations through `SyntaxTree.anchorAt`) and `fn` (`module#export`) terms — with a unit (`file`, `declaration`,
 `match`), probes it must fire on and stay silent on, and a ledger under `.architecture-campaigns/`
 (`<id>.json`) of every place the pattern still occurs. The ledger only shrinks on its own:
 `architecture campaigns prune` removes, `campaigns allow --reason` is the one way an entry is added
@@ -250,10 +252,11 @@ TS2451, and the compiler owns it.
   read, with the language packs and the `FileSystem` the host hands in. Language-neutral; the
   resolver and the extractor it returns route each file to the scope's language.
 - `src/ports/` — the `FileSystem`, `ModuleResolver`, `FactExtractor`, `SyntaxMatcher`,
-  `CampaignPredicate` and `Language` ports.
+  `ReportSource`, `CampaignPredicate` and `Language` ports.
 - `src/infrastructure/` — a fake per port (exported as `@goodbones/core/testing`; tests drive them),
-  and the four things the core does on this host without a language: the live file system, the
-  walker, reading the manifest file, and importing the `fn` terms' modules (`campaign-functions.ts`).
+  and the five things the core does on this host without a language: the live file system, the
+  walker, reading the manifest file, importing the `fn` terms' modules (`campaign-functions.ts`),
+  and running a `report` term's command (`report-source-live.ts`).
 
 The other three packages sit around it:
 

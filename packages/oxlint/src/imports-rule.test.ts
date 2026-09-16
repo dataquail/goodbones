@@ -8,6 +8,7 @@ import {
   EMPTY_STRUCTURE,
   type LoadedPolicy,
   makeBaselineFilter,
+  NO_REPORTS,
 } from "@goodbones/core";
 import {
   makeFactExtractorFake,
@@ -66,6 +67,7 @@ const makePolicy = (): LoadedPolicy => {
     functions: new Map(),
     now: 0,
     syntax: { parse: () => null },
+    reports: NO_REPORTS,
     extractor: makeFactExtractorFake({}),
     resolver: makeModuleResolverFake({
       "@org/database": "packages/database/src/index.ts",

@@ -9,6 +9,7 @@ import {
   type LoadedPolicy,
   loadPolicy,
   makeFileSystemLive,
+  makeReportSourceLive,
   type PatternInvalid,
   readManifestFile,
 } from "@goodbones/core";
@@ -66,6 +67,7 @@ export const loadPolicyFromFile = async (
     languages: hostLanguages(),
     fileSystem: makeFileSystemLive(repoRoot),
     functions,
+    reports: makeReportSourceLive(repoRoot),
     now: hostNow(),
   });
   if (Result.isFailure(loaded)) throw loaded.failure;
@@ -86,5 +88,6 @@ export const loadPolicyFromManifest = (
     manifest,
     languages: hostLanguages(),
     fileSystem: makeFileSystemLive(repoRoot),
+    reports: makeReportSourceLive(repoRoot),
     now: hostNow(),
   });

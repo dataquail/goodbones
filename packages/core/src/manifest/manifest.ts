@@ -6,6 +6,8 @@ import {
   CampaignUnit,
   DeclarationKind,
   ImportProbeTarget,
+  ProbeDiagnostic,
+  ReportFormat,
   ResolveConfig,
 } from "../domain/architecture-config.js";
 import { ConfigInvalid } from "../domain/architecture-error.js";
@@ -346,6 +348,20 @@ const SyntaxTerm = Schema.Struct({
   where: Schema.optionalKey(Schema.Record(Schema.String, CaptureNarrowing)),
 });
 
+// A finding of another program, read from the output of `command` (run
+// from the repository root, once per `check`) or from `file` (written by
+// an earlier step) in one of the known formats — `tsc`, `eslint --format
+// json`, `oxlint --format json` — or by a `regex` with named groups. Holds
+// for each diagnostic on the file whose code the term speaks to.
+const ReportTerm = Schema.Struct({
+  command: Schema.optionalKey(Schema.String),
+  file: Schema.optionalKey(Schema.String),
+  format: ReportFormat,
+  pattern: Schema.optionalKey(Schema.String),
+  codes: Schema.optionalKey(Schema.Array(Schema.String)),
+  codesNot: Schema.optionalKey(Schema.Array(Schema.String)),
+});
+
 export type DetectorSpec =
   | { readonly all: ReadonlyArray<DetectorSpec> }
   | { readonly any: ReadonlyArray<DetectorSpec> }
@@ -358,6 +374,7 @@ export type DetectorSpec =
   | { readonly requires: ReadonlyArray<string> }
   | { readonly content: typeof ContentTerm.Type }
   | { readonly syntax: typeof SyntaxTerm.Type }
+  | { readonly report: typeof ReportTerm.Type }
   // `module#export`: a predicate function the host imports before loading.
   | { readonly fn: string };
 
@@ -376,18 +393,22 @@ const DetectorSpec = Schema.Union([
   Schema.Struct({ requires: Schema.Array(Schema.String) }),
   Schema.Struct({ content: ContentTerm }),
   Schema.Struct({ syntax: SyntaxTerm }),
+  Schema.Struct({ report: ReportTerm }),
   Schema.Struct({ fn: Schema.String }),
 ]);
 
 // A source the campaign is proven against at load. `path` alone proves a
 // path-shaped detector; `source` is parsed, `edges` answers the `imports`
-// term and a binding narrowing in place of the live resolver, and `files`
-// answers `requires` in place of the file system.
+// term and a binding narrowing in place of the live resolver, `files`
+// answers `requires` in place of the file system, and `report` answers a
+// `report` term in place of running anything — one-based positions, as a
+// tool prints them.
 const CampaignProbe = Schema.Struct({
   path: Schema.String,
   source: Schema.optionalKey(Schema.String),
   edges: Schema.optionalKey(Schema.Record(Schema.String, ImportProbeTarget)),
   files: Schema.optionalKey(Schema.Array(Schema.String)),
+  report: Schema.optionalKey(Schema.Array(ProbeDiagnostic)),
 });
 
 // `30d`, `12h`: how long a campaign may go without progress before the

@@ -30,6 +30,8 @@ export const makeSyntaxMatcherFake = (
     }
     const matches = staged[text] ?? [];
     return {
+      // A staged match's line is what a position is anchored by.
+      anchorAt: (position) => matches.find((one) => one.line === position.line)?.anchor ?? null,
       findAll: (rule) => {
         const asked = JSON.stringify(rule);
         return matches

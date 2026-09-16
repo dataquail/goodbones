@@ -186,6 +186,20 @@ describe("the manifest JSON Schema", () => {
       probes: { fires: [{ path: "app/x.tsx", source: "export default () => { useState(); }" }] },
       staleAfter: "30d",
     },
+    {
+      id: "type-errors",
+      why: "The strict tsconfig cannot land while these remain.",
+      how: "Fix the type error; do not add a cast.",
+      scope: ["src/**"],
+      unit: "match",
+      detect: {
+        report: { command: "tsc --noEmit --pretty false", format: "tsc", codesNot: ["TS6133"] },
+      },
+      probes: {
+        fires: [{ path: "src/a.ts", report: [{ line: 1, code: "TS2551", message: "m" }] }],
+      },
+      staleAfter: "30d",
+    },
   ];
 
   it("validates the campaign examples, and a ledger path", () => {
@@ -210,6 +224,12 @@ describe("the manifest JSON Schema", () => {
       validate({ ...base, campaigns: [{ ...first, detect: { content: { regexp: "x" } } }] }),
     ).toBe(false);
     expect(validate({ ...base, campaigns: [{ ...first, staleAfter: "30 days" }] })).toBe(false);
+    expect(
+      validate({
+        ...base,
+        campaigns: [{ ...first, detect: { report: { command: "x", format: "junit" } } }],
+      }),
+    ).toBe(false);
     expect(validate({ ...base, campaigns: [{ ...first, unit: "line" }] })).toBe(false);
   });
 });

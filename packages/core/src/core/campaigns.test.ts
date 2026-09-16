@@ -7,6 +7,7 @@ import { fingerprintOf } from "../domain/violation.js";
 import { makeFactExtractorFake } from "../infrastructure/fact-extractor-fake.js";
 import { makeFileSystemFake } from "../infrastructure/file-system-fake.js";
 import { makeModuleResolverFake } from "../infrastructure/module-resolver-fake.js";
+import { makeReportSourceFake } from "../infrastructure/report-source-fake.js";
 import { makeSyntaxMatcherFake, type StagedMatch } from "../infrastructure/syntax-matcher-fake.js";
 import {
   type CampaignInput,
@@ -56,6 +57,7 @@ const input = (
     readonly matches?: ReadonlyArray<StagedMatch>;
     readonly edges?: Readonly<Record<string, string>>;
     readonly siblings?: ReadonlyArray<string>;
+    readonly diagnostics?: Parameters<typeof makeReportSourceFake>[0][string];
   } = {},
 ): CampaignInput => {
   const text = overrides.text ?? "source";
@@ -67,6 +69,7 @@ const input = (
     fileSystem: makeFileSystemFake(overrides.siblings ?? []),
     syntax: makeSyntaxMatcherFake({ [text]: overrides.matches ?? [] }).parse("src/a.ts", text),
     functions: new Map(),
+    reports: makeReportSourceFake({ [overrides.file ?? "src/a.ts"]: overrides.diagnostics ?? [] }),
     ...overrides,
   };
 };
@@ -209,6 +212,60 @@ describe("every leaf term, true and false", () => {
     expect(
       fires(rule({ syntax: { rule: { pattern: "$X" } } }), input({ matches, syntax: null })),
     ).toBe(false);
+  });
+
+  it("report: each diagnostic another tool reported on the file, anchored on the declaration at its position", () => {
+    const diagnostics = [
+      { line: 3, column: 4, code: "TS2551", message: "Property 'x' does not exist" },
+      { line: 3, column: 9, code: "TS2551", message: "Property 'x' does not exist" },
+      { line: 7, column: 0, code: "TS18048", message: "'y' is possibly undefined" },
+      { line: 9, column: 0, code: "", message: "unnamed" },
+    ];
+    // The staged matches are what `anchorAt` answers from: line 3 sits in
+    // `parse`, line 7 in `format`, line 9 at the top level.
+    const matches: ReadonlyArray<StagedMatch> = [
+      { text: "parse", anchor: "parse", line: 3, rule: { kind: "never" } },
+      { text: "format", anchor: "format", line: 7, rule: { kind: "never" } },
+    ];
+    const tsc = (unit: CampaignRule["unit"], codes?: ReadonlyArray<string>) =>
+      rule(
+        {
+          report: {
+            command: "tsc --noEmit",
+            format: "tsc",
+            ...(codes === undefined ? {} : { codes }),
+          },
+        },
+        unit,
+      );
+    expect(fires(tsc("file"), input({ diagnostics, matches }))).toBe(true);
+    expect(fires(tsc("file"), input({ diagnostics: [], matches }))).toBe(false);
+    expect(subjects(tsc("declaration"), input({ diagnostics, matches }))).toEqual([
+      "format",
+      "parse",
+    ]);
+    const keys = subjects(tsc("match"), input({ diagnostics, matches }));
+    // Two identical diagnostics in one declaration are two entries; the
+    // unnamed code has no code segment; the top-level one has no anchor.
+    expect(keys).toEqual([
+      expect.stringMatching(/^#[0-9a-f]{8}$/),
+      expect.stringMatching(/^format#TS18048#[0-9a-f]{8}$/),
+      expect.stringMatching(/^parse#TS2551#[0-9a-f]{8}$/),
+      expect.stringMatching(/^parse#TS2551#[0-9a-f]{8}~2$/),
+    ]);
+    expect(subjects(tsc("match", ["TS18048"]), input({ diagnostics, matches }))).toEqual([
+      expect.stringMatching(/^format#TS18048#/),
+    ]);
+    // The line moving leaves the key alone; the message changing does not.
+    const moved = diagnostics.map((one) => ({ ...one, line: one.line + 20 }));
+    const movedMatches = matches.map((one) => ({ ...one, line: (one.line ?? 0) + 20 }));
+    expect(subjects(tsc("match"), input({ diagnostics: moved, matches: movedMatches }))).toEqual(
+      keys,
+    );
+    const reworded = diagnostics.map((one) => ({ ...one, message: `${one.message}!` }));
+    expect(subjects(tsc("match"), input({ diagnostics: reworded, matches }))).not.toEqual(keys);
+    // Without a syntax tree there is no anchor, and the report still counts.
+    expect(subjects(tsc("match"), input({ diagnostics, syntax: null }))).toHaveLength(4);
   });
 
   it("fn: a predicate's verdict, or the subjects it lists", () => {
@@ -524,6 +581,26 @@ describe("selection, probes and the truth table", () => {
     expect(campaignsFailingTheirProbe([silent], extractor, () => null, new Map())).toEqual([
       expect.objectContaining({ name: "campaign/x", expected: "fires" }),
     ]);
+  });
+
+  it("a probe answers a report term from the diagnostics it lists, one-based", () => {
+    const tsc = rule({ report: { file: "tsc.txt", format: "tsc", codes: ["TS2551"] } }, "match", {
+      probes: {
+        fires: [
+          { path: "src/a.ts", source: "x", report: [{ line: 1, code: "TS2551", message: "m" }] },
+        ],
+        ignores: [{ path: "src/b.ts", source: "x", report: [{ line: 1, code: "TS7006" }] }],
+      },
+    });
+    expect(
+      campaignsFailingTheirProbe([tsc], makeFactExtractorFake({}), () => null, new Map()),
+    ).toEqual([]);
+    const silent = rule({ report: { file: "tsc.txt", format: "tsc" } }, "match", {
+      probes: { fires: [{ path: "src/a.ts", source: "x" }], ignores: [] },
+    });
+    expect(
+      campaignsFailingTheirProbe([silent], makeFactExtractorFake({}), () => null, new Map()),
+    ).toEqual([expect.objectContaining({ name: "campaign/x", expected: "fires" })]);
   });
 
   it("explains every leaf term, negations included, with no short-circuit", () => {

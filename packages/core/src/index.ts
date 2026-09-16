@@ -151,6 +151,7 @@ export {
   type ImportRule,
   type MemberRule,
   type MemberSubject,
+  type ProbeDiagnostic,
   type ResolveConfig,
   type ResolveScope,
   type StructureConfig,
@@ -174,6 +175,13 @@ export {
   type ManifestPosition,
   renderManifestPath,
 } from "./domain/manifest-location.js";
+export {
+  type Diagnostic,
+  indexByFile,
+  parseReport,
+  type ParseReportOptions,
+  type ReportFormat,
+} from "./domain/report.js";
 export {
   decodeSnapshot,
   type Snapshot,
@@ -211,6 +219,7 @@ export {
   type IncludeReader,
   type SourceDocument,
 } from "./infrastructure/manifest-include.js";
+export { makeReportSourceLive } from "./infrastructure/report-source-live.js";
 export {
   listPackageRoots,
   listSourceFiles,
@@ -277,6 +286,7 @@ export {
   type ModuleResolver,
   type ResolvedTarget,
 } from "./ports/module-resolver.js";
+export { NO_REPORTS, type ReportSource, type ReportSpec } from "./ports/report-source.js";
 export {
   type Position,
   type SyntaxMatch,

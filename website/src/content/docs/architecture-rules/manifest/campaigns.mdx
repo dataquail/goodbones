@@ -79,7 +79,7 @@ progress. A match at the top level of a file has no anchor and is keyed by its h
 
 Every term answers at one level. `path`, `imports`, `requires`, `content` and a `fn` that
 returns a boolean are statements about the **file**; `exports` and `members` are about a
-**declaration**; `syntax` and a `fn` that returns a list are about a **match**. The unit
+**declaration**; `syntax`, `report` and a `fn` that returns a list are about a **match**. The unit
 decides what a term from another level means:
 
 - In a **`file`** campaign every term is existential — _the file contains one_ — and `not`
@@ -96,16 +96,17 @@ decides what a term from another level means:
 
 ## Terms
 
-| Term       | Shape                                       | Holds when…                                                                                                                                                                   |
-| ---------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `path`     | `{ file, fileNot?, subject?, convention? }` | the repo-relative path matches `file` (a regular expression) and not `fileNot`; with `subject` and `convention`, the capture group named has the convention's shape           |
-| `imports`  | `{ resolves, symbols? }`                    | some import of the file resolves to the target — a path glob, `{ external: <package> }` or `{ builtin: <module> }` — and, with `symbols`, pulls one of those names across it  |
-| `exports`  | `{ name?, kinds?, declares?, reexport? }`   | an export site the [`surface`](/goodbones/architecture-rules/manifest/surface/) selectors admit                                                                               |
-| `members`  | `{ subject, name?, in?, declares? }`        | a member or called name the [`members`](/goodbones/architecture-rules/manifest/members/) selectors admit; `calls` is about the file, `members` about the declaration it is in |
-| `requires` | `["{base}.test.ts", …]`                     | every named sibling exists — the [`structure`](/goodbones/architecture-rules/manifest/structure/) parity strings                                                              |
-| `content`  | `{ regex }`                                 | the regular expression matches the file's text (multiline)                                                                                                                    |
-| `syntax`   | an ast-grep rule, plus `where`              | the engine finds a node — see [The syntax term](#the-syntax-term)                                                                                                             |
-| `fn`       | `"module#export"`                           | the function answers `true`, or lists subjects — see [The function term](#the-function-term)                                                                                  |
+| Term       | Shape                                                      | Holds when…                                                                                                                                                                   |
+| ---------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `path`     | `{ file, fileNot?, subject?, convention? }`                | the repo-relative path matches `file` (a regular expression) and not `fileNot`; with `subject` and `convention`, the capture group named has the convention's shape           |
+| `imports`  | `{ resolves, symbols? }`                                   | some import of the file resolves to the target — a path glob, `{ external: <package> }` or `{ builtin: <module> }` — and, with `symbols`, pulls one of those names across it  |
+| `exports`  | `{ name?, kinds?, declares?, reexport? }`                  | an export site the [`surface`](/goodbones/architecture-rules/manifest/surface/) selectors admit                                                                               |
+| `members`  | `{ subject, name?, in?, declares? }`                       | a member or called name the [`members`](/goodbones/architecture-rules/manifest/members/) selectors admit; `calls` is about the file, `members` about the declaration it is in |
+| `requires` | `["{base}.test.ts", …]`                                    | every named sibling exists — the [`structure`](/goodbones/architecture-rules/manifest/structure/) parity strings                                                              |
+| `content`  | `{ regex }`                                                | the regular expression matches the file's text (multiline)                                                                                                                    |
+| `syntax`   | an ast-grep rule, plus `where`                             | the engine finds a node — see [The syntax term](#the-syntax-term)                                                                                                             |
+| `report`   | `{ command \| file, format, pattern?, codes?, codesNot? }` | another program reported a diagnostic on the file — see [The report term](#the-report-term)                                                                                   |
+| `fn`       | `"module#export"`                                          | the function answers `true`, or lists subjects — see [The function term](#the-function-term)                                                                                  |
 
 Each term is an object with exactly one key, so a misspelled one is a decode error naming
 the line rather than a term that quietly matches nothing. `path.convention` is one of
@@ -178,6 +179,66 @@ The matcher is `@goodbones/ast-grep`, which both hosts compose into the TypeScri
 The plugin parses `sourceCode.text` with the same matcher the CLI uses, so this family's
 parity contract is _one engine_ rather than a corpus. A campaign whose `scope` covers a
 language with no matcher is refused at load, with the language named.
+
+## The report term
+
+Some patterns no parser of ours sees: a type error, a finding from another linter, anything a
+program prints one line per occurrence. The `report` term reads such a program's output and
+makes each diagnostic a match, so a campaign can ratchet down what another tool reports —
+with the granularity a count-per-file baseline throws away.
+
+```yaml
+- id: type-errors
+  why: The strict tsconfig cannot land while these remain.
+  how: Fix the type error at its source; do not add a cast or a `!`.
+  owner: "@team/platform"
+  scope: ["src/**"]
+  unit: match
+  detect:
+    report:
+      command: "npx tsc --noEmit --pretty false"
+      format: tsc
+      codesNot: [TS6133]
+  probes:
+    fires:
+      [
+        {
+          path: src/a.ts,
+          report: [{ line: 1, code: TS2551, message: "Property 'x' does not exist" }],
+        },
+      ]
+    ignores:
+      [
+        {
+          path: src/b.ts,
+          report: [{ line: 1, code: TS6133, message: "'x' is declared but never used" }],
+        },
+      ]
+  staleAfter: 30d
+```
+
+| Field      | Meaning                                                                                                                     |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `command`  | a program run from the repository root, once per process; a non-zero exit is expected (`tsc` exits 2 when there are errors) |
+| `file`     | instead of `command`: a report an earlier step wrote, relative to the repository root                                       |
+| `format`   | `tsc` (`file(line,col): error TSxxxx: message`), `eslint` (`--format json`), `oxlint` (`--format json`), or `regex`         |
+| `pattern`  | `regex` only: named groups `file` and `line`, and optionally `column`, `code`, `message`; one diagnostic per matching line  |
+| `codes`    | the codes the term speaks to (`TS2551`, `no-unused-vars`, `eslint(no-debugger)`); omit for every one                        |
+| `codesNot` | codes carved back out                                                                                                       |
+
+Each diagnostic is anchored on the declaration at its position through the scope's syntax
+matcher — `anchorAt`, the second thing a matcher answers — and keyed
+`Anchor#code#hash(message)`, so an entry survives the line moving and changes when the
+message does. Two identical diagnostics in one declaration are two entries (`~2`, `~3`), so
+a ledger keeps its count. A diagnostic with no enclosing declaration, or in a file with no
+matcher, is keyed by code and message alone.
+
+The command runs once per process and the output is cached: the CLI is one process per
+`check`, and oxlint's language server is one process per editor session, which sees the
+report as of when it loaded the plugin. A report the build writes to a file — `file:
+tsc-report.txt` — is the predictable form for the editor, and the one to use when the
+command is slow. A probe answers the term with `report: [{ line, column?, code?, message? }]`,
+positions one-based as a tool prints them, so no program runs at load.
 
 ## The function term
 

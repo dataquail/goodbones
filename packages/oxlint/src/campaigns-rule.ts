@@ -68,7 +68,9 @@ export const makeCampaignsRule = (policy: LoadedPolicy): OxlintRule => ({
       Program(node: Program) {
         const text = context.sourceCode.text;
         const needsSyntax = selected.some((rule) =>
-          leafTermsOf(rule.detect).some((leaf) => leaf === "syntax" || leaf === "fn"),
+          leafTermsOf(rule.detect).some(
+            (leaf) => leaf === "syntax" || leaf === "report" || leaf === "fn",
+          ),
         );
         const hits = evaluateCampaigns(selected, {
           file,
@@ -78,6 +80,7 @@ export const makeCampaignsRule = (policy: LoadedPolicy): OxlintRule => ({
           fileSystem: policy.fileSystem,
           syntax: needsSyntax ? policy.syntax.parse(file, text) : null,
           functions: policy.functions,
+          reports: policy.reports,
         });
 
         for (const hit of unledgered(policy, selected, hits)) {

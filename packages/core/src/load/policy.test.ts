@@ -277,6 +277,51 @@ describe("loadPolicy with campaigns", () => {
     );
   });
 
+  it("refuses a report term when the host provides no report source, and answers it through one", () => {
+    const tsc = campaign({
+      detect: { report: { command: "tsc --noEmit", format: "tsc", codes: ["TS2551"] } },
+      probes: {
+        fires: [{ path: "svc/a.go", report: [{ line: 1, code: "TS2551", message: "m" }] }],
+      },
+    });
+    const refused = load(withCampaigns([tsc]), [go()]);
+    expect(Result.isFailure(refused) && refused.failure.message).toMatch(
+      /hold a `report` term and the host provided no report source: campaign\/js-to-go/,
+    );
+    const reports = { diagnosticsOf: () => [] };
+    const policy = unwrap(
+      loadPolicy({
+        repoRoot: "/repo",
+        configPath: "/repo/architecture.config.mjs",
+        manifest: withCampaigns([tsc]),
+        languages: [go()],
+        fileSystem: makeFileSystemFake([]),
+        reports,
+      }),
+    );
+    expect(policy.reports).toBe(reports);
+  });
+
+  it("refuses a report term naming both a command and a file, or neither, and a regex one without a pattern", () => {
+    expect(() =>
+      load(
+        withCampaigns([
+          campaign({ detect: { report: { command: "x", file: "y", format: "tsc" } } }),
+        ]),
+        [go()],
+      ),
+    ).toThrow(/exactly one of `command`/);
+    expect(() =>
+      load(withCampaigns([campaign({ detect: { report: { format: "tsc" } } })]), [go()]),
+    ).toThrow(/exactly one of `command`/);
+    expect(() =>
+      load(
+        withCampaigns([campaign({ detect: { report: { file: "out.txt", format: "regex" } } })]),
+        [go()],
+      ),
+    ).toThrow(/`regex` report term with no `pattern`/);
+  });
+
   it("refuses a probe with no source when the detector reads the file", () => {
     expect(() =>
       load(withCampaigns([campaign({ detect: { content: { regex: "x" } } })]), [go()]),

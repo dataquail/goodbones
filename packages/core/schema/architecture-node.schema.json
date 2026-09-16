@@ -1493,6 +1493,88 @@
             {
               "type": "object",
               "properties": {
+                "report": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/Use"
+                    },
+                    {
+                      "$ref": "#/$defs/Include"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "command": {
+                          "type": "string"
+                        },
+                        "file": {
+                          "type": "string"
+                        },
+                        "format": {
+                          "type": "string",
+                          "enum": [
+                            "tsc",
+                            "eslint",
+                            "oxlint",
+                            "regex"
+                          ]
+                        },
+                        "pattern": {
+                          "type": "string"
+                        },
+                        "codes": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/$defs/Include"
+                            },
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          ]
+                        },
+                        "codesNot": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/$defs/Include"
+                            },
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "format"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "report"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Use"
+            },
+            {
+              "$ref": "#/$defs/Include"
+            },
+            {
+              "type": "object",
+              "properties": {
                 "fn": {
                   "type": "string"
                 }

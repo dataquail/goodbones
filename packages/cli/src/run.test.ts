@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { decodeSnapshot, type Snapshot } from "@goodbones/core";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Result from "effect/Result";
@@ -1012,5 +1013,150 @@ describe.sequential("campaigns", () => {
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(output).toContain("2 campaigns under src");
+  });
+});
+
+// A `report` term through the live source: one campaign runs a command that
+// prints tsc-style lines, another reads an oxlint JSON report a build wrote.
+// Each diagnostic is anchored on the declaration at its position.
+const reportRoot = path.resolve(here, "../../../.tmp-cli-report-tests");
+
+const REPORT_MANIFEST = `export default {
+  resolve: { scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.json" } }], unresolved: "off" },
+  campaigns: [
+    {
+      id: "type-errors",
+      why: "The strict tsconfig cannot land while these remain.",
+      how: "Fix the type error; do not add a cast.",
+      scope: ["src/**"],
+      unit: "match",
+      detect: { report: { command: "node report.mjs", format: "tsc", codesNot: ["TS6133"] } },
+      probes: {
+        fires: [{ path: "src/a.ts", report: [{ line: 1, code: "TS2551", message: "m" }] }],
+        ignores: [{ path: "src/b.ts", report: [{ line: 1, code: "TS6133", message: "unused" }] }],
+      },
+      staleAfter: "30d",
+    },
+    {
+      id: "lint-debt",
+      why: "Every finding the linter carries is a finding nobody reads.",
+      how: "Fix the finding, or disable the rule with a reason.",
+      scope: ["src/**"],
+      unit: "match",
+      detect: { report: { file: "oxlint.json", format: "oxlint" } },
+      probes: { fires: [{ path: "src/a.ts", report: [{ line: 1, code: "eslint(no-debugger)" }] }] },
+      staleAfter: "30d",
+    },
+  ],
+  tree: { "src/": { layout: "open", children: {} } },
+};
+`;
+
+beforeAll(() => {
+  mkdirSync(reportRoot, { recursive: true });
+  writeIn(reportRoot, "architecture.config.mjs", REPORT_MANIFEST);
+  writeIn(reportRoot, "tsconfig.json", JSON.stringify({ compilerOptions: { baseUrl: "." } }));
+  writeIn(
+    reportRoot,
+    "src/a.ts",
+    "export function parse(x: string) {\n  return x.nope;\n}\nexport const top = 1;\n",
+  );
+  writeIn(
+    reportRoot,
+    "report.mjs",
+    [
+      "process.stdout.write(\"src/a.ts(2,12): error TS2551: Property 'nope' does not exist on type 'string'.\\n\");",
+      "process.stdout.write(\"src/a.ts(2,12): error TS2551: Property 'nope' does not exist on type 'string'.\\n\");",
+      "process.stdout.write(\"src/a.ts(4,14): error TS6133: 'top' is declared but never used.\\n\");",
+      "process.stdout.write(\"src/a.ts(9,1): error TS1005: ';' expected.\\n\");",
+      "process.exitCode = 2;",
+      "",
+    ].join("\n"),
+  );
+  writeIn(
+    reportRoot,
+    "oxlint.json",
+    JSON.stringify({
+      diagnostics: [
+        {
+          message: "`debugger` statement is not allowed",
+          code: "eslint(no-debugger)",
+          severity: "error",
+          filename: path.join(reportRoot, "src/a.ts"),
+          labels: [{ span: { offset: 0, length: 1, line: 2, column: 3 } }],
+        },
+      ],
+    }),
+  );
+});
+
+afterAll(() => {
+  rmSync(reportRoot, { force: true, recursive: true });
+});
+
+describe.sequential("a report term", () => {
+  it("runs the command once, reads the file, and anchors each diagnostic on its declaration", async () => {
+    const { exit, output } = await captureReport(
+      check(await loadPolicy(reportRoot), ["src"], "json"),
+    );
+    const report = JSON.parse(output) as CheckReport;
+    expect(Exit.isFailure(exit)).toBe(true);
+    const subjects = report.violations
+      .filter((one) => one.kind === "campaign")
+      .map((one) => `${one.ruleName}|${one.subject ?? ""}`);
+    expect(subjects).toEqual([
+      // Two identical diagnostics in `parse` are two entries; TS6133 is
+      // excluded by `codesNot`; the one past the end of the file has no anchor.
+      expect.stringMatching(/^campaign\/type-errors\|#TS1005#[0-9a-f]{8}$/),
+      expect.stringMatching(/^campaign\/type-errors\|parse#TS2551#[0-9a-f]{8}$/),
+      expect.stringMatching(/^campaign\/type-errors\|parse#TS2551#[0-9a-f]{8}~2$/),
+      expect.stringMatching(/^campaign\/lint-debt\|parse#eslint\(no-debugger\)#[0-9a-f]{8}$/),
+    ]);
+    expect(report.campaigns.map((one) => [one.id, one.count])).toEqual([
+      ["type-errors", 3],
+      ["lint-debt", 1],
+    ]);
+  });
+
+  it("explains the term and its answer", async () => {
+    const { output } = await captureReport(explain(await loadPolicy(reportRoot), "src/a.ts"));
+    expect(output).toContain("✓ report tsc `node report.mjs` (3)");
+    expect(output).toContain("✓ report oxlint file oxlint.json (1)");
+  });
+
+  it("is ledgered like any other campaign, and a reworded message is a drifted entry", async () => {
+    const policy = await loadPolicy(reportRoot);
+    await captureReport(campaigns(policy, ["src"], ["init", "type-errors"]));
+    await captureReport(campaigns(policy, ["src"], ["init", "lint-debt"]));
+    const ok = await captureReport(check(await loadPolicy(reportRoot), ["src"], "json"));
+    expect(Exit.isSuccess(ok.exit), ok.output).toBe(true);
+
+    writeIn(
+      reportRoot,
+      "report.mjs",
+      [
+        "process.stdout.write(\"src/a.ts(2,12): error TS2551: Property 'nope' does not exist on type 'string'. Did you mean 'normalize'?\\n\");",
+        "process.stdout.write(\"src/a.ts(9,1): error TS1005: ';' expected.\\n\");",
+        "",
+      ].join("\n"),
+    );
+    const { exit, output } = await captureReport(
+      check(await loadPolicy(reportRoot), ["src"], "json"),
+    );
+    const report = JSON.parse(output) as CheckReport;
+    const typeErrors = report.campaigns.find((one) => one.id === "type-errors");
+    // One TS2551 reworded (drifted, still carried), the other gone (stale).
+    expect(typeErrors?.drifted).toBe(1);
+    expect(typeErrors?.stale).toHaveLength(1);
+    expect(typeErrors?.new).toEqual([]);
+    expect(Exit.isFailure(exit)).toBe(true);
+  });
+
+  it("fails to load when the report file is missing, naming it", async () => {
+    rmSync(path.join(reportRoot, "oxlint.json"));
+    const { exit } = await captureReport(check(await loadPolicy(reportRoot), ["src"], "json"));
+    expect(Exit.isFailure(exit)).toBe(true);
+    const cause = Exit.isFailure(exit) ? String(Cause.squash(exit.cause)) : "";
+    expect(cause).toContain("the report file oxlint.json cannot be read");
   });
 });

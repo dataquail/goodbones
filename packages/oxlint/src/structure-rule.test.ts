@@ -7,6 +7,7 @@ import {
   EMPTY_GRAPH_RULES,
   type LoadedPolicy,
   makeBaselineFilter,
+  NO_REPORTS,
 } from "@goodbones/core";
 import {
   makeFactExtractorFake,
@@ -82,6 +83,7 @@ const policy = (present: ReadonlyArray<string>): LoadedPolicy => {
     functions: new Map(),
     now: 0,
     syntax: { parse: () => null },
+    reports: NO_REPORTS,
     extractor: makeFactExtractorFake({}),
     resolver: makeModuleResolverFake({}),
     ignoreUnresolved: [],

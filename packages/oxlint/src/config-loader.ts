@@ -7,6 +7,7 @@ import {
   type LoadedPolicy,
   loadPolicy,
   makeFileSystemLive,
+  makeReportSourceLive,
   readManifestFile,
 } from "@goodbones/core";
 import { typescriptLanguage } from "@goodbones/typescript";
@@ -54,6 +55,10 @@ export const loadPolicyFromFile = async (
     languages: [typescriptLanguage({ syntax: astGrepMatcher() })],
     fileSystem: makeFileSystemLive(repoRoot),
     functions,
+    // A `report` command runs once per process — once per editor session
+    // for oxlint's language server, which then sees that report until it
+    // restarts. A report the build writes to a file is the predictable form.
+    reports: makeReportSourceLive(repoRoot),
     now: hostNow(),
   });
   if (Result.isFailure(loaded)) throw loaded.failure;

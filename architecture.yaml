@@ -73,9 +73,15 @@ exports:
       - "@ts/extractor.ts"
       - "@ts/resolver.ts"
       - "@ts/index.ts"
+      - "@core/infrastructure/report-source-live.ts"
       - "@ag/matcher.ts"
       - "@ag/index.ts"
-    symbols: [makeFileSystemLive, makeModuleResolverLive, makeFactExtractorLive, astGrepMatcher]
+    symbols:
+      - makeFileSystemLive
+      - makeModuleResolverLive
+      - makeFactExtractorLive
+      - makeReportSourceLive
+      - astGrepMatcher
     # The two hosts' composition roots; the barrels that re-export them; and
     # the pack, which is what assembles its own extractor and resolver.
     except:
@@ -158,6 +164,7 @@ graph:
         - "@core/infrastructure/walk.ts"
         - "@core/infrastructure/manifest-file.ts"
         - "@core/infrastructure/campaign-functions.ts"
+        - "@core/infrastructure/report-source-live.ts"
         - "@ts/**"
         - "@ag/**"
         - "@cli/**"

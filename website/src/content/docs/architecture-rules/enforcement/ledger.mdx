@@ -77,7 +77,8 @@ campaign react-class-components: 3 ledger entries no longer fire. The code was f
 
 Pruning bumps `fixed` by as many and stamps `lastProgress` — so progress lands as a visible
 diff, and the stall clock reads it. A `match` entry whose hash moved under a still-present
-declaration is rewritten in place and counts as neither fixed nor new.
+declaration — a `syntax` match edited, a `report` diagnostic reworded — is rewritten in place
+and counts as neither fixed nor new.
 
 **`allow`** is the only command that adds entries, and it always appends a regression
 record: the entries, a reason, a timestamp, and an author — `--by`, else git's

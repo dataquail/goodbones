@@ -370,6 +370,26 @@ const SyntaxTerm = Schema.Struct({
 });
 export type SyntaxTerm = (typeof SyntaxTerm)["Type"];
 
+// A pattern no parser of ours sees, reported by another program: a type
+// error, another linter's finding. Exactly one of `command` (run from the
+// repository root, once per process) and `file` (written by an earlier
+// step). Each diagnostic on a file is a match anchored on the declaration
+// at its position, keyed by its code and a hash of its message.
+export const ReportFormat = Schema.Literals(["tsc", "eslint", "oxlint", "regex"]);
+
+const ReportTerm = Schema.Struct({
+  command: Schema.optionalKey(Schema.String),
+  file: Schema.optionalKey(Schema.String),
+  format: ReportFormat,
+  // `regex` only: named groups `file`, `line`, and optionally `column`,
+  // `code`, `message`.
+  pattern: Schema.optionalKey(Schema.String),
+  // The codes the term speaks to; omit for every one.
+  codes: Schema.optionalKey(Schema.Array(Schema.String)),
+  codesNot: Schema.optionalKey(Schema.Array(Schema.String)),
+});
+export type ReportTerm = (typeof ReportTerm)["Type"];
+
 export type Detector =
   | { readonly all: ReadonlyArray<Detector> }
   | { readonly any: ReadonlyArray<Detector> }
@@ -381,6 +401,7 @@ export type Detector =
   | { readonly requires: ReadonlyArray<string> }
   | { readonly content: ContentTerm }
   | { readonly syntax: SyntaxTerm }
+  | { readonly report: ReportTerm }
   // `module#export`, resolved by the host before the policy loads.
   | { readonly fn: string };
 
@@ -397,17 +418,29 @@ export const Detector = Schema.Union([
   Schema.Struct({ requires: Schema.Array(Schema.String) }),
   Schema.Struct({ content: ContentTerm }),
   Schema.Struct({ syntax: SyntaxTerm }),
+  Schema.Struct({ report: ReportTerm }),
   Schema.Struct({ fn: Schema.String }),
 ]);
 
+// One diagnostic a probe stands in for, positions one-based as a tool
+// prints them.
+export const ProbeDiagnostic = Schema.Struct({
+  line: Schema.Finite,
+  column: Schema.optionalKey(Schema.Finite),
+  code: Schema.optionalKey(Schema.String),
+  message: Schema.optionalKey(Schema.String),
+});
+
 // A source the campaign is proven against: the path it would have, its text
 // when a term needs one, the target of each of its edges (in place of the live
-// resolver) and the files beside it (in place of the file system).
+// resolver), the files beside it (in place of the file system) and the
+// diagnostics reported on it (in place of the report source).
 export const CampaignProbe = Schema.Struct({
   path: Schema.String,
   source: Schema.optionalKey(Schema.String),
   edges: Schema.optionalKey(Schema.Record(Schema.String, ImportProbeTarget)),
   files: Schema.optionalKey(Schema.Array(Schema.String)),
+  report: Schema.optionalKey(Schema.Array(ProbeDiagnostic)),
 });
 
 export const CampaignRule = Schema.Struct({
@@ -527,6 +560,8 @@ export type StructureParity = (typeof StructureParity)["Type"];
 export type StructureNaming = (typeof StructureNaming)["Type"];
 export type CampaignUnit = (typeof CampaignUnit)["Type"];
 export type CampaignProbe = (typeof CampaignProbe)["Type"];
+export type ProbeDiagnostic = (typeof ProbeDiagnostic)["Type"];
+export type ReportFormat = (typeof ReportFormat)["Type"];
 export type CampaignRule = (typeof CampaignRule)["Type"];
 export type CaptureNarrowing = (typeof CaptureNarrowing)["Type"];
 

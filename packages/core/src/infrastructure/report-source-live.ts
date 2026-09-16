@@ -43,6 +43,45 @@ const textOf = (repoRoot: string, spec: ReportSpec): string => {
     stdio: ["ignore", "pipe", "pipe"],
   });
   if (run.error !== undefined) {
+    // DIAGNOSTIC (not for merge): what this process looked like when the
+    // kernel refused the fork.
+    if (process.platform === "linux") {
+      try {
+        const pick = (text: string, keys: RegExp) =>
+          text
+            .split("\n")
+            .filter((line) => keys.test(line))
+            .map((line) => line.replace(/\s+/g, " "))
+            .join("; ");
+        const status = pick(
+          readFileSync("/proc/self/status", "utf8"),
+          /^(VmPeak|VmSize|VmRSS|VmData|VmStk|VmSwap|Threads)/,
+        );
+        const meminfo = pick(
+          readFileSync("/proc/meminfo", "utf8"),
+          /^(MemTotal|MemAvailable|SwapTotal|SwapFree|CommitLimit|Committed_AS)/,
+        );
+        const overcommit = readFileSync("/proc/sys/vm/overcommit_memory", "utf8").trim();
+        const maps = readFileSync("/proc/self/maps", "utf8")
+          .split("\n")
+          .map((line) => /^([0-9a-f]+)-([0-9a-f]+) (\S+) \S+ \S+ \S+\s*(.*)$/.exec(line))
+          .filter((found): found is RegExpExecArray => found !== null)
+          .map((found) => ({
+            size: parseInt(found[2] ?? "0", 16) - parseInt(found[1] ?? "0", 16),
+            perms: found[3] ?? "",
+            name: found[4] ?? "",
+          }))
+          .sort((left, right) => right.size - left.size)
+          .slice(0, 12)
+          .map((one) => `${(one.size / 1048576).toFixed(0)}MB ${one.perms} ${one.name}`)
+          .join(" | ");
+        process.stderr.write(
+          `[goodbones-diag] ${status}\n[goodbones-diag] overcommit=${overcommit}; ${meminfo}\n[goodbones-diag] ${maps}\n`,
+        );
+      } catch {
+        // best effort
+      }
+    }
     throw new ReportUnavailable({ kind: "command", source: command, detail: run.error.message });
   }
   return run.stdout;

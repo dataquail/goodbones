@@ -75,7 +75,10 @@ describe("a report term", () => {
     expect(init.code, init.stderr).toBe(0);
     const after = check(repo, ["src"]);
     expect(after.code, after.stderr).toBe(0);
-    expect(oxlint(repo, ["src"]).diagnostics).toEqual([]);
+    const again = oxlint(repo, ["src"]);
+    expect(again.diagnostics, JSON.stringify(again.diagnostics, null, 2) + again.stderr).toEqual(
+      [],
+    );
   });
 
   it("fails to load when the command cannot run", () => {

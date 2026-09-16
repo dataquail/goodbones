@@ -127,6 +127,8 @@ jobs:
       - name: Build every package
         run: pnpm run build:packages
 
-      - name: Run the report-term scenario
+      - name: Run the report-term scenario, five times
         working-directory: e2e
-        run: pnpm exec vitest run src/scenarios/report-term.test.ts
+        run: |
+          nproc; free -m; cat /proc/sys/vm/overcommit_memory /proc/sys/vm/overcommit_ratio
+          for i in 1 2 3 4 5; do pnpm exec vitest run src/scenarios/report-term.test.ts || true; done

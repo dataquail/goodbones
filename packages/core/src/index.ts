@@ -161,6 +161,7 @@ export {
   ConfigInvalid,
   ImportUnresolved,
   PatternInvalid,
+  ReportUnavailable,
   ScopeInvalid,
 } from "./domain/architecture-error.js";
 export {

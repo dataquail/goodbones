@@ -235,10 +235,20 @@ matcher, is keyed by code and message alone.
 
 The command runs once per process and the output is cached: the CLI is one process per
 `check`, and oxlint's language server is one process per editor session, which sees the
-report as of when it loaded the plugin. A report the build writes to a file — `file:
-tsc-report.txt` — is the predictable form for the editor, and the one to use when the
-command is slow. A probe answers the term with `report: [{ line, column?, code?, message? }]`,
-positions one-based as a tool prints them, so no program runs at load.
+report as of when it loaded the plugin. The process it runs inside is whichever one asked —
+under the plugin, that is oxlint itself, holding the linter's state for the whole tree at
+the moment the first campaign asks — so on a small CI runner the spawn can be refused for
+memory the linter is using, where the same command from a shell would run. A report an
+earlier step writes to a file — `file: tsc-report.txt` — is the form for CI as well as for
+the editor, and the one to use when the command is slow; `command:` is the CLI's form,
+where `check` is the only thing in the process.
+
+A command that cannot be spawned, or a file no step wrote, is one failure per run, not one
+per file: the source keeps the failure as it would have kept the report, `check` stops with
+it, and the plugin reports it once, on the first file a campaign naming that report selects,
+while every other campaign on that file is still judged. A probe answers the term with
+`report: [{ line, column?, code?, message? }]`, positions one-based as a tool prints them,
+so no program runs at load.
 
 ## The function term
 

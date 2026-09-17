@@ -126,6 +126,13 @@ limits:
   # `vitest.config.ts` are the remainder), graph 64/109 (every non-test file
   # under a `src/`). A campaign joins no coverage row: its reach is its scope.
   coverage: { imports: 1, members: 0.6, surface: 0.95, graph: 0.57 }
+  # Ceilings on what `architecture conformance` measures, at the numbers on
+  # 2026-09-17: no file is outside every family, no allowlist selects
+  # nothing, and five allowances are unused — `architecture conformance`
+  # names them. Lower a ceiling when the number falls; never raise one to
+  # make a red run green. The fix is deleting the allowance, reaching the
+  # file, or moving it under a node.
+  conformance: { residue: 0, vacant: 0, slack: 5, concentration: 0 }
 
 # The shape of the whole graph — evaluated by `architecture check`, which
 # is the one adapter that sees every file at once.

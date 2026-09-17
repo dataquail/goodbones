@@ -185,6 +185,8 @@ export {
   type ReportFormat,
 } from "./domain/report.js";
 export {
+  CONFORMANCE_MEASURES,
+  type ConformanceMeasure,
   decodeSnapshot,
   type Snapshot,
   SNAPSHOT_SCHEMA_ID,

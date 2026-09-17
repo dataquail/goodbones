@@ -21,26 +21,26 @@ aliases: { "@": packages/server/src, "~": packages }
 deny: [] # prohibitions that hold everywhere
 exports: [] # who may name a given exported symbol
 graph: {} # cycles, orphans, reach — the whole repository at once
-limits: {} # ceilings on the adoption backlog, floors on coverage
+limits: {} # ceilings on the adoption backlog, floors on coverage, ceilings on conformance
 defs: {} # fragments the tree below reuses
 tree: {} # the repository
 ```
 
 ## Top level
 
-| Field       | Meaning                                                                                                                                  |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `resolve`   | how an import specifier becomes a file — [Resolution](/goodbones/architecture-rules/enforcement/resolution/)                             |
-| `baseline`  | path to the ratchet file — [Baseline](/goodbones/architecture-rules/enforcement/baseline/)                                               |
-| `aliases`   | shorthands expanded in every glob, so a pattern reads the way your imports do                                                            |
-| `deny`      | prohibitions that hold everywhere, declared once                                                                                         |
-| `exports`   | which importers may name a given exported symbol                                                                                         |
-| `graph`     | cycles, orphans and transitive reach over the whole import graph — [Graph](/goodbones/architecture-rules/manifest/graph/)                |
-| `limits`    | ceilings on `unrestricted`/`partial` tiers, floors on coverage — [Adoption](/goodbones/architecture-rules/enforcement/adoption/)         |
-| `campaigns` | migrations the repository is running, each with a detector and a ledger — [Campaigns](/goodbones/architecture-rules/manifest/campaigns/) |
-| `ledger`    | the directory the campaigns' ledgers are written to — [Ledger](/goodbones/architecture-rules/enforcement/ledger/)                        |
-| `defs`      | named fragments, used anywhere below as `{ use: <name> }` — [Reuse](#reuse-defs-and-use)                                                 |
-| `tree`      | the manifest proper                                                                                                                      |
+| Field       | Meaning                                                                                                                                                                 |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `resolve`   | how an import specifier becomes a file — [Resolution](/goodbones/architecture-rules/enforcement/resolution/)                                                            |
+| `baseline`  | path to the ratchet file — [Baseline](/goodbones/architecture-rules/enforcement/baseline/)                                                                              |
+| `aliases`   | shorthands expanded in every glob, so a pattern reads the way your imports do                                                                                           |
+| `deny`      | prohibitions that hold everywhere, declared once                                                                                                                        |
+| `exports`   | which importers may name a given exported symbol                                                                                                                        |
+| `graph`     | cycles, orphans and transitive reach over the whole import graph — [Graph](/goodbones/architecture-rules/manifest/graph/)                                               |
+| `limits`    | ceilings on `unrestricted`/`partial` tiers, floors on coverage, ceilings on what conformance measures — [Adoption](/goodbones/architecture-rules/enforcement/adoption/) |
+| `campaigns` | migrations the repository is running, each with a detector and a ledger — [Campaigns](/goodbones/architecture-rules/manifest/campaigns/)                                |
+| `ledger`    | the directory the campaigns' ledgers are written to — [Ledger](/goodbones/architecture-rules/enforcement/ledger/)                                                       |
+| `defs`      | named fragments, used anywhere below as `{ use: <name> }` — [Reuse](#reuse-defs-and-use)                                                                                |
+| `tree`      | the manifest proper                                                                                                                                                     |
 
 Any of these, or any node or list inside them, may be `{ include: <path> }` — another file
 that holds it — so a monorepo's policy can live beside its packages:

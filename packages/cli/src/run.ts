@@ -10,6 +10,8 @@ import {
   type CampaignHit,
   campaignsSelecting,
   type CompiledCampaign,
+  CONFORMANCE_MEASURES,
+  type ConformanceMeasure,
   type CoverageFamily,
   coverageOf,
   cyclesIn,
@@ -307,6 +309,13 @@ export type CoverageReport = Readonly<
   >
 >;
 
+// The conformance measures as counts, each beside the ceiling the manifest's
+// `limits.conformance` states for it. `conformance` names what each counts;
+// `check` holds the counts to the ceilings.
+export type ConformanceReport = Readonly<
+  Record<ConformanceMeasure, { readonly count: number; readonly ceiling?: number }>
+>;
+
 export type CheckReport = {
   readonly version: 1;
   readonly files: number;
@@ -321,6 +330,7 @@ export type CheckReport = {
   // Baseline entries the code no longer produces.
   readonly stale: ReadonlyArray<string>;
   readonly coverage: CoverageReport;
+  readonly conformance: ConformanceReport;
   readonly adoption: {
     readonly unrestricted: ReadonlyArray<string>;
     readonly partial: ReadonlyArray<string>;
@@ -416,14 +426,57 @@ export const checkReport = (
   policy: LoadedPolicy,
   roots: ReadonlyArray<string>,
   manifestPath: string,
-): CheckReport => reportOf(policy, roots, manifestPath, collectFindings(policy, roots));
+): CheckReport => reportOf(policy, roots, manifestPath, collectFindings(policy, roots)).report;
+
+// The four conformance measures, as `conformance` names them: what no
+// family reaches, what no file is under, what nothing imports through, and
+// the fragment entries concentrated at fewer than half the nodes granted.
+type Measures = {
+  readonly residue: ReturnType<typeof residueOf>;
+  readonly vacant: ReturnType<typeof vacancyOf>;
+  readonly slack: ReturnType<typeof slackOf>["slack"];
+  readonly concentration: ReturnType<typeof slackOf>["concentration"];
+};
+
+const measuresOf = (
+  policy: LoadedPolicy,
+  files: ReadonlyArray<string>,
+  edges: ReadonlyArray<ObservedEdge>,
+): Measures => {
+  // Slack is measured over the walked files as well as the edges: an
+  // allowlist that selects no file is vacant, and its entries are reported as
+  // that rather than as lines nobody needs.
+  const { concentration, slack } = slackOf(policy.importRules, edges, files);
+  return {
+    residue: residueOf(policy, files),
+    vacant: vacancyOf(policy.importRules, files),
+    slack,
+    concentration,
+  };
+};
+
+// A fragment entry is concentrated when it is used at fewer than half the
+// nodes granted it — the text report's threshold, and the ceiling's.
+const isConcentrated = (one: { readonly usedAt: number; readonly of: number }): boolean =>
+  one.usedAt * 2 < one.of;
+
+const countsOf = (measures: Measures): Readonly<Record<ConformanceMeasure, number>> => ({
+  residue: measures.residue.files.length,
+  vacant: measures.vacant.length,
+  slack: measures.slack.length,
+  concentration: measures.concentration.filter(isConcentrated).length,
+});
 
 const reportOf = (
   policy: LoadedPolicy,
   roots: ReadonlyArray<string>,
   manifestPath: string,
   findings: Findings,
-): CheckReport => {
+): {
+  readonly report: CheckReport;
+  readonly measures: Measures;
+  readonly files: ReadonlyArray<string>;
+} => {
   const baseline = readBaseline(policy);
   const stale = staleEntriesOf(baseline, findings.violations);
   const { isBaselined } = makeBaselineFilter(baseline);
@@ -447,7 +500,8 @@ const reportOf = (
   // The floors. A policy states how much of the tree it reaches, per
   // family; falling under is a policy that quietly stopped covering files.
   const floors = policy.config.limits?.coverage ?? {};
-  const found = coverageOf(policy, listSourceFiles(policy.repoRoot, roots, policy.languages));
+  const files = listSourceFiles(policy.repoRoot, roots, policy.languages);
+  const found = coverageOf(policy, files);
   const covered = (family: CoverageFamily): number =>
     family === "structure" ? found.structure.enumerated : found[family].covered;
   const coverage = Object.fromEntries(
@@ -465,8 +519,22 @@ const reportOf = (
   ) as CoverageReport;
   const shortfalls = shortfallsOf(coverage);
 
+  // The ceilings. What no family reaches, what no file is under and what
+  // nothing imports through are each a count the policy may hold itself
+  // to; rising over one is a manifest that quietly widened.
+  const ceilings = policy.config.limits?.conformance ?? {};
+  const measures = measuresOf(policy, files, findings.edges);
+  const counts = countsOf(measures);
+  const conformance = Object.fromEntries(
+    CONFORMANCE_MEASURES.map((measure) => {
+      const ceiling = ceilings[measure];
+      return [measure, { count: counts[measure], ...(ceiling === undefined ? {} : { ceiling }) }];
+    }),
+  ) as ConformanceReport;
+  const excesses = excessesOf(conformance);
+
   const reportable = violations.filter((one) => !one.baselined && !one.ledgered).length;
-  return {
+  const report: CheckReport = {
     version: 1,
     files: findings.files,
     roots,
@@ -475,6 +543,7 @@ const reportOf = (
       findings.unresolved.length === 0 &&
       stale.length === 0 &&
       shortfalls.length === 0 &&
+      excesses.length === 0 &&
       campaignFailuresOf(campaigns).length === 0,
     manifest: {
       path: path.relative(policy.repoRoot, manifestPath).replaceAll(path.sep, "/"),
@@ -484,12 +553,14 @@ const reportOf = (
     unresolved: findings.unresolved,
     stale,
     coverage,
+    conformance,
     adoption: {
       unrestricted: policy.adoption.unrestricted,
       partial: policy.adoption.partial,
     },
     campaigns,
   };
+  return { report, measures, files };
 };
 
 // Why a report is not `ok`, in the order the text renderer explains it: a
@@ -508,6 +579,19 @@ const shortfallsOf = (coverage: CoverageReport): ReadonlyArray<Shortfall> =>
     return floor === undefined || actual >= floor ? [] : [{ family, actual, floor }];
   });
 
+// A conformance measure over the ceiling the policy states for it.
+type Excess = {
+  readonly measure: ConformanceMeasure;
+  readonly count: number;
+  readonly ceiling: number;
+};
+
+const excessesOf = (conformance: ConformanceReport): ReadonlyArray<Excess> =>
+  CONFORMANCE_MEASURES.flatMap((measure) => {
+    const { ceiling, count } = conformance[measure];
+    return ceiling === undefined || count <= ceiling ? [] : [{ measure, count, ceiling }];
+  });
+
 const failureOf = (
   report: CheckReport,
   shortfalls: ReadonlyArray<Shortfall>,
@@ -516,8 +600,25 @@ const failureOf = (
   const [campaignFailure] = campaignFailuresOf(report.campaigns);
   if (campaignFailure !== undefined) return fail(campaignFailure);
   if (shortfalls.length > 0) return fail("coverage below floor");
+  if (excessesOf(report.conformance).length > 0) return fail("conformance above ceiling");
   if (report.ok) return null;
   return fail("architecture violations");
+};
+
+// What each measure counts, as the failure names it.
+const MEASURE_NOUNS: Readonly<Record<ConformanceMeasure, readonly [string, string]>> = {
+  residue: ["file no family reaches", "files no family reaches"],
+  vacant: ["node no file is under", "nodes no file is under"],
+  slack: ["allowance nothing imports through", "allowances nothing imports through"],
+  concentration: [
+    "allowance used at fewer than half the nodes granted",
+    "allowances used at fewer than half the nodes granted",
+  ],
+};
+
+const describeExcess = (one: Excess): string => {
+  const [singular, plural] = MEASURE_NOUNS[one.measure];
+  return `  ${one.measure}: ${count(one.count, singular, plural)}, ceiling ${String(one.ceiling)}`;
 };
 
 // A campaign hit, with the campaign's `how` as its instruction.
@@ -588,6 +689,7 @@ const renderText = (report: CheckReport): ReadonlyArray<string> => {
   const carried =
     report.violations.filter((one) => one.kind !== "campaign").length - reportable.length;
   const shortfalls = shortfallsOf(report.coverage);
+  const excesses = excessesOf(report.conformance);
   return [
     ...reportable.map(describe),
     ...report.unresolved.map(
@@ -617,6 +719,15 @@ const renderText = (report: CheckReport): ReadonlyArray<string> => {
           ),
           "",
           "  architecture coverage    # which files no rule reaches",
+        ]),
+    ...(excesses.length === 0
+      ? []
+      : [
+          "",
+          "conformance is above the ceiling the policy states for itself:",
+          ...excesses.map(describeExcess),
+          "",
+          "  architecture conformance    # which files, nodes and allowances",
         ]),
     ...renderCampaigns(report),
   ];
@@ -659,8 +770,7 @@ export const snapshotOf = (
   manifestPath: string,
 ): Snapshot => {
   const findings = collectFindings(policy, roots, { graph: true });
-  const report_ = reportOf(policy, roots, manifestPath, findings);
-  const files = listSourceFiles(policy.repoRoot, roots, policy.languages);
+  const { files, measures, report: report_ } = reportOf(policy, roots, manifestPath, findings);
   const graph = findings.graph ?? { files, edges: new Map() };
   const heights = heightOf(graph);
 
@@ -675,11 +785,6 @@ export const snapshotOf = (
     const byHeight = heightOfViolation(left) - heightOfViolation(right);
     return byHeight !== 0 ? byHeight : left.fingerprint.localeCompare(right.fingerprint);
   });
-
-  // Slack is measured over the walked files as well as the edges: an
-  // allowlist that selects no file is vacant, and its entries are reported as
-  // that rather than as lines nobody needs.
-  const { concentration, slack } = slackOf(policy.importRules, findings.edges, files);
 
   const campaigns: ReadonlyArray<SnapshotCampaign> = policy.campaignRules.map((rule) => {
     const ledger = policy.ledgers.get(rule.id);
@@ -723,15 +828,16 @@ export const snapshotOf = (
     files: report_.files,
     ok: report_.ok,
     coverage: report_.coverage,
-    residue: residueOf(policy, files),
-    vacant: vacancyOf(policy.importRules, files),
+    conformance: report_.conformance,
+    residue: measures.residue,
+    vacant: measures.vacant,
     violations,
     unresolved: report_.unresolved,
     stale: report_.stale,
     baseline: { size: readBaseline(policy).entries.length },
     cycles: cyclesIn(graph).length,
-    slack,
-    concentration,
+    slack: measures.slack,
+    concentration: measures.concentration,
     adoption: report_.adoption,
     campaigns,
   };
@@ -779,7 +885,15 @@ const renderSnapshot = (snapshot: Snapshot): ReadonlyArray<string> => {
   const vacantWidth = Math.max(0, ...snapshot.vacant.map((one) => one.node.length));
   // The document carries every partly-used fragment entry; the text shows
   // the ones concentrated enough to read as a per-file rule written wide.
-  const concentrated = snapshot.concentration.filter((one) => one.usedAt * 2 < one.of);
+  const concentrated = snapshot.concentration.filter(isConcentrated);
+  // The ceiling beside each measure that has one, and the ratchet's nudge
+  // when the count has fallen under it: a ceiling is lowered by hand.
+  const ceilingMark = (measure: ConformanceMeasure): string => {
+    const { ceiling, count: actual } = snapshot.conformance[measure];
+    if (ceiling === undefined) return "";
+    if (actual > ceiling) return `  > ${String(ceiling)} ✗`;
+    return `  ≤ ${String(ceiling)} ✓${actual < ceiling ? `, lower it to ${String(actual)}` : ""}`;
+  };
 
   return [
     `${String(snapshot.files)} files under ${snapshot.roots.join(", ")}, against ${snapshot.manifest.path}`,
@@ -788,7 +902,8 @@ const renderSnapshot = (snapshot: Snapshot): ReadonlyArray<string> => {
       `residue: ${count(snapshot.residue.files.length, "file")} no family reaches` +
         (snapshot.residue.folders.length === 0
           ? ""
-          : `, ${count(snapshot.residue.folders.length, "folder")} wholly`),
+          : `, ${count(snapshot.residue.folders.length, "folder")} wholly`) +
+        ceilingMark("residue"),
       [
         ...snapshot.residue.folders.map((folder) => `  ${folder}/`),
         ...snapshot.residue.files
@@ -799,7 +914,8 @@ const renderSnapshot = (snapshot: Snapshot): ReadonlyArray<string> => {
       ],
     ),
     ...section(
-      `vacant: ${count(snapshot.vacant.length, "node")} ${snapshot.vacant.length === 1 ? "selects" : "select"} no file`,
+      `vacant: ${count(snapshot.vacant.length, "node")} ${snapshot.vacant.length === 1 ? "selects" : "select"} no file` +
+        ceilingMark("vacant"),
       snapshot.vacant.map(
         (one) => `  ${one.node.padEnd(vacantWidth)}  ${count(one.allowances, "allowance")}`,
       ),
@@ -820,17 +936,19 @@ const renderSnapshot = (snapshot: Snapshot): ReadonlyArray<string> => {
           snapshot.unresolved.map((one) => `  ${one.file} → ${one.specifier} (${one.detail})`),
         )),
     ...section(
-      `slack: ${count(snapshot.slack.length, "allowance")} nothing imports through`,
+      `slack: ${count(snapshot.slack.length, "allowance")} nothing imports through` +
+        ceilingMark("slack"),
       snapshot.slack.map(
         (one) =>
           `  ${one.node}: ${one.kind} ${JSON.stringify(one.entry)}` +
           (one.of === undefined ? "" : `  (via use, at ${count(one.of, "node")})`),
       ),
     ),
-    ...(concentrated.length === 0
+    ...(concentrated.length === 0 && snapshot.conformance.concentration.ceiling === undefined
       ? []
       : section(
-          `concentrated: ${count(concentrated.length, "allowance")} used at fewer than half the nodes granted`,
+          `concentrated: ${count(concentrated.length, "allowance")} used at fewer than half the nodes granted` +
+            ceilingMark("concentration"),
           concentrated.map(
             (one) =>
               `  ${one.fragment}: ${one.kind} ${JSON.stringify(one.entry)}  used at ${String(one.usedAt)} of ${count(one.of, "node")}`,
@@ -1151,7 +1269,9 @@ resolve:
 baseline: .architecture-baseline.json
 
 # Ceilings on how many tiers may say "not tightened yet". At zero, raising one
-# is a line in this file a reviewer sees.
+# is a line in this file a reviewer sees. The same block takes coverage floors
+# and ceilings on what \`architecture conformance\` measures, once there are
+# numbers to write.
 # https://dataquail.github.io/goodbones/architecture-rules/enforcement/adoption/
 limits:
   unrestricted: 0

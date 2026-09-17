@@ -1,6 +1,6 @@
 ---
 title: Adoption
-description: Ratchets on the policy itself — a ceiling on the tiers not yet tightened, and a floor on how much of the tree the rules reach.
+description: Ratchets on the policy itself — a ceiling on the tiers not yet tightened, a floor on how much of the tree the rules reach, and a ceiling on what conformance measures.
 ---
 
 A [probe](/goodbones/architecture-rules/enforcement/probes/) proves a rule **can** fire. The
@@ -32,6 +32,11 @@ limits:
     members: 0.2
     surface: 0.5
     graph: 1
+  conformance: # ceilings, as counts of what `conformance` measures
+    residue: 0
+    vacant: 2
+    slack: 14
+    concentration: 0
 ```
 
 **The ceilings are checked at load, by both adapters.** A policy with more `unrestricted` or
@@ -54,6 +59,26 @@ Each is a minimum fraction of walked source files a family reaches:
 A family under its floor fails `check`, naming the fraction and the floor. Like the ceilings,
 the floors are written in the manifest and only rise by hand; there is no state file to fall
 out of date.
+
+**The conformance ceilings are checked by `architecture check` too.** Coverage says how much
+of the tree the policy reaches; [conformance](/goodbones/architecture-rules/enforcement/conformance/)
+measures what is left over, in both directions, and none of it fails a build on its own. Each
+ceiling is a count the measure may not rise above:
+
+| Measure         | What it counts                                                                                                   |
+| --------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `residue`       | files no family reaches                                                                                          |
+| `vacant`        | nodes that state an import allowlist and select no walked file                                                   |
+| `slack`         | allowances no import in the tree uses                                                                            |
+| `concentration` | fragment entries used at fewer than half the nodes granted them — the ones the text report lists as concentrated |
+
+A measure over its ceiling fails `check`, naming the count and the ceiling, and
+`architecture conformance` names what was counted. The ratchet runs the other way from the
+floors: set each ceiling to what `conformance` reports on the day it is written, lower it
+when the number falls — the report says when it can come down — and never raise one to make
+a red run green. The fix is deleting the allowance, reaching the file, or moving it under a
+node. Cycles have no ceiling here: a [`cycles` rule](/goodbones/architecture-rules/manifest/graph/)
+with a baseline entry per cycle is the same ratchet with the cycle named.
 
 ## `coverage`
 

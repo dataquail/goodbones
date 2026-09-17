@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { cli } from "../cli.js";
+import { check, cli } from "../cli.js";
 import { exports, imports } from "../profile.js";
 import { createRepo, renderManifest, type Repo } from "../repo.js";
 
@@ -17,6 +17,12 @@ type ConformanceJson = {
   readonly ok: boolean;
   readonly files: number;
   readonly manifest: { readonly path: string; readonly sha256: string };
+  readonly conformance: Readonly<
+    Record<
+      "residue" | "vacant" | "slack" | "concentration",
+      { readonly count: number; readonly ceiling?: number }
+    >
+  >;
   readonly residue: {
     readonly files: ReadonlyArray<string>;
     readonly folders: ReadonlyArray<string>;
@@ -143,6 +149,38 @@ describe.sequential("conformance", () => {
     expect(conformance(repo, ["src"]).json.slack).toEqual([
       { node: "src", kind: "external", entry: "lodash" },
     ]);
+    repo.writeManifest(policy(repo, ["src/**", "node:**"]));
+  });
+
+  it("holds a measure to the ceiling `limits.conformance` states, in check and not in conformance", () => {
+    // The planted allowance again, under a ceiling of none.
+    const capped = {
+      ...policy(repo, ["src/**", "node:**", "vendor/**"]),
+      limits: { conformance: { slack: 0, residue: 0 } },
+    };
+    repo.writeManifest(capped);
+
+    const measured = conformance(repo, ["src"]);
+    expect(measured.code, measured.stderr).toBe(0);
+    expect(measured.json.ok).toBe(false);
+    expect(measured.json.conformance.slack).toEqual({ count: 1, ceiling: 0 });
+    expect(measured.json.conformance.residue).toEqual({ count: 0, ceiling: 0 });
+    expect(measured.json.conformance.vacant).toEqual({ count: 0 });
+
+    const gated = check(repo, ["src"]);
+    expect(gated.code).toBe(1);
+    expect(gated.stderr).toContain("conformance above ceiling");
+    expect(gated.json.ok).toBe(false);
+    expect(gated.json.conformance.slack).toEqual({ count: 1, ceiling: 0 });
+
+    // At the ceiling is within it. The cycle still fails the run, on its own
+    // account.
+    repo.writeManifest({ ...capped, limits: { conformance: { slack: 1, residue: 0 } } });
+    const held = check(repo, ["src"]);
+    expect(held.stderr).not.toContain("conformance above ceiling");
+    expect(held.stderr).toContain("architecture violations");
+    expect(held.json.conformance.slack).toEqual({ count: 1, ceiling: 1 });
+
     repo.writeManifest(policy(repo, ["src/**", "node:**"]));
   });
 

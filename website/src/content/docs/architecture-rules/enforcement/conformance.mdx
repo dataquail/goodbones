@@ -6,7 +6,10 @@ description: architecture conformance measures the distance between the tree and
 `check` answers one question: does the tree pass the policy? `conformance` answers a
 different one: how far is the tree from the policy, and in which direction? It is a
 measurement rather than a gate, so it never fails, and it can measure against a manifest
-the tree was never expected to satisfy yet.
+the tree was never expected to satisfy yet. When the manifest states a ceiling on a
+measure in [`limits.conformance`](/goodbones/architecture-rules/enforcement/adoption/),
+it is `check` that holds the count to it; this report shows the ceiling beside the
+measure, and says when the count has fallen enough for the ceiling to come down.
 
 ```bash
 architecture conformance [roots…]                     # the report, as text
@@ -129,6 +132,12 @@ carries a description in the schema.
     "surface": { "covered": 90, "total": 94, "floor": 0.95 },
     "graph": { "covered": 55, "total": 94, "floor": 0.57 }
   },
+  "conformance": {
+    "residue": { "count": 0, "ceiling": 0 },
+    "vacant": { "count": 0, "ceiling": 0 },
+    "slack": { "count": 2, "ceiling": 5 },
+    "concentration": { "count": 0, "ceiling": 0 }
+  },
   "residue": { "files": [], "folders": [] },
   "vacant": [],
   "violations": [],
@@ -164,9 +173,11 @@ carries a description in the schema.
 ```
 
 It grows the [`check --json`](/goodbones/architecture-rules/enforcement/cli/#check---json)
-shape: `version`, `manifest`, `roots`, `files`, `ok`, `coverage`, `violations`,
-`unresolved`, `stale` and `adoption` mean what they mean there, and `ok` is what `check`
-would have exited with. The rest is the measurement:
+shape: `version`, `manifest`, `roots`, `files`, `ok`, `coverage`, `conformance`,
+`violations`, `unresolved`, `stale` and `adoption` mean what they mean there, and `ok` is
+what `check` would have exited with. `conformance` is the four measures as counts, each
+beside the ceiling `limits.conformance` states for it, when it states one. The rest is the
+measurement those counts summarise:
 
 - `residue` — the files no family reaches, sorted, and the topmost folders wholly made of
   them.

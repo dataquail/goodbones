@@ -50,6 +50,22 @@ const FamilyCoverage = Schema.Struct({
   ),
 });
 
+export const CONFORMANCE_MEASURES = ["residue", "vacant", "slack", "concentration"] as const;
+
+export type ConformanceMeasure = (typeof CONFORMANCE_MEASURES)[number];
+
+// One conformance measure as `check` holds it: the count, and the ceiling
+// the manifest's `limits.conformance` states for it, when it states one.
+const MeasureCount = Schema.Struct({
+  count: describe(Schema.Finite, "What the measure counts today."),
+  ceiling: Schema.optionalKey(
+    describe(
+      Schema.Finite,
+      "The count the manifest's `limits.conformance` states for this measure, when it states one.",
+    ),
+  ),
+});
+
 export const SnapshotViolation = Schema.Struct({
   fingerprint: describe(
     Schema.String,
@@ -185,6 +201,15 @@ export const Snapshot = Schema.Struct({
       >,
     ),
     "Per family, how many walked files it reaches. Structure counts enumerated folders only.",
+  ),
+  conformance: describe(
+    Schema.Struct(
+      Object.fromEntries(CONFORMANCE_MEASURES.map((measure) => [measure, MeasureCount])) as Record<
+        ConformanceMeasure,
+        typeof MeasureCount
+      >,
+    ),
+    "Per measure, the count `check` holds to the manifest's `limits.conformance`: residue files, vacant nodes, slack allowances, and fragment entries used at fewer than half the nodes granted them. The lists below name what each counts.",
   ),
   residue: describe(
     Schema.Struct({

@@ -255,6 +255,56 @@ describe.sequential("check", () => {
     expect(report.ok).toBe(false);
   });
 
+  it("carries the conformance counts, and the ceilings beside the measures that state one", async () => {
+    const policy = await loadPolicy(repoRoot);
+    const { output } = await captureReport(check(policy, ["src", "lib", "etc"], "json"));
+    const report = JSON.parse(output) as CheckReport;
+
+    // etc/stray.ts is residue; src/ghost is vacant; src/** is slack.
+    expect(report.conformance).toEqual({
+      residue: { count: 1 },
+      vacant: { count: 1 },
+      slack: { count: 1 },
+      concentration: { count: 0 },
+    });
+
+    const capped = {
+      ...policy,
+      config: { ...policy.config, limits: { conformance: { residue: 0, slack: 1 } } },
+    };
+    const held = JSON.parse(
+      (await captureReport(check(capped, ["src", "lib", "etc"], "json"))).output,
+    ) as CheckReport;
+    expect(held.conformance.residue).toEqual({ count: 1, ceiling: 0 });
+    expect(held.conformance.slack).toEqual({ count: 1, ceiling: 1 });
+    expect(held.conformance.vacant).toEqual({ count: 1 });
+    expect(held.ok).toBe(false);
+  });
+
+  it("fails check when a measure is over the ceiling the policy states, and not at it", async () => {
+    const policy = await loadPolicy(repoRoot);
+    const over = {
+      ...policy,
+      config: { ...policy.config, limits: { conformance: { residue: 0, vacant: 1 } } },
+    };
+    const { exit, output } = await captureReport(check(over, ["src", "lib", "etc"]));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(JSON.stringify(exit)).toContain("conformance above ceiling");
+    expect(output).toContain("conformance is above the ceiling the policy states for itself:");
+    expect(output).toContain("  residue: 1 file no family reaches, ceiling 0");
+    expect(output).not.toContain("  vacant:");
+    expect(output).toContain("architecture conformance");
+
+    const at = {
+      ...policy,
+      config: { ...policy.config, limits: { conformance: { residue: 1, vacant: 1, slack: 1 } } },
+    };
+    const held = await captureReport(check(at, ["src", "lib", "etc"]));
+    expect(JSON.stringify(held.exit)).not.toContain("conformance above ceiling");
+    expect(held.output).not.toContain("conformance is above the ceiling");
+  });
+
   it("refuses to write a baseline when the policy declares nowhere to put one", async () => {
     const { exit } = await captureReport(writeBaseline(await loadPolicy(repoRoot), ["src"]));
 
@@ -585,6 +635,35 @@ describe.sequential("conformance", () => {
     expect(output).toContain('  src: allow "src/**"');
     expect(output).toContain("cycles: 1");
     expect(output).toContain("baseline: 0 entries");
+  });
+
+  it("marks each measure against its ceiling, and says when the ceiling can come down", async () => {
+    const policy = await loadPolicy(repoRoot);
+    const capped = {
+      ...policy,
+      config: {
+        ...policy.config,
+        limits: { conformance: { residue: 0, vacant: 1, slack: 3, concentration: 0 } },
+      },
+    };
+    const { exit, output } = await captureReport(conformance(capped));
+
+    // A measurement, never a gate: over the ceiling is a mark, not a failure.
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(output).toContain("residue: 1 file no family reaches, 1 folder wholly  > 0 ✗");
+    expect(output).toContain("vacant: 1 node selects no file  ≤ 1 ✓");
+    expect(output).not.toContain("vacant: 1 node selects no file  ≤ 1 ✓, lower");
+    expect(output).toContain("slack: 1 allowance nothing imports through  ≤ 3 ✓, lower it to 1");
+    // A ceiling on concentration shows the section even when nothing is concentrated.
+    expect(output).toContain(
+      "concentrated: 0 allowances used at fewer than half the nodes granted  ≤ 0 ✓",
+    );
+
+    const snapshot = JSON.parse(
+      (await captureReport(conformance(capped, "json"))).output,
+    ) as Snapshot;
+    expect(snapshot.conformance.slack).toEqual({ count: 1, ceiling: 3 });
+    expect(Result.isSuccess(decodeSnapshot(snapshot))).toBe(true);
   });
 });
 

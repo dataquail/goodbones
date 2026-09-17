@@ -707,6 +707,34 @@
                   "additionalProperties": false
                 }
               ]
+            },
+            "conformance": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Use"
+                },
+                {
+                  "$ref": "#/$defs/Include"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "residue": {
+                      "type": "number"
+                    },
+                    "vacant": {
+                      "type": "number"
+                    },
+                    "slack": {
+                      "type": "number"
+                    },
+                    "concentration": {
+                      "type": "number"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ]
             }
           },
           "additionalProperties": false

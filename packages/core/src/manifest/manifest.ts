@@ -261,10 +261,24 @@ const CoverageFloors = Schema.Struct({
   graph: Schema.optionalKey(Schema.Finite),
 });
 
+// Ceilings on the conformance measures — what `architecture conformance`
+// counts and `check` does not otherwise gate: the files no family reaches,
+// the nodes no file is under, the allowances nothing imports through, and
+// the fragment entries used at fewer than half the nodes granted them. Each
+// is a count that only goes down: lowered when the number falls, never
+// raised to make a red run green.
+const ConformanceCeilings = Schema.Struct({
+  residue: Schema.optionalKey(Schema.Finite),
+  vacant: Schema.optionalKey(Schema.Finite),
+  slack: Schema.optionalKey(Schema.Finite),
+  concentration: Schema.optionalKey(Schema.Finite),
+});
+
 const Limits = Schema.Struct({
   unrestricted: Schema.optionalKey(Schema.Finite),
   partial: Schema.optionalKey(Schema.Finite),
   coverage: Schema.optionalKey(CoverageFloors),
+  conformance: Schema.optionalKey(ConformanceCeilings),
 });
 
 // A campaign: a migration the repository is running, tracked as an object —

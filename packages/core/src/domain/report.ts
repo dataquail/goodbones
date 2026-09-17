@@ -171,6 +171,23 @@ export const parseReport = (
   }
 };
 
+// One report from several outputs. A tool that takes one project at a time
+// is run once per project, and a project's program includes the files of
+// the projects it references, so one diagnostic is printed under several
+// runs; it is one diagnostic. Kept once, at its first appearance, when
+// identical in file, position, code and message.
+export const uniqueDiagnostics = (diagnostics: Iterable<Diagnostic>): ReadonlyArray<Diagnostic> => {
+  const seen = new Set<string>();
+  const kept: Array<Diagnostic> = [];
+  for (const one of diagnostics) {
+    const key = JSON.stringify([one.file, one.line, one.column, one.code, one.message]);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    kept.push(one);
+  }
+  return kept;
+};
+
 // The diagnostics indexed by file, which is how a per-file evaluator asks
 // for them.
 export const indexByFile = (

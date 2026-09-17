@@ -1145,7 +1145,9 @@ beforeAll(() => {
     "report.mjs",
     [
       "process.stdout.write(\"src/a.ts(2,12): error TS2551: Property 'nope' does not exist on type 'string'.\\n\");",
-      "process.stdout.write(\"src/a.ts(2,12): error TS2551: Property 'nope' does not exist on type 'string'.\\n\");",
+      "process.stdout.write(\"src/a.ts(2,10): error TS2551: Property 'nope' does not exist on type 'string'.\\n\");",
+      // Printed twice at one position: one diagnostic.
+      "process.stdout.write(\"src/a.ts(2,10): error TS2551: Property 'nope' does not exist on type 'string'.\\n\");",
       "process.stdout.write(\"src/a.ts(4,14): error TS6133: 'top' is declared but never used.\\n\");",
       "process.stdout.write(\"src/a.ts(9,1): error TS1005: ';' expected.\\n\");",
       "process.exitCode = 2;",
@@ -1184,7 +1186,8 @@ describe.sequential("a report term", () => {
       .filter((one) => one.kind === "campaign")
       .map((one) => `${one.ruleName}|${one.subject ?? ""}`);
     expect(subjects).toEqual([
-      // Two identical diagnostics in `parse` are two entries; TS6133 is
+      // Two identical diagnostics at two positions in `parse` are two
+      // entries, and the one printed twice at one position is one; TS6133 is
       // excluded by `codesNot`; the one past the end of the file has no anchor.
       expect.stringMatching(/^campaign\/type-errors\|#TS1005#[0-9a-f]{8}$/),
       expect.stringMatching(/^campaign\/type-errors\|parse#TS2551#[0-9a-f]{8}$/),

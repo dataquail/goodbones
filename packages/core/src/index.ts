@@ -183,6 +183,7 @@ export {
   parseReport,
   type ParseReportOptions,
   type ReportFormat,
+  uniqueDiagnostics,
 } from "./domain/report.js";
 export {
   CONFORMANCE_MEASURES,
@@ -290,7 +291,12 @@ export {
   type ModuleResolver,
   type ResolvedTarget,
 } from "./ports/module-resolver.js";
-export { NO_REPORTS, type ReportSource, type ReportSpec } from "./ports/report-source.js";
+export {
+  NO_REPORTS,
+  type ReportSource,
+  reportSourcesOf,
+  type ReportSpec,
+} from "./ports/report-source.js";
 export {
   type Position,
   type SyntaxMatch,

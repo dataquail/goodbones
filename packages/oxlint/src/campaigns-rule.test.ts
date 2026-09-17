@@ -47,7 +47,7 @@ const rules: ReadonlyArray<CampaignRule> = [
     why: "The report is the detector.",
     scope: "^unreachable/",
     unit: "match",
-    detect: { report: { command: "tsc --noEmit", format: "tsc" } },
+    detect: { report: { command: ["tsc --noEmit"], format: "tsc" } },
     probes: { fires: [], ignores: [] },
     staleAfter: 1,
     onComplete: "keep",

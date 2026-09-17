@@ -106,8 +106,8 @@ export type CompiledDetector =
     }
   | {
       readonly kind: "report";
-      readonly command: string | null;
-      readonly file: string | null;
+      readonly command: ReadonlyArray<string> | null;
+      readonly file: ReadonlyArray<string> | null;
       readonly format: ReportFormat;
       readonly pattern: string | null;
       readonly codes: ReadonlySet<string> | null;
@@ -913,7 +913,7 @@ const describeTerm = (term: CompiledDetector): string => {
     case "syntax":
       return `syntax ${JSON.stringify(term.rule)}`;
     case "report":
-      return `report ${term.format} ${term.command === null ? `file ${term.file ?? ""}` : `\`${term.command}\``}${term.codes === null ? "" : ` [${[...term.codes].join(", ")}]`}`;
+      return `report ${term.format} ${term.command === null ? `file ${(term.file ?? []).join(", ")}` : term.command.map((one) => `\`${one}\``).join(", ")}${term.codes === null ? "" : ` [${[...term.codes].join(", ")}]`}`;
     case "fn":
       return `fn ${term.name}`;
     default:

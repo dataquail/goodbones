@@ -332,6 +332,26 @@ describe("loadPolicy reads every report at load", () => {
     expect(readFileSync(stamp, "utf8")).toBe("x");
   });
 
+  it("runs a term's several commands at load, as one report", async () => {
+    const stamp = path.join(scratch, "ran-several-at-load");
+    rmSync(stamp, { force: true });
+    const mark = (name: string) =>
+      `node -e "require('fs').appendFileSync('${stamp}', '${name}'); console.log('packages/x.ts(1,1): error TS1: m')"`;
+    const command = [mark("a"), mark("b")];
+    const policy = await loadPolicy(
+      repoRoot,
+      writeConfig(
+        `export default { ${RESOLVE}, ${campaign(`command: ${JSON.stringify(command)}`)}, tree: {} };`,
+      ),
+    );
+    expect(readFileSync(stamp, "utf8").split("").sort().join("")).toBe("ab");
+    // The same diagnostic from both commands is one, and nothing runs again.
+    expect(policy.reports.diagnosticsOf({ command, format: "tsc" }, "packages/x.ts")).toHaveLength(
+      1,
+    );
+    expect(readFileSync(stamp, "utf8")).toHaveLength(2);
+  });
+
   it("still loads when the report cannot be read; the rule reports that", async () => {
     const policy = await loadPolicy(
       repoRoot,

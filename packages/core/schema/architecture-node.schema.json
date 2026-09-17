@@ -1505,10 +1505,54 @@
                       "type": "object",
                       "properties": {
                         "command": {
-                          "type": "string"
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "anyOf": [
+                                {
+                                  "$ref": "#/$defs/Include"
+                                },
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "allOf": [
+                                    {
+                                      "minItems": 1
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
                         },
                         "file": {
-                          "type": "string"
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "anyOf": [
+                                {
+                                  "$ref": "#/$defs/Include"
+                                },
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "allOf": [
+                                    {
+                                      "minItems": 1
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
                         },
                         "format": {
                           "type": "string",

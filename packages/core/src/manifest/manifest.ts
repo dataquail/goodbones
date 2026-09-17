@@ -362,14 +362,22 @@ const SyntaxTerm = Schema.Struct({
   where: Schema.optionalKey(Schema.Record(Schema.String, CaptureNarrowing)),
 });
 
+// One program to run or file to read, or several: a tool that takes one
+// project at a time is run once per project, and the outputs are read as
+// one report — a diagnostic two of them print is one diagnostic.
+const ReportSources = Schema.Union([
+  Schema.String,
+  Schema.Array(Schema.String).check(Schema.isMinLength(1)),
+]);
+
 // A finding of another program, read from the output of `command` (run
 // from the repository root, once per `check`) or from `file` (written by
 // an earlier step) in one of the known formats — `tsc`, `eslint --format
 // json`, `oxlint --format json` — or by a `regex` with named groups. Holds
 // for each diagnostic on the file whose code the term speaks to.
 const ReportTerm = Schema.Struct({
-  command: Schema.optionalKey(Schema.String),
-  file: Schema.optionalKey(Schema.String),
+  command: Schema.optionalKey(ReportSources),
+  file: Schema.optionalKey(ReportSources),
   format: ReportFormat,
   pattern: Schema.optionalKey(Schema.String),
   codes: Schema.optionalKey(Schema.Array(Schema.String)),

@@ -217,30 +217,54 @@ with the granularity a count-per-file baseline throws away.
   staleAfter: 30d
 ```
 
-| Field      | Meaning                                                                                                                     |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `command`  | a program run from the repository root, once per process; a non-zero exit is expected (`tsc` exits 2 when there are errors) |
-| `file`     | instead of `command`: a report an earlier step wrote, relative to the repository root                                       |
-| `format`   | `tsc` (`file(line,col): error TSxxxx: message`), `eslint` (`--format json`), `oxlint` (`--format json`), or `regex`         |
-| `pattern`  | `regex` only: named groups `file` and `line`, and optionally `column`, `code`, `message`; one diagnostic per matching line  |
-| `codes`    | the codes the term speaks to (`TS2551`, `no-unused-vars`, `eslint(no-debugger)`); omit for every one                        |
-| `codesNot` | codes carved back out                                                                                                       |
+| Field      | Meaning                                                                                                                                        |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `command`  | a program run from the repository root, once per process, or a list of them; a non-zero exit is expected (`tsc` exits 2 when there are errors) |
+| `file`     | instead of `command`: a report an earlier step wrote, relative to the repository root, or a list of them                                       |
+| `format`   | `tsc` (`file(line,col): error TSxxxx: message`), `eslint` (`--format json`), `oxlint` (`--format json`), or `regex`                            |
+| `pattern`  | `regex` only: named groups `file` and `line`, and optionally `column`, `code`, `message`; one diagnostic per matching line                     |
+| `codes`    | the codes the term speaks to (`TS2551`, `no-unused-vars`, `eslint(no-debugger)`); omit for every one                                           |
+| `codesNot` | codes carved back out                                                                                                                          |
 
 Each diagnostic is anchored on the declaration at its position through the scope's syntax
 matcher — `anchorAt`, the second thing a matcher answers — and keyed
 `Anchor#code#hash(message)`, so an entry survives the line moving and changes when the
-message does. Two identical diagnostics in one declaration are two entries (`~2`, `~3`), so
-a ledger keeps its count. A diagnostic with no enclosing declaration, or in a file with no
-matcher, is keyed by code and message alone.
+message does. Two identical diagnostics at two positions in one declaration are two entries
+(`~2`, `~3`), so a ledger keeps its count; a diagnostic printed twice at one position is one.
+A diagnostic with no enclosing declaration, or in a file with no matcher, is keyed by code
+and message alone.
 
-The command runs once per process and the output is cached: the CLI is one process per
+### Several commands, one report
+
+A tool that checks one project at a time — `tsc --project`, a language service over a
+tsconfig — is run once per project, and `command` takes the list:
+
+```yaml
+detect:
+  report:
+    command:
+      - "npx effect-tsgo diagnostics --project packages/server/tsconfig.src.json --format text --severity message"
+      - "npx effect-tsgo diagnostics --project packages/web/tsconfig.json --format text --severity message"
+    format: regex
+    pattern: '^(?<file>.+?)\((?<line>\d+),(?<column>\d+)\): message effect\((?<code>\w+)\): (?<message>.*)$'
+```
+
+The outputs are one report: each is parsed, the diagnostics are joined in the order the
+commands are written, and a diagnostic two of them print — a project's program includes the
+files of the projects it references, so the same finding is reported under each — is kept
+once, when identical in file, position, code and message. The commands run at the same
+time, as many at once as the machine has cores, in both hosts: the CLI runs them before it
+walks a file and the plugin as it loads. `file` takes a list the same way, for a report
+written one file per project.
+
+The commands run once per process and the output is cached: the CLI is one process per
 `check`, and oxlint's language server is one process per editor session, which sees the
-report as of when it loaded the plugin. Under the plugin the command is forked from oxlint
+report as of when it loaded the plugin. Under the plugin a command is forked from oxlint
 itself, and the plugin runs it as it loads, before a file is linted — once the linter is
 running, its per-thread AST buffers can add up to one mapping larger than the machine's
 RAM and swap, and Linux's default overcommit heuristic refuses to fork such a process
 (`spawnSync /bin/sh ENOMEM`); at load, the process is small. Running at load means the
-command runs on every plugin load, an editor session included, whether or not a selected
+commands run on every plugin load, an editor session included, whether or not a selected
 file is opened. A report an earlier step writes to a file — `file: tsc-report.txt` — is the
 form for CI as well as for the editor, and the one to use when the command is slow;
 `command:` is the CLI's form, where `check` is the only thing in the process.

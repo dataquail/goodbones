@@ -52,6 +52,7 @@ import {
   pruned,
   readManifestFile,
   reconcile,
+  reportSpecsOf,
   requiredSiblingsOf,
   residueOf,
   rulesSelecting,
@@ -1606,6 +1607,15 @@ export const campaigns = (
     }
   });
 
+// The commands that judge a campaign, and so ask its report source.
+const READS_REPORTS: ReadonlySet<string> = new Set([
+  "check",
+  "conformance",
+  "baseline",
+  "campaigns",
+  "explain",
+]);
+
 export const run = (
   repoRoot: string,
   argv: ReadonlyArray<string>,
@@ -1646,6 +1656,20 @@ export const run = (
     yield* Effect.sync(() => {
       for (const notice of policy.notices) process.stderr.write(`deprecated: ${notice}\n`);
     });
+
+    // Every `report` a campaign names is read now, before any file asks:
+    // a term's several commands run at once rather than one after another
+    // the first time a campaign selects a file. What cannot be read is kept
+    // for the campaign to report; a report that does not parse is refused.
+    if (READS_REPORTS.has(command)) {
+      yield* Effect.tryPromise({
+        try: () =>
+          Promise.all(
+            reportSpecsOf(policy.campaignRules).map((spec) => policy.reports.read?.(spec)),
+          ),
+        catch: (cause) => fail(String(cause)),
+      });
+    }
 
     const json = rest.includes("--json");
     const positional = rest.filter(

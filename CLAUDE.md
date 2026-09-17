@@ -37,8 +37,9 @@ Every family is in it, deliberately — `imports` and `structure` for the layeri
 "a live adapter is constructed only at the composition root" and "no namespace import or `export *`
 between tiers", `surface` for "no default exports, no `export *`", `graph` for no cycles, no dead
 modules, "the pure tiers reach no adapter", "the core reaches no other package" and "the two hosts
-never reach each other", `limits` with both adoption ceilings at zero and coverage floors at the
-numbers the day they were written, and one `campaigns` entry with a real ledger — so a family whose
+never reach each other", `limits` with both adoption ceilings at zero, coverage floors at the
+numbers the day they were written and conformance ceilings (residue, vacant, slack,
+concentration) at theirs, and one `campaigns` entry with a real ledger — so a family whose
 extraction quietly narrows breaks this lint run, not a user's.
 
 **The campaigns family tracks a migration as an object.** A campaign (`campaigns:` in the manifest)

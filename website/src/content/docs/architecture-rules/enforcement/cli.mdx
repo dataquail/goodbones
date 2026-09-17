@@ -109,6 +109,12 @@ script rather than on the prose, which is free to improve.
     "surface": { "covered": 86, "total": 90, "floor": 0.95 },
     "graph": { "covered": 53, "total": 90, "floor": 0.58 }
   },
+  "conformance": {
+    "residue": { "count": 0, "ceiling": 0 },
+    "vacant": { "count": 1 },
+    "slack": { "count": 4, "ceiling": 5 },
+    "concentration": { "count": 0 }
+  },
   "adoption": { "unrestricted": [], "partial": [] }
 }
 ```
@@ -116,8 +122,9 @@ script rather than on the prose, which is free to improve.
 `violations` carries every finding, baselined ones included, and `baselined` says which;
 `fingerprint` is the baseline's key. `stale` lists baseline entries the code no longer
 produces. `coverage` is what [`coverage`](#coverage) prints, with a `floor` beside each
-family the manifest states one for, and `ok` is true only when nothing above would fail the
-run. `manifest.sha256` hashes the file the policy was read from — the root file only, when
+family the manifest states one for. `conformance` is what [`conformance`](#conformance)
+measures, as counts, with a `ceiling` beside each measure the manifest states one for in
+`limits.conformance`. `ok` is true only when nothing above would fail the run. `manifest.sha256` hashes the file the policy was read from — the root file only, when
 it is split with `include`. `version` names this shape, so a document that grows it can say
 which one it grew.
 
@@ -128,7 +135,8 @@ reaches, the vacant nodes no file is under, the violations ordered leaf-first, a
 slack — allowances nothing imports through, attributed to the `defs` fragment when they
 came through `use`. `--json` emits the snapshot document, and `--against <manifest>` measures the
 same tree against a target manifest instead of the repository's own. It never fails; it
-is a measurement. See [Conformance](/goodbones/architecture-rules/enforcement/conformance/).
+is a measurement, and `check` is what holds it to any ceiling the manifest states in
+`limits.conformance`. See [Conformance](/goodbones/architecture-rules/enforcement/conformance/).
 
 ## `campaigns`
 

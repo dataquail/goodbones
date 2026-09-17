@@ -261,10 +261,24 @@ const CoverageFloors = Schema.Struct({
   graph: Schema.optionalKey(Schema.Finite),
 });
 
+// Ceilings on the conformance measures — what `architecture conformance`
+// counts and `check` does not otherwise gate: the files no family reaches,
+// the nodes no file is under, the allowances nothing imports through, and
+// the fragment entries used at fewer than half the nodes granted them. Each
+// is a count that only goes down: lowered when the number falls, never
+// raised to make a red run green.
+const ConformanceCeilings = Schema.Struct({
+  residue: Schema.optionalKey(Schema.Finite),
+  vacant: Schema.optionalKey(Schema.Finite),
+  slack: Schema.optionalKey(Schema.Finite),
+  concentration: Schema.optionalKey(Schema.Finite),
+});
+
 const Limits = Schema.Struct({
   unrestricted: Schema.optionalKey(Schema.Finite),
   partial: Schema.optionalKey(Schema.Finite),
   coverage: Schema.optionalKey(CoverageFloors),
+  conformance: Schema.optionalKey(ConformanceCeilings),
 });
 
 // A campaign: a migration the repository is running, tracked as an object —
@@ -360,7 +374,26 @@ const ReportTerm = Schema.Struct({
   pattern: Schema.optionalKey(Schema.String),
   codes: Schema.optionalKey(Schema.Array(Schema.String)),
   codesNot: Schema.optionalKey(Schema.Array(Schema.String)),
-});
+}).check(
+  // Refused at decode, where the issue names a line, rather than in the
+  // lowering: a term that names both sources or neither, and a `regex`
+  // term with nothing to match lines against.
+  Schema.makeFilter((term) => {
+    const issues: Array<Schema.FilterIssue> = [];
+    if ((term.command === undefined) === (term.file === undefined)) {
+      issues.push(
+        "a report term names exactly one of `command` (a program to run) and `file` (a report already written)",
+      );
+    }
+    if (term.format === "regex" && term.pattern === undefined) {
+      issues.push({
+        path: ["pattern"],
+        issue: "a `regex` report term needs a `pattern` with named groups `file` and `line`",
+      });
+    }
+    return issues;
+  }),
+);
 
 export type DetectorSpec =
   | { readonly all: ReadonlyArray<DetectorSpec> }

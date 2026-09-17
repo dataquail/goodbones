@@ -77,6 +77,12 @@ export type CheckJson = {
       { readonly covered: number; readonly total: number; readonly floor?: number }
     >
   >;
+  readonly conformance: Readonly<
+    Record<
+      "residue" | "vacant" | "slack" | "concentration",
+      { readonly count: number; readonly ceiling?: number }
+    >
+  >;
   readonly adoption: {
     readonly unrestricted: ReadonlyArray<string>;
     readonly partial: ReadonlyArray<string>;

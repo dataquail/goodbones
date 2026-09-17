@@ -27,6 +27,12 @@ const SAMPLE: Snapshot = {
     surface: { covered: 3, total: 3 },
     graph: { covered: 0, total: 3 },
   },
+  conformance: {
+    residue: { count: 1, ceiling: 0 },
+    vacant: { count: 1, ceiling: 1 },
+    slack: { count: 2 },
+    concentration: { count: 1 },
+  },
   residue: { files: ["src/stray.ts"], folders: [] },
   vacant: [{ node: "src/ghost", allowances: 2 }],
   violations: [

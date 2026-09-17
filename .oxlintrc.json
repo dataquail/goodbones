@@ -229,6 +229,7 @@
     "architecture/members": "error",
     "architecture/structure": "error",
     "architecture/surface": "error",
+    "architecture/campaigns": "error",
     "local/prefer-named-exports": "error",
     "local/no-array-push-spread": "error",
     "no-use-before-define": "warn",

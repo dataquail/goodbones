@@ -235,6 +235,119 @@
       "additionalProperties": false,
       "description": "Per family, how many walked files it reaches. Structure counts enumerated folders only."
     },
+    "conformance": {
+      "type": "object",
+      "properties": {
+        "residue": {
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "What the measure counts today."
+                }
+              ]
+            },
+            "ceiling": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "The count the manifest's `limits.conformance` states for this measure, when it states one."
+                }
+              ]
+            }
+          },
+          "required": [
+            "count"
+          ],
+          "additionalProperties": false
+        },
+        "vacant": {
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "What the measure counts today."
+                }
+              ]
+            },
+            "ceiling": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "The count the manifest's `limits.conformance` states for this measure, when it states one."
+                }
+              ]
+            }
+          },
+          "required": [
+            "count"
+          ],
+          "additionalProperties": false
+        },
+        "slack": {
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "What the measure counts today."
+                }
+              ]
+            },
+            "ceiling": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "The count the manifest's `limits.conformance` states for this measure, when it states one."
+                }
+              ]
+            }
+          },
+          "required": [
+            "count"
+          ],
+          "additionalProperties": false
+        },
+        "concentration": {
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "What the measure counts today."
+                }
+              ]
+            },
+            "ceiling": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "The count the manifest's `limits.conformance` states for this measure, when it states one."
+                }
+              ]
+            }
+          },
+          "required": [
+            "count"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "residue",
+        "vacant",
+        "slack",
+        "concentration"
+      ],
+      "additionalProperties": false,
+      "description": "Per measure, the count `check` holds to the manifest's `limits.conformance`: residue files, vacant nodes, slack allowances, and fragment entries used at fewer than half the nodes granted them. The lists below name what each counts."
+    },
     "residue": {
       "type": "object",
       "properties": {
@@ -645,6 +758,7 @@
     "files",
     "ok",
     "coverage",
+    "conformance",
     "residue",
     "vacant",
     "violations",

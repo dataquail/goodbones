@@ -373,13 +373,14 @@ export type SyntaxTerm = (typeof SyntaxTerm)["Type"];
 // A pattern no parser of ours sees, reported by another program: a type
 // error, another linter's finding. Exactly one of `command` (run from the
 // repository root, once per process) and `file` (written by an earlier
-// step). Each diagnostic on a file is a match anchored on the declaration
-// at its position, keyed by its code and a hash of its message.
+// step), each a list — the manifest's one string lowered to a list of one —
+// read as one report. Each diagnostic on a file is a match anchored on the
+// declaration at its position, keyed by its code and a hash of its message.
 export const ReportFormat = Schema.Literals(["tsc", "eslint", "oxlint", "regex"]);
 
 const ReportTerm = Schema.Struct({
-  command: Schema.optionalKey(Schema.String),
-  file: Schema.optionalKey(Schema.String),
+  command: Schema.optionalKey(Schema.Array(Schema.String)),
+  file: Schema.optionalKey(Schema.Array(Schema.String)),
   format: ReportFormat,
   // `regex` only: named groups `file`, `line`, and optionally `column`,
   // `code`, `message`.

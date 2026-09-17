@@ -231,7 +231,7 @@ describe("every leaf term, true and false", () => {
       rule(
         {
           report: {
-            command: "tsc --noEmit",
+            command: ["tsc --noEmit"],
             format: "tsc",
             ...(codes === undefined ? {} : { codes }),
           },
@@ -584,7 +584,7 @@ describe("selection, probes and the truth table", () => {
   });
 
   it("a probe answers a report term from the diagnostics it lists, one-based", () => {
-    const tsc = rule({ report: { file: "tsc.txt", format: "tsc", codes: ["TS2551"] } }, "match", {
+    const tsc = rule({ report: { file: ["tsc.txt"], format: "tsc", codes: ["TS2551"] } }, "match", {
       probes: {
         fires: [
           { path: "src/a.ts", source: "x", report: [{ line: 1, code: "TS2551", message: "m" }] },
@@ -595,7 +595,7 @@ describe("selection, probes and the truth table", () => {
     expect(
       campaignsFailingTheirProbe([tsc], makeFactExtractorFake({}), () => null, new Map()),
     ).toEqual([]);
-    const silent = rule({ report: { file: "tsc.txt", format: "tsc" } }, "match", {
+    const silent = rule({ report: { file: ["tsc.txt"], format: "tsc" } }, "match", {
       probes: { fires: [{ path: "src/a.ts", source: "x" }], ignores: [] },
     });
     expect(

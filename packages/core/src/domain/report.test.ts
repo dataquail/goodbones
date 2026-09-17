@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { indexByFile, parseReport } from "./report.js";
+import { indexByFile, parseReport, uniqueDiagnostics } from "./report.js";
 
 const repoRoot = "/repo";
 
@@ -104,5 +104,19 @@ describe("parseReport", () => {
     const indexed = indexByFile(diagnostics);
     expect([...indexed.keys()]).toEqual(["src/a.ts", "src/b.ts"]);
     expect(indexed.get("src/a.ts")?.map((one) => one.code)).toEqual(["TS1", "TS3"]);
+  });
+
+  it("keeps a diagnostic once when two outputs print it, and apart when anything differs", () => {
+    const one = { file: "src/a.ts", line: 1, column: 1, code: "TS1", message: "a" };
+    expect(
+      uniqueDiagnostics([
+        one,
+        { ...one },
+        { ...one, column: 2 },
+        { ...one, code: "TS2" },
+        { ...one, message: "b" },
+        one,
+      ]),
+    ).toEqual([one, { ...one, column: 2 }, { ...one, code: "TS2" }, { ...one, message: "b" }]);
   });
 });

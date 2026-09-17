@@ -81,6 +81,70 @@ describe("a report term", () => {
     );
   });
 
+  // A tool that checks one project at a time is run once per project; the
+  // outputs are one report, and a diagnostic a project prints again because
+  // its program includes a referenced project's files is one diagnostic.
+  it("reads several commands as one report through both hosts, keeping a shared diagnostic once", () => {
+    const several = createRepo({
+      files: {
+        "src/a.ts":
+          "export function parse(x: string) {\n  return x.nope;\n}\nexport const top = 1;\n",
+        "src/b.ts": "export function other(y: string) {\n  return y.nope;\n}\n",
+        "one.mjs": [
+          "process.stdout.write(\"src/a.ts(2,12): error TS2551: Property 'nope' does not exist.\\n\");",
+          "process.exitCode = 2;",
+          "",
+        ].join("\n"),
+        // The same finding on a.ts again, and one of its own.
+        "two.mjs": [
+          "process.stdout.write(\"src/a.ts(2,12): error TS2551: Property 'nope' does not exist.\\n\");",
+          "process.stdout.write(\"src/b.ts(2,12): error TS2551: Property 'nope' does not exist.\\n\");",
+          "process.exitCode = 2;",
+          "",
+        ].join("\n"),
+      },
+    });
+    several.writeManifest({
+      ...manifest(several),
+      campaigns: [
+        {
+          id: "type-errors",
+          why: "w",
+          how: "h",
+          scope: ["src/**"],
+          unit: "match",
+          detect: { report: { command: ["node one.mjs", "node two.mjs"], format: "tsc" } },
+          probes: {
+            fires: [{ path: "src/a.ts", report: [{ line: 1, code: "TS2551", message: "m" }] }],
+          },
+          staleAfter: "30d",
+        },
+      ],
+    });
+    try {
+      const result = check(several, ["src"]);
+      expect(result.code).toBe(1);
+      const hits = result.json.violations.filter((one) => one.kind === "campaign");
+      expect(hits.map((one) => one.fingerprint).sort()).toEqual([
+        expect.stringMatching(
+          /^campaign\|campaign\/type-errors\|src\/a\.ts\|parse#TS2551#[0-9a-f]{8}$/,
+        ),
+        expect.stringMatching(
+          /^campaign\|campaign\/type-errors\|src\/b\.ts\|other#TS2551#[0-9a-f]{8}$/,
+        ),
+      ]);
+
+      const linted = oxlint(several, ["src"]);
+      expect(linted.loaded, linted.stdout + linted.stderr).toBe(true);
+      expect(linted.diagnostics.map((one) => `${one.rule} ${one.file}`).sort()).toEqual([
+        "architecture/campaigns src/a.ts",
+        "architecture/campaigns src/b.ts",
+      ]);
+    } finally {
+      several.dispose();
+    }
+  });
+
   it("fails to load when the command cannot run", () => {
     const broken = createRepo({ files: { "src/a.ts": "export const a = 1;\n" } });
     broken.writeManifest({

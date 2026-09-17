@@ -69,16 +69,20 @@ export const loadPolicyFromFile = async (
   // nothing. A `command` forks this process, and once the linter is running
   // Linux can refuse the fork: the linter's per-thread AST buffers merge
   // into one mapping larger than RAM and swap together, which the default
-  // overcommit heuristic refuses to duplicate. The source caches the answer,
-  // and a failure, so the rules read what was read here. A report that
-  // cannot be read is not a load failure — the campaigns rule reports it
-  // once, on the first file a campaign naming it selects.
-  for (const spec of reportSpecsOf(policy.campaignRules)) {
-    try {
-      policy.reports.diagnosticsOf(spec, "");
-    } catch (cause) {
-      if (!(cause instanceof ReportUnavailable)) throw cause;
-    }
-  }
+  // overcommit heuristic refuses to duplicate. The source keeps the answer,
+  // and a failure, so the rules read what was read here — a term's several
+  // commands run at once. A report that cannot be read is not a load
+  // failure — the campaigns rule reports it once, on the first file a
+  // campaign naming it selects; one that does not parse is.
+  await Promise.all(
+    reportSpecsOf(policy.campaignRules).map(async (spec) => {
+      if (policy.reports.read !== undefined) return policy.reports.read(spec);
+      try {
+        policy.reports.diagnosticsOf(spec, "");
+      } catch (cause) {
+        if (!(cause instanceof ReportUnavailable)) throw cause;
+      }
+    }),
+  );
   return policy;
 };

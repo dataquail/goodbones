@@ -1193,8 +1193,8 @@ const lowerCampaign = (
       const term = detector.report;
       return {
         report: {
-          ...(term.command === undefined ? {} : { command: term.command }),
-          ...(term.file === undefined ? {} : { file: term.file }),
+          ...(term.command === undefined ? {} : { command: globsOf(term.command) }),
+          ...(term.file === undefined ? {} : { file: globsOf(term.file) }),
           format: term.format,
           ...(term.pattern === undefined ? {} : { pattern: term.pattern }),
           ...(term.codes === undefined ? {} : { codes: [...term.codes] }),

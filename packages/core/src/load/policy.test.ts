@@ -303,23 +303,26 @@ describe("loadPolicy with campaigns", () => {
   });
 
   it("refuses a report term naming both a command and a file, or neither, and a regex one without a pattern", () => {
-    expect(() =>
-      load(
+    const detailOf = (manifest: unknown): string => {
+      const loaded = load(manifest, [go()]);
+      if (!Result.isFailure(loaded)) throw new Error("expected the manifest to be refused");
+      return loaded.failure.detail;
+    };
+    expect(
+      detailOf(
         withCampaigns([
           campaign({ detect: { report: { command: "x", file: "y", format: "tsc" } } }),
         ]),
-        [go()],
       ),
-    ).toThrow(/exactly one of `command`/);
-    expect(() =>
-      load(withCampaigns([campaign({ detect: { report: { format: "tsc" } } })]), [go()]),
-    ).toThrow(/exactly one of `command`/);
-    expect(() =>
-      load(
+    ).toMatch(/exactly one of `command`/);
+    expect(detailOf(withCampaigns([campaign({ detect: { report: { format: "tsc" } } })]))).toMatch(
+      /exactly one of `command`/,
+    );
+    expect(
+      detailOf(
         withCampaigns([campaign({ detect: { report: { file: "out.txt", format: "regex" } } })]),
-        [go()],
       ),
-    ).toThrow(/`regex` report term with no `pattern`/);
+    ).toMatch(/`regex` report term needs a `pattern`/);
   });
 
   it("refuses a probe with no source when the detector reads the file", () => {

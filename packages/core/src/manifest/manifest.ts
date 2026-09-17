@@ -374,7 +374,26 @@ const ReportTerm = Schema.Struct({
   pattern: Schema.optionalKey(Schema.String),
   codes: Schema.optionalKey(Schema.Array(Schema.String)),
   codesNot: Schema.optionalKey(Schema.Array(Schema.String)),
-});
+}).check(
+  // Refused at decode, where the issue names a line, rather than in the
+  // lowering: a term that names both sources or neither, and a `regex`
+  // term with nothing to match lines against.
+  Schema.makeFilter((term) => {
+    const issues: Array<Schema.FilterIssue> = [];
+    if ((term.command === undefined) === (term.file === undefined)) {
+      issues.push(
+        "a report term names exactly one of `command` (a program to run) and `file` (a report already written)",
+      );
+    }
+    if (term.format === "regex" && term.pattern === undefined) {
+      issues.push({
+        path: ["pattern"],
+        issue: "a `regex` report term needs a `pattern` with named groups `file` and `line`",
+      });
+    }
+    return issues;
+  }),
+);
 
 export type DetectorSpec =
   | { readonly all: ReadonlyArray<DetectorSpec> }

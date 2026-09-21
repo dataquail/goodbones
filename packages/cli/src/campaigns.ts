@@ -65,7 +65,6 @@ import {
   sectorClockOf,
   type SectorRecord,
   sectorRecordPathOf,
-  type SectorState,
   serializeLedger,
   serializePlanRecord,
   serializeSectorRecord,
@@ -78,7 +77,6 @@ import {
 } from "@goodbones/core";
 import * as Result from "effect/Result";
 
-import type { LoadedPolicy as Policy } from "./config-loader.js";
 import {
   type Commit,
   commitOf,
@@ -1658,6 +1656,4 @@ export const baseSideAt = async (
   }
 };
 
-export type { Policy };
 export { readDiff };
-export type { SectorState };

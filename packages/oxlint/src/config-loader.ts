@@ -2,7 +2,11 @@ import * as path from "node:path";
 
 import { astGrepMatcher } from "@goodbones/ast-grep";
 import {
+  discoverSectors,
   findManifestFile,
+  globToRegExp,
+  listSourceFiles,
+  listWorkspaceProjects,
   loadCampaignFunctions,
   type LoadedPolicy,
   loadPolicy,
@@ -11,11 +15,48 @@ import {
   readManifestFile,
   reportSpecsOf,
   ReportUnavailable,
+  type SectorIndex,
 } from "@goodbones/core";
 import { typescriptLanguage } from "@goodbones/typescript";
 import * as Result from "effect/Result";
 
 export type { LoadedPolicy } from "@goodbones/core";
+
+// A `marker` or `nx` perimeter needs the other files to say which sector a
+// file is in — the markers, or the workspace's projects — so the plugin
+// reads them once at load, from a walk of the repository that reads no
+// source text but the markers'. The other perimeters answer from the path
+// or the file itself, and need nothing here.
+export const discoverSectorIndexes = (policy: LoadedPolicy): ReadonlyMap<string, SectorIndex> => {
+  const indexes = new Map<string, SectorIndex>();
+  const needing = policy.campaignRules.filter(
+    (rule) => rule.perimeter?.kind === "marker" || rule.perimeter?.kind === "nx",
+  );
+  if (needing.length === 0) return indexes;
+  const widened = [...new Set(needing.flatMap((rule) => rule.extensions))];
+  const files = listSourceFiles(policy.repoRoot, ["."], policy.languages, widened);
+  const known = new Set(policy.languages.flatMap((one) => one.extensions));
+  const projects = needing.some((rule) => rule.perimeter?.kind === "nx")
+    ? listWorkspaceProjects(policy.repoRoot, ["."])
+    : [];
+  for (const rule of needing) {
+    const scoped = files.filter(
+      (file) =>
+        rule.scope.some((pattern) => pattern.test(file)) &&
+        (known.has(path.extname(file)) || rule.extensions.includes(path.extname(file))),
+    );
+    indexes.set(
+      rule.id,
+      discoverSectors(rule, {
+        files: scoped,
+        readText: (file) => policy.fileSystem.readText(file),
+        globToRegExp,
+        projects,
+      }),
+    );
+  }
+  return indexes;
+};
 
 // The clock the campaigns are judged by; `ARCHITECTURE_NOW` pins it, as it
 // does for the CLI.

@@ -66,21 +66,25 @@ describe("the arithmetic, per sector", () => {
     ]);
     expect(ledgerArithmeticHolds(afterConcede)).toBe(true);
 
+    const billing = afterConcede.sectors.billing;
+    if (billing === undefined) throw new Error("no billing sector");
     const tampered: Ledger = {
       ...afterConcede,
-      sectors: {
-        billing: {
-          ...afterConcede.sectors.billing!,
-          holdouts: [...afterConcede.sectors.billing!.holdouts, "f.ts"],
-        },
-      },
+      sectors: { billing: { ...billing, holdouts: [...billing.holdouts, "f.ts"] } },
     };
     expect(sectorArithmeticHolds(tampered, "billing")).toBe(false);
     expect(ledgerArithmeticHolds(tampered)).toBe(false);
   });
 
   it("keeps two sectors apart in one file", () => {
-    const both = clearedSector(ledgerOf(["a.ts"]), "orders", ["x.ts", "y.ts"], "file", T0, "inside");
+    const both = clearedSector(
+      ledgerOf(["a.ts"]),
+      "orders",
+      ["x.ts", "y.ts"],
+      "file",
+      T0,
+      "inside",
+    );
     expect(Object.keys(both.sectors)).toEqual(["billing", "orders"]);
     const cleared = clearedSector(both, "orders", ["x.ts"], "file", T0 + DAY, "inside");
     expect(cleared.sectors.billing).toEqual(both.sectors.billing);
@@ -100,8 +104,8 @@ describe("clear", () => {
   it("stamps lastCleared only when something left", () => {
     const ledger = ledgerOf(["a.ts", "b.ts"]);
     expect(
-      clearedSector(ledger, "billing", ["a.ts", "b.ts"], "file", T0 + DAY, "inside").sectors
-        .billing?.lastCleared,
+      clearedSector(ledger, "billing", ["a.ts", "b.ts"], "file", T0 + DAY, "inside").sectors.billing
+        ?.lastCleared,
     ).toBe(ledger.sectors.billing?.lastCleared);
     expect(
       clearedSector(ledger, "billing", ["a.ts"], "file", T0 + DAY, "inside").sectors.billing
@@ -175,9 +179,9 @@ describe("clear", () => {
       },
     ]);
     expect(ledgerArithmeticHolds(after)).toBe(true);
-    expect(rebaselinedSector(ledger, "billing", ["a.ts", "b.ts"], { at: T0, by: "me", reason: "r" })).toBe(
-      ledger,
-    );
+    expect(
+      rebaselinedSector(ledger, "billing", ["a.ts", "b.ts"], { at: T0, by: "me", reason: "r" }),
+    ).toBe(ledger);
   });
 });
 
@@ -273,7 +277,10 @@ describe("the file", () => {
   });
 });
 
-const campaign = (phases: CampaignRule["phases"], objectives: ReadonlyArray<string>): CompiledCampaign => {
+const campaign = (
+  phases: CampaignRule["phases"],
+  objectives: ReadonlyArray<string>,
+): CompiledCampaign => {
   const compiled = compileCampaignRule({
     name: "campaign/c",
     id: "c",
@@ -341,10 +348,17 @@ describe("the plan record", () => {
     expect(planDiffOf(refined, before)).toEqual({ refined: ["b"], changed: [], unreceipted: [] });
     // The defined phase changed with no concession: unreceipted.
     const changed = campaign([phase("a", ["x"], "a2"), phase("b", [])], ["x"]);
-    expect(planDiffOf(changed, before)).toEqual({ refined: [], changed: ["a"], unreceipted: ["a"] });
+    expect(planDiffOf(changed, before)).toEqual({
+      refined: [],
+      changed: ["a"],
+      unreceipted: ["a"],
+    });
     // With one: changed, and receipted.
     const receipted = campaign(
-      [{ ...phase("a", ["x"], "a2"), concessions: [{ reason: "r", at: "2026-09-20" }] }, phase("b", [])],
+      [
+        { ...phase("a", ["x"], "a2"), concessions: [{ reason: "r", at: "2026-09-20" }] },
+        phase("b", []),
+      ],
       ["x"],
     );
     expect(planDiffOf(receipted, before)).toEqual({ refined: [], changed: ["a"], unreceipted: [] });

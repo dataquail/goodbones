@@ -1440,7 +1440,10 @@ const lowerCampaign = (
         probes:
           "has" in term
             ? checkProbes(objectiveId, term.has, spec.probes)
-            : { fires: [...(spec.probes?.fires ?? [])], ignores: [...(spec.probes?.ignores ?? [])] },
+            : {
+                fires: [...(spec.probes?.fires ?? [])],
+                ignores: [...(spec.probes?.ignores ?? [])],
+              },
       };
     },
   );
@@ -1503,7 +1506,9 @@ const lowerCampaign = (
     }
     for (const objectiveId of phase.objectives ?? []) {
       if (!objectiveIds.has(objectiveId)) {
-        refuse(`phase "${phase.id}" names an objective "${objectiveId}" the campaign does not declare.`);
+        refuse(
+          `phase "${phase.id}" names an objective "${objectiveId}" the campaign does not declare.`,
+        );
       }
       const already = namedBy.get(objectiveId);
       if (already !== undefined) {

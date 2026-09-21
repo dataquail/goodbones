@@ -10,16 +10,19 @@ all under `packages/`:
 
 - **`@goodbones/core`** (`packages/core`) — the manifest schema, the evaluators for the five
   per-file families (`imports`, `exports`, `members`, `surface`, `structure`), the `graph` family
-  (cycles, orphans, transitive reach) and the `campaigns` family (a migration as a detector and a
-  ledger), the `limits` ratchets, the ports a language pack implements, a fake per port under
+  (cycles, orphans, transitive reach) and the `campaigns` family (a refactor as objectives with
+  ledgers, over sectors, through phases), the `limits` ratchets, the ports a language pack implements, a fake per port under
   `@goodbones/core/testing`, and `loadPolicy`. It names no language.
 - **`@goodbones/typescript`** (`packages/typescript`) — the TypeScript language pack: facts read
   through oxc-parser, specifiers resolved through `unrs-resolver`, behind the core's
   `Language` port.
 - **`@goodbones/cli`** (`packages/cli`) — the `architecture` bin: `check`, `conformance`, `baseline`,
-  `campaigns`, `coverage`, `explain`, `facts`, `init`, `infer`, `migrate`. Being the one host that sees every file at
-  once, it is where the graph family is evaluated, and where the conformance snapshot (residue, slack,
-  cycle count, leaf-first violations; schema in `packages/core/schema/conformance.schema.json`) is built.
+  `campaigns`, `objectives`, `coverage`, `explain`, `facts`, `init`, `infer`, `migrate`. Being the one
+  host that sees every file at once, it is where the graph family is evaluated, where a campaign's
+  sectors are discovered and its sector-level objectives answered, where the nudge
+  (`campaigns status --changed`) is computed, and where the conformance snapshot (residue, slack,
+  cycle count, leaf-first violations, per-sector phases; schema in
+  `packages/core/schema/conformance.schema.json`) is built.
 - **`@goodbones/ast-grep`** (`packages/ast-grep`) — the syntax matcher: the core's `SyntaxMatcher`
   port over `@ast-grep/napi`, for the `campaigns` family's `syntax` term. A host composes it into
   the TypeScript pack (`typescriptLanguage({ syntax: astGrepMatcher() })`); the pack never names it.
@@ -42,23 +45,39 @@ numbers the day they were written and conformance ceilings (residue, vacant, sla
 concentration) at theirs, and one `campaigns` entry with a real ledger — so a family whose
 extraction quietly narrows breaks this lint run, not a user's.
 
-**The campaigns family tracks a migration as an object.** A campaign (`campaigns:` in the manifest)
-is a detector — `all`/`any`/`not` over `path`, `imports`, `exports`, `members`, `requires`, `content`,
+**The campaigns family tracks a refactor as an object.** A campaign (`campaigns.<id>` in the
+manifest; the design is `docs/scratch/DESIGN-campaigns.md`) owns `objectives`, each a detector —
+`match`: `all`/`any`/`not` over `path`, `imports`, `exports`, `members`, `requires`, `content`,
 `syntax` (an ast-grep rule), `report` (another program's diagnostics — `tsc`, `eslint`/`oxlint` JSON,
 or a `regex` — run once per process through `infrastructure/report-source-live.ts` and anchored on
-declarations through `SyntaxTree.anchorAt`) and `fn` (`module#export`) terms — with a unit (`file`, `declaration`,
-`match`), probes it must fire on and stay silent on, and a ledger under `.architecture-campaigns/`
-(`<id>.json`) of every place the pattern still occurs. The ledger only shrinks on its own:
-`architecture campaigns prune` removes, `campaigns allow --reason` is the one way an entry is added
-and it records a regression, and `check` verifies `entries.length === initial + Σ delta − fixed`. A
-fixed entry is stale and fails `check` like a stale baseline entry. The plugin evaluates this family
-by parsing `sourceCode.text` with the same ast-grep matcher the CLI uses — the only family the
-plugin parses with anything but oxlint's tree — so its parity contract is "one engine", pinned by
-`packages/oxlint/src/campaigns-parity.test.ts`. This repository runs one campaign on itself
-(`lowering-reports-not-throws`, over `packages/core/src/manifest/**`); its ledger is committed, and
-changing the count means pruning or allowing, in the open. `ARCHITECTURE_NOW` pins the clock the
-stall check reads. The TypeScript pack walks `.ts`-family files only, so a campaign over `.js` files
-has nothing to see until the pack's extensions widen — a separate decision.
+declarations through `SyntaxTree.anchorAt`) and `fn` (`module#export`) terms; or `sector`: `has`,
+`oneRoot`, `oneHost` over a sector's files — with a `holdout` (`file`, `declaration`, `match`,
+`sector`), probes, and a ledger under `.architecture-campaigns/<campaign>/<objective>.json` of every
+place the pattern still occurs, per sector, keyed relative to the sector's root. A **sector** is born
+by the campaign's `perimeter` (`marker`, `glob`, `match`, `file`, `nx`; the scope itself when there is
+none, named `scope`; the unclaimed remainder is `legacy`, pinned at the first phase) —
+`core/sectors.ts`. **Phases** are ordered groups of objectives, defined or open (intent only, and
+then last); a sector's phase is derived (first phase with residue — `core/phases.ts`), `until` opens
+a window, `attested: true` is left by `campaigns attest`, and the per-sector record
+(`sectors/<sector>.json`: `reached`, attestations, notes) plus `plan.json` are written by
+`objectives clear`. The ledger only shrinks on its own: `objectives clear` reconciles (stale leave,
+drift rewritten, entering sectors recorded with their initial, passed windows closed, a receipted
+phase change re-baselined), `objectives concede --reason` is the one way a holdout is added, and
+`check` verifies per sector `holdouts.length === initial + Σ delta − cleared − closed`; a defined
+phase changed without a `concessions` entry fails `check`. **The nudge**, `campaigns status
+--changed [--base <ref>] [--json] [--hotfix]` (`cli/src/campaigns.ts`, `cli/src/diff.ts`), is the
+family's deliverable: per touched sector, the phase and what would move it on, `ask`/`verdict`
+enumerated, non-zero under `ratchet`/`paydown`. The plugin reads membership off the perimeter and
+the phase off the ledgers (a sector no `clear` has placed stands at the first phase) and parses
+`sourceCode.text` with the same ast-grep matcher the CLI uses — the only family the plugin parses
+with anything but oxlint's tree — so its parity contract is "one engine", pinned by
+`packages/oxlint/src/campaigns-parity.test.ts` and `campaigns-phases.test.ts`. An `endState` is a
+sector-relative node tree lowered per sector (`lowerEndState`), CLI-only. This repository runs one
+campaign on itself (`lowering-reports-not-throws`, the minimal shape); its ledger is committed, and
+changing the count means clearing or conceding, in the open. `ARCHITECTURE_NOW` pins the clock the
+stall check reads. A campaign's `scope.extensions` widens the walk (`.js` for a JS→TS campaign);
+only that campaign sees the widened files. A `.mjs` manifest is cached by the module loader for
+the life of the process, so a test that edits the plan writes JSON.
 
 ## Commands
 
@@ -246,8 +265,8 @@ TS2451, and the compiler owns it.
 - `src/domain/` — the manifest schema, the error types, the `Violation` and its line-independent
   fingerprint. No I/O.
 - `src/core/` — the pure evaluators (`imports`, `exports`, `members`, `surface`, `structure`, `graph`,
-  `campaigns`, `coverage`, `baseline`, `ledger`, `patterns`). Given facts, they return violations;
-  they never read a file.
+  `campaigns`, `sectors`, `phases`, `campaign-state`, `coverage`, `baseline`, `ledger`, `patterns`).
+  Given facts, they return violations; they never read a file.
 - `src/manifest/` — compiling the manifest tree down to flat, resolved rules (`lowerManifest`).
 - `src/load/` — `loadPolicy`: decode, lower, compile and probe a manifest the host has already
   read, with the language packs and the `FileSystem` the host hands in. Language-neutral; the

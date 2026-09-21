@@ -24,9 +24,9 @@ import {
   LEGACY_SECTOR,
   rootOf,
   type Sector,
+  SECTOR_HOLDOUT,
   type SectorDiscovery,
   type SectorIndex,
-  SECTOR_HOLDOUT,
   sectorNamed,
 } from "./sectors.js";
 
@@ -75,8 +75,7 @@ export type CampaignEvaluationInput = {
   // tree lowered for this sector. Absent, an end state has no residue —
   // the plugin's position, which never evaluates one.
   readonly endStateOf?:
-    | ((sector: Sector, phase: PhaseRule, family: string) => ReadonlyArray<Violation>)
-    | undefined;
+    ((sector: Sector, phase: PhaseRule, family: string) => ReadonlyArray<Violation>) | undefined;
 };
 
 const sectorHit = (objective: CompiledObjective, sector: Sector): ObjectiveHit => ({
@@ -155,8 +154,7 @@ export const evaluateCampaign = (
             break;
           case "oneRoot": {
             const [root] = sector.roots;
-            holds =
-              root !== undefined && sector.files.every((file) => under(root, file));
+            holds = root !== undefined && sector.files.every((file) => under(root, file));
             break;
           }
           case "oneHost":
@@ -209,8 +207,9 @@ export const evaluateCampaign = (
 
 // The hits that count: those whose objective is in window for their sector.
 export const hitsInWindow = (evaluation: CampaignEvaluation): ReadonlyArray<ObjectiveHit> =>
-  evaluation.hits.filter((hit) =>
-    evaluation.sectors.get(hit.sector)?.inWindow.some((one) => one.id === hit.objective),
+  evaluation.hits.filter(
+    (hit) =>
+      evaluation.sectors.get(hit.sector)?.inWindow.some((one) => one.id === hit.objective) ?? false,
   );
 
 // The residue toward the sector's next phase: the current phase's

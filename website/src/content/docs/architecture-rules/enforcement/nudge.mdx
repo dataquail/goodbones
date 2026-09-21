@@ -1,0 +1,197 @@
+---
+title: The nudge
+description: What a person or an agent touching a sector under a campaign is told — which campaign, what phase, and what small thing in the touched files would move it on — as text and as JSON a hook can read.
+---
+
+[Campaigns](/goodbones/architecture-rules/manifest/campaigns/) exist so that someone working
+on an ordinary feature, enhancement or bugfix — or an agent working on their behalf — learns
+when the files they touch lie in an area under refactor: which campaign, what phase that area
+is at, and what would move it toward its next phase. That per-touch signal is the primary
+deliverable; progress reporting, ordering of work and enforcement exist to serve it.
+
+```bash
+architecture campaigns status --changed [--base <ref>] [--json] [--hotfix "<reason>"]
+```
+
+The signal is scoped to the diff and names something small. It is **not** a lint warning on
+every file in a behind-phase sector; that fires constantly, and a person learns to ignore it in
+a day. `status --changed` reads the working-tree diff against `HEAD` (or against
+`--base <ref>` in CI) and reports, per touched sector, one of two things depending on the
+phase the sector is at.
+
+A **defined phase — execute.** The residue is the instruction:
+
+```
+billing-ddd
+  billing — phase repository (2 of 6), 9 days here
+    toward the next phase: no-raw-queries-outside-repository 7 · has-integration-test 1
+    in the files you touched, nearest your change (3 of 8):
+      src/billing/InvoiceService.ts#reconcile:41  no-raw-queries-outside-repository
+      src/billing/InvoiceService.ts#void:58       no-raw-queries-outside-repository
+      src/billing/context.ts                      has-integration-test
+    this diff: −no-raw-queries-outside-repository: InvoiceService.ts#refund#4b02a9e1  forward
+    onTouch: ratchet — ok
+    ask: hold — leave the sector no worse; paydown is welcome in its own commit, not asked for
+```
+
+An **open phase — discover and record.** The intent is the instruction, and the contribution
+is partly to the plan:
+
+```
+billing-ddd
+  billing — phase aggregates (6 of 6, open), 4 days here
+    intent: Model refunds and disputes inside the billing aggregate, or split them out —
+            undecided until two contexts have reached `cutover`.
+    notes (2, data, left at this phase): 2026-10-04 "refunds read invoices but never write them" · 2026-10-06 "disputes need the ledger, not the invoice"
+    if this change taught you something about that shape: refine phase `aggregates` in the manifest
+    (a defined phase needs at least one objective with a probe), in its own commit — or leave a note:
+      architecture campaigns note billing "…" --campaign billing-ddd
+    onTouch: advise — ok
+    ask: note
+```
+
+A **touch with nothing to say** is one line — `billing at phase repository (2 of 6) · nothing
+in your files, diff neutral` — so the block above appears only when a touched file carries a
+holdout, the diff moved a count, or the phase is open. A diff touching nothing under any
+campaign says so in one line.
+
+## What "small" is
+
+Per touched sector the nudge lists at most five holdouts, nearest first: `match` and
+`declaration` holdouts ordered by line distance from the nearest changed hunk in the same
+file, then `file` holdouts in touched files, then the sector's own holdouts (a presence it
+lacks). The cap and the order are in the JSON, and the total is always shown beside the cap.
+
+## The two sides
+
+The "before" side of the diff is the ledger — the holdouts as of the last `objectives clear`,
+per sector — which is exactly the reconciliation the plugin already does for one file and
+costs nothing to compute. The "after" side is the tree evaluated now. It means a holdout fixed
+but not yet cleared shows as this diff's progress, which is what a nudge should say; and it
+means a holdout the ledger already carries is not growth even if the diff reintroduced it.
+`--base <ref>` is the exact mode: it evaluates the base tree from a checkout, which for
+`requires`, `imports`, `report` and `fn` terms is the only way to know what the base tree
+said, and for a `report`-backed objective is a full tool run against that commit. CI runs the
+exact mode; the answer is cached per commit under `node_modules/.cache/goodbones/`.
+
+## `ask` and `verdict`
+
+The two fields a hook reads. `ask` is what the diff is asked for, as one enumerated value:
+
+| `ask`              | When                                                                      |
+| ------------------ | ------------------------------------------------------------------------- |
+| `none`             | under `advise` — the holdouts are context, not a request                  |
+| `note`             | the sector's phase is open                                                |
+| `hold`             | under `ratchet` — leave the sector no worse                               |
+| `paydown-optional` | under `paydown`, when the diff edits no holdout-bearing declaration       |
+| `paydown-required` | under `paydown`, when it does — the sector must leave with fewer holdouts |
+
+`verdict` is whether the policy is met — `ok`, `back` (a dimension went backward under
+`ratchet` or `paydown`), `no-paydown` (under `paydown-required`, the sector did not shrink), or
+`hotfix` (escaped, and recorded) — and `status --changed` exits non-zero on anything but `ok`
+and `hotfix`, so a stop hook or a CI step can block on it without parsing the rest. An agent
+that treats every list in a hook's output as a todo is a real failure mode, and the enumerated
+fields, not the prose, are the defence.
+
+## `onTouch`
+
+What a touched sector owes beyond the nudge, per campaign with per-phase override. The three
+are a strict ladder, and the distinction that matters is between the ledger, which _records_
+growth, and a ratchet, which _refuses_ it:
+
+- **`advise`** — the nudge only. Growth in the sector is still caught by the ledger invariant
+  — an unrecorded holdout fails `check` and the plugin — but `objectives concede --reason` is
+  enough to pass, so the campaign accepts growth that comes with a reason. Default for open
+  phases, and the right setting for a campaign still finding its shape.
+- **`ratchet`** — growth in a touched sector is refused. The residue vector — one dimension
+  per objective in window, never summed — is compared before and after the diff, and any
+  dimension that went back fails; a concession in the same diff does not make it pass, because
+  in CI the before side is the base ref and the concession is visible as growth. The only way
+  through is the hotfix escape: `--hotfix "<reason>"`, which concedes the growth with a reason
+  naming the hotfix and reports the verdict `hotfix`. It is measured per sector, not per file,
+  because the obvious game is to move code out of the touched file — and a holdout moved into a
+  neighbouring sector or into the legacy sends _that_ sector back, which is caught the same
+  way. Default for defined phases.
+- **`paydown`** — everything `ratchet` demands, and a diff that edits a declaration carrying a
+  holdout must also leave the sector with fewer holdouts than it entered with. Opt-in. It
+  applies only to diffs that edit holdout-bearing declarations, because applying it to any
+  touch teaches people and agents to put new code outside the sector; a new file landing in
+  the legacy inside the scope gets its own line — _this belongs in a sector_.
+
+The direction of a diff is by dominance: **forward** means no dimension is worse and at least
+one is better, **back** the reverse, and anything else is **mixed** and reported as such, never
+resolved by a sum.
+
+## The JSON
+
+`--json` emits one document, small enough to feed a stop hook or a PR comment:
+
+```json
+{
+  "version": 1,
+  "mode": "ledger",
+  "base": null,
+  "touched": ["src/billing/InvoiceService.ts"],
+  "sectors": [
+    {
+      "campaign": "billing-ddd",
+      "sector": "billing",
+      "phase": {
+        "id": "repository",
+        "index": 1,
+        "of": 6,
+        "open": false,
+        "since": "2026-09-22T00:00:00.000Z"
+      },
+      "intent": "a repository behind a port, one migration, an integration test",
+      "notes": [],
+      "onTouch": "ratchet",
+      "ask": "hold",
+      "verdict": "ok",
+      "residue": {
+        "before": { "no-raw-queries-outside-repository": 8, "has-integration-test": 1 },
+        "after": { "no-raw-queries-outside-repository": 7, "has-integration-test": 1 }
+      },
+      "direction": "forward",
+      "toward": { "no-raw-queries-outside-repository": 7, "has-integration-test": 1 },
+      "holdouts": {
+        "total": 8,
+        "cap": 5,
+        "shown": [
+          {
+            "file": "src/billing/InvoiceService.ts",
+            "subject": "reconcile#3bfd86f4",
+            "objective": "no-raw-queries-outside-repository",
+            "line": 41,
+            "message": "Move the call behind the port."
+          }
+        ]
+      },
+      "added": [],
+      "removed": ["no-raw-queries-outside-repository: InvoiceService.ts#refund#4b02a9e1"],
+      "belongsInSector": []
+    }
+  ],
+  "unbirths": [],
+  "testsChecked": "unknown",
+  "ok": true
+}
+```
+
+`testsChecked` is always `unknown`: the tool runs no tests, and the hook author decides
+whether a green run is a precondition for reading the nudge at all. `unbirths` names the
+markers the diff deleted, and the sector each returns to the legacy. For an open phase, the
+intent and the notes are present and marked as data.
+
+## Delivered, not discovered
+
+The nudge is delivered: a stop hook or a `CLAUDE.md` instruction runs
+`architecture campaigns status --changed --json` before an agent finishes, and CI posts it as
+a PR comment. The plugin never nags. What the plugin enforces per file are real violations:
+for every objective whose window contains the file's sector's current phase, a holdout not in
+the ledger — today's campaign rule plus the window, with the sector read off the perimeter and
+the phase off the ledgers.
+
+Two conventions the docs carry, because the tool cannot: paydown goes in its own commit, so
+review can split it from the feature; and a plan refinement asked for by an open phase goes in
+its own commit, so a policy diff never hides in a feature diff.

@@ -64,6 +64,9 @@ export type CheckJson = {
     readonly message: string;
     readonly baselined: boolean;
     readonly ledgered: boolean;
+    readonly objective?: string;
+    readonly sector?: string;
+    readonly entry?: string;
   }>;
   readonly unresolved: ReadonlyArray<{
     readonly file: string;
@@ -90,14 +93,39 @@ export type CheckJson = {
   readonly campaigns: ReadonlyArray<{
     readonly id: string;
     readonly count: number;
-    readonly new: ReadonlyArray<string>;
-    readonly stale: ReadonlyArray<string>;
+    readonly new: ReadonlyArray<{
+      readonly objective: string;
+      readonly sector: string;
+      readonly entry: string;
+    }>;
+    readonly stale: ReadonlyArray<{
+      readonly objective: string;
+      readonly sector: string;
+      readonly entry: string;
+    }>;
     readonly drifted: number;
     readonly missingLedger: boolean;
     readonly arithmetic: boolean;
     readonly complete: boolean;
     readonly stalled: boolean;
     readonly onComplete: "keep" | "remove";
+    readonly objectives: ReadonlyArray<{
+      readonly id: string;
+      readonly count: number;
+      readonly ledgered: boolean;
+    }>;
+    readonly sectors: ReadonlyArray<{
+      readonly name: string;
+      readonly phase: string | null;
+      readonly reached: string | null;
+      readonly files: number;
+      readonly residue: Readonly<Record<string, number>>;
+    }>;
+    readonly plan: {
+      readonly refined: ReadonlyArray<string>;
+      readonly changed: ReadonlyArray<string>;
+      readonly unreceipted: ReadonlyArray<string>;
+    };
   }>;
 };
 

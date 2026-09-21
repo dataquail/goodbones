@@ -8,8 +8,8 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { parseDiff } from "./diff.js";
 import { loadPolicyFromFile as loadPolicy } from "./config-loader.js";
+import { parseDiff } from "./diff.js";
 import {
   campaigns,
   check as checkWith,
@@ -57,7 +57,10 @@ const MANIFEST = (
           { id: "dual-write", intent: "the flag writes both ways", objectives: ["has-flag"] },
           { id: "backfilled", intent: "rows copied", attested: true },
           { id: "cutover", objectives: ["no-flag"] },
-          { id: "aggregates", intent: "Model refunds inside billing, or split them out — undecided." },
+          {
+            id: "aggregates",
+            intent: "Model refunds inside billing, or split them out — undecided.",
+          },
         ],
         objectives: {
           "no-io": {
@@ -75,7 +78,10 @@ const MANIFEST = (
             match: { syntax: { pattern: "console.log($$$)" } },
             probes: { fires: [{ path: "src/a.ts", source: "console.log('x')" }] },
           },
-          "has-migration": { holdout: "sector", sector: { has: { path: { file: "/migrations/" } } } },
+          "has-migration": {
+            holdout: "sector",
+            sector: { has: { path: { file: "/migrations/" } } },
+          },
           "has-flag": {
             holdout: "sector",
             until: "cutover",
@@ -127,7 +133,9 @@ const capture = async (effect: Effect.Effect<void, CliFailure>) => {
   };
   try {
     const exit = await Effect.runPromiseExit(effect);
-    const failure = Exit.isFailure(exit) ? (Cause.squash(exit.cause) as { message?: string }) : null;
+    const failure = Exit.isFailure(exit)
+      ? (Cause.squash(exit.cause) as { message?: string })
+      : null;
     return { exit, output: lines.join(""), failure: failure?.message ?? "" };
   } finally {
     process.stdout.write = original;
@@ -218,7 +226,9 @@ describe.sequential("a campaign with sectors and phases", () => {
     // Only the hits in window are violations: billing's knex calls are not
     // yet, since billing has not reached `repository`.
     const hits = report.violations.filter((one) => one.kind === "campaign");
-    expect(hits.map((one) => `${one.sector ?? ""}/${one.objective ?? ""}/${one.entry ?? ""}`)).toEqual([
+    expect(
+      hits.map((one) => `${one.sector ?? ""}/${one.objective ?? ""}/${one.entry ?? ""}`),
+    ).toEqual([
       // Anchored on the nearest declaration: the `text` the call initializes.
       expect.stringMatching(/^billing\/no-io\/service\.ts#text#[0-9a-f]{8}$/),
       expect.stringMatching(/^legacy\/no-io\/src\/services\/legacy\.ts#old#[0-9a-f]{8}$/),
@@ -229,16 +239,27 @@ describe.sequential("a campaign with sectors and phases", () => {
   it("clear records each sector's initial per objective in window, its reached phase, and the plan", async () => {
     const cleared = await capture(objectives(await policyAt(), ["src"], ["clear"]));
     expect(Exit.isSuccess(cleared.exit), cleared.failure).toBe(true);
-    expect(cleared.output).toContain("billing-ddd/no-io: 3 sectors entered (billing, orders, legacy); 2 holdouts left.");
-    expect(cleared.output).toContain("billing-ddd/no-knex: 1 sector entered (orders); 0 holdouts left.");
-    expect(cleared.output).toContain("billing-ddd/has-flag: 1 sector entered (orders); 1 holdout left.");
+    expect(cleared.output).toContain(
+      "billing-ddd/no-io: 3 sectors entered (billing, orders, legacy); 2 holdouts left.",
+    );
+    expect(cleared.output).toContain(
+      "billing-ddd/no-knex: 1 sector entered (orders); 0 holdouts left.",
+    );
+    expect(cleared.output).toContain(
+      "billing-ddd/has-flag: 1 sector entered (orders); 1 holdout left.",
+    );
     expect(sectorsOf("no-io").billing).toMatchObject({ initial: 1 });
     expect(sectorsOf("no-knex").billing).toBeUndefined();
     expect(sectorsOf("has-flag").orders?.holdouts).toEqual(["~"]);
     expect(readJson("sectors/billing.json")).toMatchObject({ reached: "domain" });
     expect(readJson("sectors/orders.json")).toMatchObject({ reached: "dual-write" });
     expect(existsSync(path.join(ledgerDir, "sectors/legacy.json"))).toBe(false);
-    expect((readJson("plan.json").phases as Array<{ id: string; defined: boolean }>).map((one) => [one.id, one.defined])).toEqual([
+    expect(
+      (readJson("plan.json").phases as Array<{ id: string; defined: boolean }>).map((one) => [
+        one.id,
+        one.defined,
+      ]),
+    ).toEqual([
       ["domain", true],
       ["repository", true],
       ["dual-write", true],
@@ -262,7 +283,11 @@ describe.sequential("a campaign with sectors and phases", () => {
       }),
     );
     const parsed = JSON.parse(snapshot.output) as {
-      campaigns: Array<{ phases: unknown; legacy: unknown; objectives: Array<{ id: string; phase: string | null }> }>;
+      campaigns: Array<{
+        phases: unknown;
+        legacy: unknown;
+        objectives: Array<{ id: string; phase: string | null }>;
+      }>;
     };
     expect(parsed.campaigns[0]?.phases).toEqual([
       { id: "domain", defined: true, sectors: 1 },
@@ -300,16 +325,27 @@ describe.sequential("a campaign with sectors and phases", () => {
     expect(Exit.isFailure(before.exit)).toBe(true);
     // The fix is stale in `no-io`; and billing, now at `repository`, has
     // two knex calls and no migration in a window no ledger has seen.
-    expect(before.report.campaigns[0]?.stale.map((one) => `${one.objective}/${one.sector}`)).toEqual(["no-io/billing"]);
+    expect(
+      before.report.campaigns[0]?.stale.map((one) => `${one.objective}/${one.sector}`),
+    ).toEqual(["no-io/billing"]);
     expect(before.report.campaigns[0]?.missingLedger).toBe(true);
-    expect(before.report.campaigns[0]?.sectors.find((one) => one.name === "billing")).toMatchObject({
-      phase: "repository",
-      residue: { "no-io": 0, "no-knex": 2, "no-console": 0, "has-migration": 1 },
-    });
-    const cleared = await capture(objectives(await policyAt("2026-10-02T00:00:00Z"), ["src"], ["clear"]));
+    expect(before.report.campaigns[0]?.sectors.find((one) => one.name === "billing")).toMatchObject(
+      {
+        phase: "repository",
+        residue: { "no-io": 0, "no-knex": 2, "no-console": 0, "has-migration": 1 },
+      },
+    );
+    const cleared = await capture(
+      objectives(await policyAt("2026-10-02T00:00:00Z"), ["src"], ["clear"]),
+    );
     expect(cleared.output).toContain("billing-ddd/no-io: 1 holdout cleared; 1 holdout left.");
-    expect(cleared.output).toContain("billing-ddd/no-knex: 1 sector entered (billing); 2 holdouts left.");
-    expect(readJson("sectors/billing.json")).toMatchObject({ reached: "repository", since: "2026-10-02T00:00:00.000Z" });
+    expect(cleared.output).toContain(
+      "billing-ddd/no-knex: 1 sector entered (billing); 2 holdouts left.",
+    );
+    expect(readJson("sectors/billing.json")).toMatchObject({
+      reached: "repository",
+      since: "2026-10-02T00:00:00.000Z",
+    });
     expect(Exit.isSuccess((await check()).exit)).toBe(true);
   });
 
@@ -319,7 +355,7 @@ describe.sequential("a campaign with sectors and phases", () => {
       "campaign/billing-ddd: sector billing — phase repository (2 of 6), reached repository",
     );
     expect(explained.output).toContain("in window: no-io, no-knex ✗, no-console, has-migration");
-    expect(explained.output).toMatch(/:2  no-knex  reconcile#[0-9a-f]{8}/);
+    expect(explained.output).toMatch(/:2 {2}no-knex {2}reconcile#[0-9a-f]{8}/);
   });
 
   it("attests a step no detector sees, only at that phase, and the sector moves on at the next clear", async () => {
@@ -330,17 +366,43 @@ describe.sequential("a campaign with sectors and phases", () => {
     expect(readJson("sectors/orders.json")).toMatchObject({ reached: "backfilled" });
 
     const early = await capture(
-      campaigns(await policyAt(), ["src"], ["attest", "billing", "backfilled", "--reason", "done", "--by", "me"]),
+      campaigns(
+        await policyAt(),
+        ["src"],
+        ["attest", "billing", "backfilled", "--reason", "done", "--by", "me"],
+      ),
     );
     expect(Exit.isFailure(early.exit)).toBe(true);
     expect(early.failure).toContain("stands at repository, not backfilled");
 
     const attested = await capture(
-      campaigns(await policyAt("2026-10-04T00:00:00Z"), ["src"], ["attest", "orders", "backfilled", "--reason", "backfill ran", "--evidence", "https://ci/run/1", "--by", "me"]),
+      campaigns(
+        await policyAt("2026-10-04T00:00:00Z"),
+        ["src"],
+        [
+          "attest",
+          "orders",
+          "backfilled",
+          "--reason",
+          "backfill ran",
+          "--evidence",
+          "https://ci/run/1",
+          "--by",
+          "me",
+        ],
+      ),
     );
     expect(Exit.isSuccess(attested.exit), attested.failure).toBe(true);
     expect(readJson("sectors/orders.json")).toMatchObject({
-      attested: [{ phase: "backfilled", reason: "backfill ran", evidence: "https://ci/run/1", at: "2026-10-04T00:00:00.000Z", by: "me" }],
+      attested: [
+        {
+          phase: "backfilled",
+          reason: "backfill ran",
+          evidence: "https://ci/run/1",
+          at: "2026-10-04T00:00:00.000Z",
+          by: "me",
+        },
+      ],
     });
     // Past backfilled, at cutover, the flag is now a holdout — and
     // `has-flag`'s window is shut for orders for good.
@@ -358,11 +420,17 @@ describe.sequential("a campaign with sectors and phases", () => {
     await capture(objectives(await policyAt("2026-10-06T00:00:00Z"), ["src"], ["clear"]));
     expect(readJson("sectors/orders.json")).toMatchObject({ reached: "aggregates" });
     const noted = await capture(
-      campaigns(await policyAt("2026-10-07T00:00:00Z"), ["src"], ["note", "orders", "refunds read invoices but never write them", "--by", "me"]),
+      campaigns(
+        await policyAt("2026-10-07T00:00:00Z"),
+        ["src"],
+        ["note", "orders", "refunds read invoices but never write them", "--by", "me"],
+      ),
     );
     expect(Exit.isSuccess(noted.exit), noted.failure).toBe(true);
     expect(readJson("sectors/orders.json")).toMatchObject({
-      notes: [{ phase: "aggregates", text: "refunds read invoices but never write them", by: "me" }],
+      notes: [
+        { phase: "aggregates", text: "refunds read invoices but never write them", by: "me" },
+      ],
     });
   });
 
@@ -384,12 +452,21 @@ describe.sequential("a campaign with sectors and phases", () => {
         "",
       ].join("\n"),
     );
-    const nudged = await capture(campaigns(await policyAt(), ["src"], ["status", "--changed", "--json"]));
+    const nudged = await capture(
+      campaigns(await policyAt(), ["src"], ["status", "--changed", "--json"]),
+    );
     expect(Exit.isFailure(nudged.exit)).toBe(true);
     const nudge = JSON.parse(nudged.output) as {
       mode: string;
       ok: boolean;
-      sectors: Array<Record<string, unknown> & { holdouts: { total: number; shown: Array<{ line: number | null; subject: string | null }> } }>;
+      sectors: Array<
+        Record<string, unknown> & {
+          holdouts: {
+            total: number;
+            shown: Array<{ line: number | null; subject: string | null }>;
+          };
+        }
+      >;
     };
     expect(nudge.mode).toBe("ledger");
     expect(nudge.ok).toBe(false);
@@ -411,12 +488,9 @@ describe.sequential("a campaign with sectors and phases", () => {
     // Nearest the change first: the new call, then the two above it, then
     // the sector's own holdout.
     expect(nudge.sectors[0]?.holdouts.total).toBe(4);
-    expect(nudge.sectors[0]?.holdouts.shown.map((one) => one.subject?.split("#")[0] ?? "~")).toEqual([
-      "refund",
-      "voidIt",
-      "reconcile",
-      "~",
-    ]);
+    expect(
+      nudge.sectors[0]?.holdouts.shown.map((one) => one.subject?.split("#")[0] ?? "~"),
+    ).toEqual(["refund", "voidIt", "reconcile", "~"]);
     const text = await capture(campaigns(await policyAt(), ["src"], ["status", "--changed"]));
     expect(text.output).toContain("billing — phase repository (2 of 6)");
     expect(text.output).toContain("toward the next phase: no-knex 3 · has-migration 1");
@@ -424,12 +498,21 @@ describe.sequential("a campaign with sectors and phases", () => {
     expect(text.output).toContain("ask: hold");
 
     const escaped = await capture(
-      campaigns(await policyAt("2026-10-08T00:00:00Z"), ["src"], ["status", "--changed", "--hotfix", "BILL-412", "--by", "me"]),
+      campaigns(
+        await policyAt("2026-10-08T00:00:00Z"),
+        ["src"],
+        ["status", "--changed", "--hotfix", "BILL-412", "--by", "me"],
+      ),
     );
     expect(Exit.isSuccess(escaped.exit), escaped.failure).toBe(true);
     expect(escaped.output).toContain("onTouch: ratchet — hotfix");
     expect(readJson("no-knex.json").concessions).toEqual([
-      expect.objectContaining({ sector: "billing", delta: 1, reason: "hotfix: BILL-412", by: "me" }),
+      expect.objectContaining({
+        sector: "billing",
+        delta: 1,
+        reason: "hotfix: BILL-412",
+        by: "me",
+      }),
     ]);
     expect(Exit.isSuccess((await check()).exit)).toBe(true);
   });
@@ -438,7 +521,9 @@ describe.sequential("a campaign with sectors and phases", () => {
     git("add", "-A");
     git("commit", "-q", "-m", "hotfix");
     write("src/orders/service.ts", "export const place = () => 3;\n");
-    const nudged = await capture(campaigns(await policyAt(), ["src"], ["status", "--changed", "--json"]));
+    const nudged = await capture(
+      campaigns(await policyAt(), ["src"], ["status", "--changed", "--json"]),
+    );
     expect(Exit.isSuccess(nudged.exit), nudged.failure).toBe(true);
     const nudge = JSON.parse(nudged.output) as { sectors: Array<Record<string, unknown>> };
     expect(nudge.sectors[0]).toMatchObject({
@@ -467,7 +552,9 @@ describe.sequential("a campaign with sectors and phases", () => {
       ["export function reconcile() {", "  return knex('text');", "}", ""].join("\n"),
     );
     rmSync(path.join(root, "src/orders/context.ts"));
-    const nudged = await capture(campaigns(await policyAt(), ["src"], ["status", "--changed", "--base", "HEAD", "--json"]));
+    const nudged = await capture(
+      campaigns(await policyAt(), ["src"], ["status", "--changed", "--base", "HEAD", "--json"]),
+    );
     expect(Exit.isSuccess(nudged.exit), nudged.failure).toBe(true);
     const nudge = JSON.parse(nudged.output) as {
       mode: string;
@@ -475,7 +562,9 @@ describe.sequential("a campaign with sectors and phases", () => {
       sectors: Array<Record<string, unknown>>;
     };
     expect(nudge.mode).toBe("exact");
-    expect(nudge.unbirths).toEqual([{ campaign: "billing-ddd", sector: "orders", marker: "src/orders/context.ts" }]);
+    expect(nudge.unbirths).toEqual([
+      { campaign: "billing-ddd", sector: "orders", marker: "src/orders/context.ts" },
+    ]);
     expect(nudge.sectors.find((one) => one.sector === "billing")).toMatchObject({
       direction: "forward",
       verdict: "ok",
@@ -486,23 +575,44 @@ describe.sequential("a campaign with sectors and phases", () => {
 
   it("refuses a change to a defined phase without a concession, and re-baselines with one", async () => {
     write("architecture.json", MANIFEST(["no-knex", "no-console", "has-migration"]));
-    write("src/billing/service.ts", readFileSync(path.join(root, "src/billing/service.ts"), "utf8") + "console.log('x');\n");
+    write(
+      "src/billing/service.ts",
+      readFileSync(path.join(root, "src/billing/service.ts"), "utf8") + "console.log('x');\n",
+    );
     const refused = await check();
     expect(Exit.isFailure(refused.exit)).toBe(true);
-    expect(refused.report.campaigns[0]?.plan).toEqual({ refined: [], changed: ["repository"], unreceipted: ["repository"] });
+    expect(refused.report.campaigns[0]?.plan).toEqual({
+      refined: [],
+      changed: ["repository"],
+      unreceipted: ["repository"],
+    });
     expect(refused.failure).toContain("changed without a concession");
 
     write(
       "architecture.json",
-      MANIFEST(["no-knex", "no-console", "has-migration"], [{ reason: "console noise blocks the port", at: "2026-10-09" }]),
+      MANIFEST(
+        ["no-knex", "no-console", "has-migration"],
+        [{ reason: "console noise blocks the port", at: "2026-10-09" }],
+      ),
     );
     const receipted = await check();
-    expect(receipted.report.campaigns[0]?.plan).toEqual({ refined: [], changed: ["repository"], unreceipted: [] });
+    expect(receipted.report.campaigns[0]?.plan).toEqual({
+      refined: [],
+      changed: ["repository"],
+      unreceipted: [],
+    });
     expect(receipted.failure).not.toContain("concession");
-    const cleared = await capture(objectives(await policyAt("2026-10-09T00:00:00Z"), ["src"], ["clear"]));
+    const cleared = await capture(
+      objectives(await policyAt("2026-10-09T00:00:00Z"), ["src"], ["clear"]),
+    );
     expect(cleared.output).toContain("billing-ddd/no-console: 1 sector re-baselined (billing)");
     expect(readJson("no-console.json").concessions).toEqual([
-      expect.objectContaining({ sector: "billing", from: 0, to: 1, reason: "phase repository changed: console noise blocks the port" }),
+      expect.objectContaining({
+        sector: "billing",
+        from: 0,
+        to: 1,
+        reason: "phase repository changed: console noise blocks the port",
+      }),
     ]);
     const after = await check();
     expect(after.report.campaigns[0]?.plan).toEqual({ refined: [], changed: [], unreceipted: [] });
@@ -514,9 +624,14 @@ describe.sequential("a campaign with sectors and phases", () => {
     git("commit", "-q", "-m", "plan change");
     const history = await capture(campaigns(await policyAt(), ["src"], ["history", "--json"]));
     expect(Exit.isSuccess(history.exit), history.failure).toBe(true);
-    const parsed = JSON.parse(history.output) as { rows: Array<{ counts: Record<string, number>; planChanged: boolean }> };
+    const parsed = JSON.parse(history.output) as {
+      rows: Array<{ counts: Record<string, number>; planChanged: boolean }>;
+    };
     expect(parsed.rows.length).toBeGreaterThanOrEqual(3);
-    expect(parsed.rows.at(-1)).toMatchObject({ counts: { "no-knex": 3, "no-console": 1 }, planChanged: true });
+    expect(parsed.rows.at(-1)).toMatchObject({
+      counts: { "no-knex": 3, "no-console": 1 },
+      planChanged: true,
+    });
     const text = await capture(campaigns(await policyAt(), ["src"], ["history"]));
     expect(text.output).toContain("billing-ddd:");
   });
@@ -550,7 +665,13 @@ describe("the diff reader", () => {
       ].join("\n"),
     );
     expect([...parsed.touched.entries()]).toEqual([
-      ["src/a.ts", [{ start: 4, end: 5 }, { start: 12, end: 12 }]],
+      [
+        "src/a.ts",
+        [
+          { start: 4, end: 5 },
+          { start: 12, end: 12 },
+        ],
+      ],
       ["src/new.ts", [{ start: 1, end: 3 }]],
     ]);
     expect(parsed.added).toEqual(["src/new.ts"]);
@@ -608,10 +729,19 @@ beforeAll(() => {
   };
   writeEnd("architecture.config.mjs", END_MANIFEST);
   writeEnd("tsconfig.json", JSON.stringify({ compilerOptions: { baseUrl: "." } }));
-  writeEnd("src/ctx/billing/domain/invoice.ts", 'import { db } from "../adapters/db.js";\nexport const invoice = db;\n');
-  writeEnd("src/ctx/billing/adapters/db.ts", 'import { port } from "../../orders/ports/port.js";\nexport const db = port;\n');
+  writeEnd(
+    "src/ctx/billing/domain/invoice.ts",
+    'import { db } from "../adapters/db.js";\nexport const invoice = db;\n',
+  );
+  writeEnd(
+    "src/ctx/billing/adapters/db.ts",
+    'import { port } from "../../orders/ports/port.js";\nexport const db = port;\n',
+  );
   writeEnd("src/ctx/orders/ports/port.ts", "export const port = 1;\n");
-  writeEnd("src/ctx/orders/domain/order.ts", 'import { db } from "../../billing/adapters/db.js";\nexport const order = db;\n');
+  writeEnd(
+    "src/ctx/orders/domain/order.ts",
+    'import { db } from "../../billing/adapters/db.js";\nexport const order = db;\n',
+  );
 });
 
 afterAll(() => {
@@ -626,7 +756,10 @@ describe("an end state", () => {
       ["end", ["end-state-imports", "end-state-structure"]],
     ]);
     const { output } = await capture(
-      checkWith(policy, ["src"], { format: "json", manifestPath: path.join(endRoot, "architecture.config.mjs") }),
+      checkWith(policy, ["src"], {
+        format: "json",
+        manifestPath: path.join(endRoot, "architecture.config.mjs"),
+      }),
     );
     const report = JSON.parse(output) as CheckReport;
     const hits = report.violations

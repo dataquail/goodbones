@@ -52,6 +52,7 @@ export default defineConfig({
                 { slug: "architecture-rules/enforcement/probes" },
                 { slug: "architecture-rules/enforcement/baseline" },
                 { slug: "architecture-rules/enforcement/ledger" },
+                { slug: "architecture-rules/enforcement/nudge" },
                 { slug: "architecture-rules/enforcement/adoption" },
                 { slug: "architecture-rules/enforcement/conformance" },
                 { slug: "architecture-rules/enforcement/cli" },

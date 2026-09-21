@@ -149,7 +149,10 @@ describe("the manifest JSON Schema", () => {
               pattern: "class $NAME extends $BASE { $$$ }",
               where: {
                 BASE: {
-                  binding: { resolves: { external: "react" }, member: ["Component", "PureComponent"] },
+                  binding: {
+                    resolves: { external: "react" },
+                    member: ["Component", "PureComponent"],
+                  },
                 },
               },
             },
@@ -188,7 +191,9 @@ describe("the manifest JSON Schema", () => {
               },
             ],
           },
-          probes: { fires: [{ path: "app/x.tsx", source: "export default () => { useState(); }" }] },
+          probes: {
+            fires: [{ path: "app/x.tsx", source: "export default () => { useState(); }" }],
+          },
         },
       },
       staleAfter: "30d",
@@ -199,8 +204,16 @@ describe("the manifest JSON Schema", () => {
       perimeter: { marker: "**/context.ts", probes: { fires: "src/billing/context.ts" } },
       onTouch: "ratchet",
       phases: [
-        { id: "domain", intent: "a domain module with unit tests", objectives: ["no-io-in-domain"] },
-        { id: "repository", objectives: ["has-migration"], concessions: [{ reason: "widened", at: "2026-09-20" }] },
+        {
+          id: "domain",
+          intent: "a domain module with unit tests",
+          objectives: ["no-io-in-domain"],
+        },
+        {
+          id: "repository",
+          objectives: ["has-migration"],
+          concessions: [{ reason: "widened", at: "2026-09-20" }],
+        },
         { id: "dual-write", objectives: ["has-flag"] },
         { id: "backfilled", intent: "rows copied", attested: true },
         { id: "cutover", objectives: ["no-flag"], onTouch: "paydown" },
@@ -209,10 +222,18 @@ describe("the manifest JSON Schema", () => {
       objectives: {
         "no-io-in-domain": {
           holdout: "declaration",
-          match: { all: [{ path: { file: "**/domain/**" } }, { members: { subject: "calls", name: "readFileSync" } }] },
+          match: {
+            all: [
+              { path: { file: "**/domain/**" } },
+              { members: { subject: "calls", name: "readFileSync" } },
+            ],
+          },
           probes: { fires: [{ path: "src/billing/domain/a.ts", source: "readFileSync()" }] },
         },
-        "has-migration": { holdout: "sector", sector: { has: { path: { file: "**/migrations/*.ts" } } } },
+        "has-migration": {
+          holdout: "sector",
+          sector: { has: { path: { file: "**/migrations/*.ts" } } },
+        },
         "has-flag": {
           holdout: "sector",
           until: "cutover",
@@ -238,7 +259,11 @@ describe("the manifest JSON Schema", () => {
               layout: "open",
               children: {
                 "domain/": { layout: "open", children: {}, imports: { allow: ["~/domain/"] } },
-                "adapters/": { layout: "open", children: {}, imports: { allow: ["~/ports/", { sector: "*", via: "~/ports/" }] } },
+                "adapters/": {
+                  layout: "open",
+                  children: {},
+                  imports: { allow: ["~/ports/", { sector: "*", via: "~/ports/" }] },
+                },
               },
             },
           },
@@ -252,7 +277,10 @@ describe("the manifest JSON Schema", () => {
     "js-to-ts": {
       scope: { path: "src/**", extensions: [".js", ".jsx"] },
       perimeter: "file",
-      phases: [{ id: "typescript", objectives: ["is-ts"] }, { id: "strict", objectives: ["strict-clean"] }],
+      phases: [
+        { id: "typescript", objectives: ["is-ts"] },
+        { id: "strict", objectives: ["strict-clean"] },
+      ],
       objectives: {
         "is-ts": {
           holdout: "file",
@@ -261,7 +289,9 @@ describe("the manifest JSON Schema", () => {
         },
         "strict-clean": {
           holdout: "match",
-          match: { report: { command: "tsc --noEmit --pretty false", format: "tsc", codesNot: ["TS6133"] } },
+          match: {
+            report: { command: "tsc --noEmit --pretty false", format: "tsc", codesNot: ["TS6133"] },
+          },
           probes: {
             fires: [{ path: "src/a.ts", report: [{ line: 1, code: "TS2551", message: "m" }] }],
           },
@@ -310,20 +340,31 @@ describe("the manifest JSON Schema", () => {
     const validate = validator();
     const base = { resolve: { scopes: [{ files: "", language: "typescript" }] }, tree: {} };
     const first = campaigns["react-class-components"];
-    const withObjective = (objective: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
+    const withObjective = (
+      objective: Record<string, unknown>,
+      extra: Record<string, unknown> = {},
+    ) => ({
       ...base,
       campaigns: {
-        one: { ...first, ...extra, objectives: { "class-shape": { ...first.objectives["class-shape"], ...objective } } },
+        one: {
+          ...first,
+          ...extra,
+          objectives: { "class-shape": { ...first.objectives["class-shape"], ...objective } },
+        },
       },
     });
     expect(validate(withObjective({ match: { syntaxx: { pattern: "x" } } }))).toBe(false);
     expect(validate(withObjective({ match: { content: { regexp: "x" } } }))).toBe(false);
     expect(validate(withObjective({}, { staleAfter: "30 days" }))).toBe(false);
-    expect(validate(withObjective({ match: { report: { command: "x", format: "junit" } } }))).toBe(false);
+    expect(validate(withObjective({ match: { report: { command: "x", format: "junit" } } }))).toBe(
+      false,
+    );
     expect(validate(withObjective({ holdout: "line" }))).toBe(false);
     expect(validate({ ...base, campaigns: [{ id: "x" }] })).toBe(false);
     expect(validate({ ...base, campaigns: { "Not Kebab": first } })).toBe(false);
-    expect(validate({ ...base, campaigns: { one: { ...first, perimeter: "folder" } } })).toBe(false);
+    expect(validate({ ...base, campaigns: { one: { ...first, perimeter: "folder" } } })).toBe(
+      false,
+    );
     expect(validate({ ...base, campaigns: { one: { ...first, onTouch: "nag" } } })).toBe(false);
   });
 });

@@ -140,30 +140,50 @@ is a measurement, and `check` is what holds it to any ceiling the manifest state
 
 ## `campaigns`
 
-The ledgers of the [campaigns](/goodbones/architecture-rules/manifest/campaigns/) the
-manifest declares. Alone, the status table — each campaign's progress, what is left, what
-was fixed, what was allowed, its owner, and whether it is stalled or complete:
+The [campaigns](/goodbones/architecture-rules/manifest/campaigns/) the manifest declares.
+Alone, the status table — each campaign's progress, what is left, its owner, whether it is
+stalled or complete, the distribution of its sectors over its phases when it has any, and
+each objective's burn-down beneath:
 
 ```
 $ architecture campaigns
 
 1 campaign under packages
 
-  lowering-reports-not-throws    0%     17 left  0 fixed  0 allowed  @dataquail
+  lowering-reports-not-throws   21%     15 left  @dataquail
+    throws-in-lowering   21%     15 left  4 cleared  2 conceded
 ```
 
 ```bash
-architecture campaigns init <id>                                    # the first ledger, from what fires today
-architecture campaigns prune [<id>]                                 # drop entries that no longer fire
-architecture campaigns allow <id> --reason "<why>" [--by <email>]   # record why the count may rise
+architecture campaigns status --changed [--base <ref>] [--json] [--hotfix "<reason>"]   # the nudge
+architecture campaigns attest <sector> <phase> --reason "<why>" [--evidence <url>]      # a step no detector sees
+architecture campaigns note <sector> "<text>"                                           # a remark for the next touch
+architecture campaigns history [<campaign>] [--since <ref>] [--json]                    # the ledgers' git history
 ```
 
-`init` refuses to overwrite a ledger. `prune` only removes, and stamps the campaign's
-`lastProgress` when it does. `allow` is the one way an entry is added, and it always appends
-a regression record — the entries, the reason, a timestamp and the author, which defaults to
-git's `user.email`; `--entries a,b` allows a subset and leaves the rest failing. See
-[Ledger](/goodbones/architecture-rules/enforcement/ledger/) for what `check` demands of the
-file. Roots follow the subcommand, as they do everywhere else.
+`status --changed` is [the nudge](/goodbones/architecture-rules/enforcement/nudge/): per
+sector the diff touches, which campaign, what phase, what would move it on, and a verdict it
+exits non-zero on. `attest` and `note` write the sector's record; both take `--campaign <id>`
+when the policy declares more than one. `history` replays the ledgers' and the manifest's git
+history as a series. Roots follow the subcommand, as they do everywhere else.
+
+## `objectives`
+
+The [ledgers](/goodbones/architecture-rules/enforcement/ledger/):
+
+```bash
+architecture objectives clear [<campaign>[/<objective>]]                                 # reconcile with the code
+architecture objectives concede <campaign>[/<objective>] --reason "<why>" [--by <email>]  # record why a count may rise
+```
+
+`clear` reconciles every ledger with the code wherever that is not a regression: stale
+holdouts leave, drifted ones are rewritten, a sector entering a window is recorded with its
+initial (which is how a first ledger is written), a sector past a window has its holdouts
+closed, a receipted phase change re-baselines, and each sector's `reached` and the plan are
+recorded. `concede` is the one way a holdout is added, and it always appends a concession —
+the holdouts, a reason, a timestamp and the author, which defaults to git's `user.email`;
+`--holdouts a,b` concedes a subset and leaves the rest failing, `--sector <name>` narrows to
+one sector. `campaigns init`, `prune` and `allow` are refused by name.
 
 ## `coverage`
 
@@ -208,16 +228,22 @@ it owes — and then, one section per family that has something to say about the
 `exports` restrictions, `members` vocabularies, `surface` rules and `graph` scopes that
 select it. `facts` is the other half: what those rules are evaluated against.
 
-A campaign selecting the file is printed with its **truth table**: one line per leaf term of
-its detector and what that term answered for this file, every term evaluated with no
-short-circuit, so a detector that "should fire" and does not shows which term is not saying
-what its author thinks:
+A campaign selecting the file is printed with the sector the file is in, its phase and
+definedness, the objectives in window for that sector (✗ marks one firing on this file) and
+the nearest remaining holdouts in the file — then each objective's **truth table**: one line
+per leaf term of its detector and what that term answered for this file, every term evaluated
+with no short-circuit, so a detector that "should fire" and does not shows which term is not
+saying what its author thinks:
 
 ```
   campaigns:
-    campaign/lowering-reports-not-throws — `loadPolicy` returns a `Result`, but … (match; 1 hit)
-        ✓ path /\.ts$/
-        ✓ syntax {"pattern":"throw new Error($$$)"} (1)
+    campaign/lowering-reports-not-throws: sector scope
+      in window: throws-in-lowering ✗
+      nearest holdouts in this file:
+        :208  throws-in-lowering  violatingSampleFor#a0afd25d
+      campaign/lowering-reports-not-throws/throws-in-lowering — `loadPolicy` returns a `Result`, but … (match; fires here)
+          ✓ path /\.ts$/
+          ✓ syntax {"pattern":"throw new Error($$$)"} (11)
 ```
 
 The allowlist is shown as compiled regular expressions rather than as the globs you wrote,

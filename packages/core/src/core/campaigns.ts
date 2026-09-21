@@ -431,8 +431,16 @@ const compilePerimeter = (
           perimeter.probes === undefined
             ? null
             : {
-                fires: [...(typeof perimeter.probes.fires === "string" ? [perimeter.probes.fires] : perimeter.probes.fires)],
-                ignores: [...(typeof perimeter.probes.ignores === "string" ? [perimeter.probes.ignores] : perimeter.probes.ignores)],
+                fires: [
+                  ...(typeof perimeter.probes.fires === "string"
+                    ? [perimeter.probes.fires]
+                    : perimeter.probes.fires),
+                ],
+                ignores: [
+                  ...(typeof perimeter.probes.ignores === "string"
+                    ? [perimeter.probes.ignores]
+                    : perimeter.probes.ignores),
+                ],
               },
       });
     }
@@ -507,9 +515,7 @@ export const campaignsSelecting = (
 ): ReadonlyArray<CompiledCampaign> => rules.filter((rule) => anyMatches(rule.scope, file));
 
 // The objectives a host evaluates per file: those with a per-file detector.
-export const perFileObjectivesOf = (
-  rule: CompiledCampaign,
-): ReadonlyArray<CompiledObjective> =>
+export const perFileObjectivesOf = (rule: CompiledCampaign): ReadonlyArray<CompiledObjective> =>
   rule.objectives.filter((objective) => objective.detect !== null);
 
 // Whether any of these detectors reads the syntax tree — the parse a host
@@ -978,11 +984,7 @@ const universeOf = (evaluation: Evaluation, unit: CampaignUnit): ReadonlyArray<C
   return [...byKey.values()].sort((left, right) => left.key.localeCompare(right.key));
 };
 
-const hitOf = (
-  rule: CompiledObjective,
-  file: string,
-  candidate: Candidate,
-): CampaignHit => ({
+const hitOf = (rule: CompiledObjective, file: string, candidate: Candidate): CampaignHit => ({
   violation: {
     kind: "campaign",
     ruleName: rule.name,
@@ -1276,7 +1278,8 @@ export const campaignsFailingTheirProbe = (
       const detect = detectorOf(objective);
       if (detect === null) continue;
       const unit = objective.sector?.kind === "has" ? "file" : objective.unit;
-      for (const probe of objective.probes.fires) check(objective.name, detect, unit, probe, "fires");
+      for (const probe of objective.probes.fires)
+        check(objective.name, detect, unit, probe, "fires");
       for (const probe of objective.probes.ignores) {
         check(objective.name, detect, unit, probe, "ignores");
       }

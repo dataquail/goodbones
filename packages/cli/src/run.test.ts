@@ -13,7 +13,6 @@ import { loadPolicyFromFile as loadPolicy } from "./config-loader.js";
 import {
   campaigns,
   check as checkWith,
-  objectives,
   type CheckReport,
   type CliFailure,
   collectFindings,
@@ -21,6 +20,7 @@ import {
   coverage,
   explain,
   facts,
+  objectives,
   run,
   snapshotOf,
   writeBaseline,
@@ -899,7 +899,9 @@ describe.sequential("campaigns", () => {
   it("fails check on a campaign with hits and no ledger, and says how to clear it", async () => {
     const { exit, output } = await checkCampaigns();
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(output).toContain("campaign legacy-to-modern: 1 sector in an objective's window that no ledger has seen");
+    expect(output).toContain(
+      "campaign legacy-to-modern: 1 sector in an objective's window that no ledger has seen",
+    );
     expect(output).toContain("architecture objectives clear legacy-to-modern");
     const { output: json } = await checkCampaigns("json");
     const report = JSON.parse(json) as CheckReport;
@@ -975,7 +977,9 @@ describe.sequential("campaigns", () => {
       objectives(await campaignPolicy("2026-09-10T00:00:00Z"), ["src"], ["clear"]),
     );
     expect(Exit.isSuccess(cleared.exit)).toBe(true);
-    expect(cleared.output).toContain("legacy-to-modern/out-of-legacy: 1 holdout cleared; 1 holdout left.");
+    expect(cleared.output).toContain(
+      "legacy-to-modern/out-of-legacy: 1 holdout cleared; 1 holdout left.",
+    );
     expect(cleared.output).toContain("no-throw/throws: nothing to clear; 1 holdout left.");
     const ledger = readLedger("legacy-to-modern", "out-of-legacy");
     expect(ledger.sectors.scope).toMatchObject({
@@ -1019,7 +1023,14 @@ describe.sequential("campaigns", () => {
       objectives(
         await campaignPolicy("2026-09-12T00:00:00Z"),
         ["src"],
-        ["concede", "legacy-to-modern", "--reason", "vendored until v4", "--by", "someone@example.com"],
+        [
+          "concede",
+          "legacy-to-modern",
+          "--reason",
+          "vendored until v4",
+          "--by",
+          "someone@example.com",
+        ],
       ),
     );
     expect(Exit.isSuccess(conceded.exit)).toBe(true);
@@ -1129,7 +1140,9 @@ describe.sequential("campaigns", () => {
     const status = await captureReport(campaigns(await campaignPolicy(), ["src"], []));
     expect(status.output).toContain("2 campaigns under src");
     expect(status.output).toMatch(/legacy-to-modern\s+100%\s+0 left.*complete/);
-    const explained = await captureReport(explain(await campaignPolicy(), "src/thrower.ts", ["src"]));
+    const explained = await captureReport(
+      explain(await campaignPolicy(), "src/thrower.ts", ["src"]),
+    );
     expect(explained.output).toContain("campaigns:");
     expect(explained.output).toContain("campaign/no-throw: sector scope");
     expect(explained.output).toContain("in window: throws ✗");
@@ -1293,7 +1306,9 @@ describe.sequential("a report term", () => {
       expect.stringMatching(/^campaign\/type-errors\/tsc\|#TS1005#[0-9a-f]{8}$/),
       expect.stringMatching(/^campaign\/type-errors\/tsc\|parse#TS2551#[0-9a-f]{8}$/),
       expect.stringMatching(/^campaign\/type-errors\/tsc\|parse#TS2551#[0-9a-f]{8}~2$/),
-      expect.stringMatching(/^campaign\/lint-debt\/oxlint\|parse#eslint\(no-debugger\)#[0-9a-f]{8}$/),
+      expect.stringMatching(
+        /^campaign\/lint-debt\/oxlint\|parse#eslint\(no-debugger\)#[0-9a-f]{8}$/,
+      ),
     ]);
     expect(report.campaigns.map((one) => [one.id, one.count])).toEqual([
       ["type-errors", 3],

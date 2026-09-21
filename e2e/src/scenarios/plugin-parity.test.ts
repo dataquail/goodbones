@@ -70,8 +70,8 @@ describe("plugin parity", () => {
     const ledgered = createRepo({ files: everyFamilyFiles });
     ledgered.writeManifest(everyFamilyManifest(ledgered.profile));
     try {
-      const init = cli(ledgered, ["campaigns", "init", "legacy-to-modern", ...EVERY_FAMILY_ROOTS]);
-      expect(init.code, init.stderr).toBe(0);
+      const cleared = cli(ledgered, ["objectives", "clear", "legacy-to-modern", ...EVERY_FAMILY_ROOTS]);
+      expect(cleared.code, cleared.stderr).toBe(0);
       const { json } = check(ledgered, EVERY_FAMILY_ROOTS);
       const hit = json.violations.find((one) => one.kind === "campaign");
       expect(hit?.ledgered).toBe(true);

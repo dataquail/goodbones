@@ -3,7 +3,8 @@
 Architecture policy as one manifest of your repository — import boundaries over resolved module
 paths, restricted export sites, what a file may export, folder taxonomy with sibling parity,
 declared-member allowlists, cycles, orphans and transitive reach over the whole import graph, and
-campaigns that track a migration as a detector with a ledger that only shrinks on its own — enforced
+campaigns that track a refactor as objectives with ledgers that only shrink, over sectors the code
+births, through phases, with a nudge for whoever touches one — enforced
 by an oxlint plugin in the editor and a CLI in CI. Published as independent packages:
 
 | Package                                        | What it does                                                                                                                    |
@@ -11,7 +12,7 @@ by an oxlint plugin in the editor and a CLI in CI. Published as independent pack
 | [`@goodbones/core`](packages/core)             | The manifest schema, the evaluators, the ports a language pack implements, and the loader. Names no language.                   |
 | [`@goodbones/typescript`](packages/typescript) | The TypeScript language pack: facts through oxc-parser, resolution through `unrs-resolver`.                                     |
 | [`@goodbones/ast-grep`](packages/ast-grep)     | The syntax matcher for the campaigns family's `syntax` term, over `@ast-grep/napi`.                                             |
-| [`@goodbones/cli`](packages/cli)               | The `architecture` CLI: `check`, `baseline`, `campaigns`, `coverage`, `explain`, `facts`, and the graph family.                 |
+| [`@goodbones/cli`](packages/cli)               | The `architecture` CLI: `check`, `baseline`, `campaigns`, `objectives`, `coverage`, `explain`, `facts`, and the graph family.   |
 | [`@goodbones/oxlint`](packages/oxlint)         | The oxlint plugin: `imports`, `exports`, `members`, `structure`, `surface` and `campaigns` as six rules over the same manifest. |
 
 📖 **[Documentation](https://dataquail.github.io/goodbones)**

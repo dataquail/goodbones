@@ -12,19 +12,29 @@ import {
   tick,
 } from "./generators.js";
 
-// The ledger round trip: for any tree, `campaigns init` then `check` is ok
-// with every hit ledgered; `prune` with nothing fixed changes nothing; and
-// after a file that hit is deleted, `check` fails on the stale entry until
-// `prune` reproduces exactly the entries the hits now spell.
+// The ledger round trip: for any tree, `objectives clear` then `check` is ok
+// with every hit ledgered; `clear` with nothing fixed changes nothing; and
+// after a file that hit is deleted, `check` fails on the stale holdout
+// until `clear` reproduces exactly the entries the hits now spell — under
+// the implicit sector, whose root is the repository.
 
 type Ledger = {
-  readonly initial: number;
-  readonly fixed: number;
-  readonly lastProgress: string;
-  readonly entries: ReadonlyArray<string>;
+  readonly sectors: Readonly<
+    Record<
+      string,
+      {
+        readonly initial: number;
+        readonly cleared: number;
+        readonly holdouts: ReadonlyArray<string>;
+      }
+    >
+  >;
 };
 
-const CAMPAIGNS = ["handlers-and-services", "no-literal-ones"];
+const CAMPAIGNS: ReadonlyArray<readonly [string, string]> = [
+  ["handlers-and-services", "behind-the-bus"],
+  ["no-literal-ones", "literal-one"],
+];
 
 const entryOf = (one: { readonly file: string; readonly subject: string | null }): string =>
   one.subject === null ? one.file : `${one.file}#${one.subject}`;
@@ -38,7 +48,7 @@ const arbTreeWithHit = () =>
 
 describe("ledger round trip", () => {
   it(
-    "init then check is ok with every hit ledgered, and prune reproduces the entries",
+    "clear then check is ok with every hit ledgered, and clear reproduces the entries",
     async () => {
       await fc.assert(
         fc.asyncProperty(arbTreeWithHit(), async (tree) => {
@@ -48,19 +58,27 @@ describe("ledger round trip", () => {
             repo.writeManifest(campaignManifest(repo.profile));
             const before = check(repo, ["src"]);
             expect(before.json.unresolved, before.stderr).toEqual([]);
-            const hitsOf = (json: typeof before.json, id: string) =>
+            const hitsOf = (json: typeof before.json, id: string, objective: string) =>
               json.violations
-                .filter((one) => one.ruleName === `campaign/${id}`)
+                .filter((one) => one.ruleName === `campaign/${id}/${objective}`)
                 .map(entryOf)
                 .sort();
-            const written = (id: string): Ledger =>
-              JSON.parse(repo.read(`.architecture-campaigns/${id}.json`)) as Ledger;
+            const written = (id: string, objective: string) => {
+              const ledger = JSON.parse(
+                repo.read(`.architecture-campaigns/${id}/${objective}.json`),
+              ) as Ledger;
+              const scope = ledger.sectors.scope;
+              if (scope === undefined) throw new Error("no implicit sector in the ledger");
+              return scope;
+            };
 
-            for (const id of CAMPAIGNS) {
-              const init = cli(repo, ["campaigns", "init", id, "src"]);
-              expect(init.code, init.stderr).toBe(0);
-              expect(written(id).entries).toEqual([...new Set(hitsOf(before.json, id))]);
-              expect(written(id).initial).toBe(written(id).entries.length);
+            const cleared = cli(repo, ["objectives", "clear", "src"]);
+            expect(cleared.code, cleared.stderr).toBe(0);
+            for (const [id, objective] of CAMPAIGNS) {
+              expect(written(id, objective).holdouts).toEqual([
+                ...new Set(hitsOf(before.json, id, objective)),
+              ]);
+              expect(written(id, objective).initial).toBe(written(id, objective).holdouts.length);
             }
 
             const after = check(repo, ["src"]);
@@ -73,13 +91,13 @@ describe("ledger round trip", () => {
                 .every((one) => one.ledgered),
             ).toBe(true);
 
-            // Nothing fixed: prune is a no-op, and says so.
-            const idle = cli(repo, ["campaigns", "prune", "src"]);
+            // Nothing fixed: clear is a no-op, and says so.
+            const idle = cli(repo, ["objectives", "clear", "src"]);
             expect(idle.code, idle.stderr).toBe(0);
-            expect(idle.stdout).toContain("nothing to prune");
+            expect(idle.stdout).toContain("nothing to clear");
 
             // A file that hit both campaigns is deleted: both ledgers are
-            // stale, check fails, and prune reproduces the hits.
+            // stale, check fails, and clear reproduces the hits.
             const victim = tree.files.find((file) => /\/(handler|service)\.ts$/.test(file));
             if (victim === undefined) return;
             repo.remove(victim);
@@ -87,16 +105,17 @@ describe("ledger round trip", () => {
             expect(stale.code).toBe(1);
             expect(stale.json.campaigns.map((one) => one.stale.length > 0)).toEqual([true, true]);
 
-            const pruned = cli(repo, ["campaigns", "prune", "src"]);
-            expect(pruned.code, pruned.stderr).toBe(0);
+            const recleared = cli(repo, ["objectives", "clear", "src"]);
+            expect(recleared.code, recleared.stderr).toBe(0);
             const settled = check(repo, ["src"]);
             expect(
               settled.json.campaigns.every((one) => one.new.length === 0 && one.stale.length === 0),
             ).toBe(true);
-            for (const id of CAMPAIGNS) {
-              expect(written(id).entries).toEqual([...new Set(hitsOf(settled.json, id))]);
-              expect(written(id).fixed).toBeGreaterThan(0);
-              expect(written(id).initial - written(id).fixed).toBe(written(id).entries.length);
+            for (const [id, objective] of CAMPAIGNS) {
+              const scope = written(id, objective);
+              expect(scope.holdouts).toEqual([...new Set(hitsOf(settled.json, id, objective))]);
+              expect(scope.cleared).toBeGreaterThan(0);
+              expect(scope.initial - scope.cleared).toBe(scope.holdouts.length);
             }
           } finally {
             repo.dispose();

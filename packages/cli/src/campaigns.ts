@@ -8,13 +8,13 @@ import {
   type CampaignInput,
   clearedSector,
   compareResidue,
+  type CompiledCampaign,
+  type CompiledObjective,
   compileExportRules,
   compileImportRules,
   compileMemberRules,
   compileStructure,
   compileSurfaceRules,
-  type CompiledCampaign,
-  type CompiledObjective,
   concededSector,
   detectorOf,
   type Direction,
@@ -47,8 +47,8 @@ import {
   needsSyntax,
   notedRecord,
   type ObjectiveHit,
-  onTouchOf,
   type OnTouch,
+  onTouchOf,
   parseSectorMarker,
   type PhaseRule,
   planDiffOf,
@@ -158,7 +158,6 @@ const readersOf = (policy: LoadedPolicy): Readers => {
 const endStateViolations = (
   policy: LoadedPolicy,
   readers: Readers,
-  rule: CompiledCampaign,
   sectors: ReadonlyArray<Sector>,
   sector: Sector,
   phase: PhaseRule,
@@ -197,7 +196,10 @@ const endStateViolations = (
     const selectedMembers = memberRulesSelecting(members, file);
     const selectedSurface = surfaceRulesSelecting(surface, file);
     if (
-      selectedImports.length + selectedExports.length + selectedMembers.length + selectedSurface.length ===
+      selectedImports.length +
+        selectedExports.length +
+        selectedMembers.length +
+        selectedSurface.length ===
       0
     ) {
       continue;
@@ -285,7 +287,7 @@ export const evaluateCampaigns = (
         const key = `${sector.name}\u0000${phase.id}`;
         let found = endStates.get(key);
         if (found === undefined) {
-          found = endStateViolations(policy, readers, rule, known, sector, phase);
+          found = endStateViolations(policy, readers, known, sector, phase);
           endStates.set(key, found);
         }
         return found[family] ?? [];
@@ -353,7 +355,11 @@ export type CampaignReport = {
   readonly sectors: ReadonlyArray<SectorReport>;
   // Files two sectors claim.
   readonly drift: ReadonlyArray<{ readonly file: string; readonly sectors: ReadonlyArray<string> }>;
-  readonly plan: { refined: ReadonlyArray<string>; changed: ReadonlyArray<string>; unreceipted: ReadonlyArray<string> };
+  readonly plan: {
+    refined: ReadonlyArray<string>;
+    changed: ReadonlyArray<string>;
+    unreceipted: ReadonlyArray<string>;
+  };
 };
 
 const entriesOf = (
@@ -361,7 +367,9 @@ const entriesOf = (
   objective: string,
   sector: string,
 ): ReadonlyArray<string> =>
-  hits.filter((hit) => hit.objective === objective && hit.sector === sector).map((hit) => hit.entry);
+  hits
+    .filter((hit) => hit.objective === objective && hit.sector === sector)
+    .map((hit) => hit.entry);
 
 const sectorNames = (evaluation: CampaignEvaluation): ReadonlyArray<string> => [
   ...evaluation.sectors.keys(),
@@ -387,15 +395,16 @@ export const campaignReportsOf = (
         if (!inWindow) {
           // Past the window: what the ledger still carries is closed by
           // `clear`, and nothing here counts.
-          if (recorded && (ledger?.sectors[name]?.holdouts.length ?? 0) > 0) {
+          const carried = ledger?.sectors[name]?.holdouts ?? [];
+          if (ledger !== undefined && carried.length > 0) {
             sectors.push({
               sector: name,
               count: 0,
               new: [],
-              stale: ledger?.sectors[name]?.holdouts ?? [],
+              stale: carried,
               drifted: 0,
               unrecorded: false,
-              arithmetic: ledger === undefined ? true : sectorArithmeticHolds(ledger, name),
+              arithmetic: sectorArithmeticHolds(ledger, name),
             });
           }
           continue;
@@ -522,8 +531,12 @@ export const ledgeredFilter = (
 };
 
 // Why a campaign report is not ok, in the order `check` explains it.
-export const campaignFailuresOf = (campaigns: ReadonlyArray<CampaignReport>): ReadonlyArray<string> => [
-  ...campaigns.filter((one) => one.drift.length > 0).map((one) => `campaign ${one.id}: a file is in two sectors`),
+export const campaignFailuresOf = (
+  campaigns: ReadonlyArray<CampaignReport>,
+): ReadonlyArray<string> => [
+  ...campaigns
+    .filter((one) => one.drift.length > 0)
+    .map((one) => `campaign ${one.id}: a file is in two sectors`),
   ...campaigns
     .filter((one) => one.plan.unreceipted.length > 0)
     .map((one) => `campaign ${one.id}: a defined phase changed without a concession`),
@@ -545,30 +558,41 @@ const count = (n: number, noun: string, plural = `${noun}s`): string =>
 // answers each.
 export const renderCampaignReports = (
   reports: ReadonlyArray<CampaignReport>,
-  hits: ReadonlyArray<{ readonly violation: Violation; readonly objective: string; readonly sector: string; readonly entry: string; readonly ledgered: boolean }>,
+  hits: ReadonlyArray<{
+    readonly violation: Violation;
+    readonly objective: string;
+    readonly sector: string;
+    readonly entry: string;
+    readonly ledgered: boolean;
+  }>,
 ): ReadonlyArray<string> =>
   reports.flatMap((campaign): ReadonlyArray<string> => {
     const lines: Array<string> = [];
+    const say = (...more: ReadonlyArray<string>): void => {
+      for (const one of more) lines.push(one);
+    };
     const at = (objective: string, sector: string, entry: string): string =>
       `  ${objective} · ${sector} · ${entry}`;
     if (campaign.drift.length > 0) {
-      lines.push(
+      say(
         "",
         `campaign ${campaign.id}: ${count(campaign.drift.length, "file is", "files are")} in two sectors. A perimeter nests another; narrow one:`,
         ...campaign.drift.map((one) => `  ${one.file}  (${one.sectors.join(", ")})`),
       );
     }
     if (campaign.plan.unreceipted.length > 0) {
-      lines.push(
+      say(
         "",
         `campaign ${campaign.id}: ${count(campaign.plan.unreceipted.length, "defined phase")} changed since the last clear with no concession: ${campaign.plan.unreceipted.join(", ")}. Add a \`concessions\` entry to the phase with a reason and a date, then run \`objectives clear\`.`,
       );
     }
     if (campaign.missingLedger) {
       const unrecorded = campaign.objectives.flatMap((objective) =>
-        objective.sectors.filter((one) => one.unrecorded && (one.count > 0 || objective.ledgered)).map((one) => `  ${objective.id} · ${one.sector}  (${count(one.count, "hit")})`),
+        objective.sectors
+          .filter((one) => one.unrecorded && (one.count > 0 || objective.ledgered))
+          .map((one) => `  ${objective.id} · ${one.sector}  (${count(one.count, "hit")})`),
       );
-      lines.push(
+      say(
         "",
         `campaign ${campaign.id}: ${count(unrecorded.length, "sector")} in an objective's window that no ledger has seen. Record them before they count as growth:`,
         ...unrecorded,
@@ -577,12 +601,15 @@ export const renderCampaignReports = (
       );
     }
     if (campaign.new.length > 0 && !campaign.missingLedger) {
-      lines.push(
+      say(
         "",
         `campaign ${campaign.id}: ${count(campaign.new.length, "new hit")} the ledger does not carry. Fix them, or record why the count may rise:`,
         ...campaign.new.flatMap((one) => {
           const hit = hits.find(
-            (two) => two.objective === one.objective && two.sector === one.sector && two.entry === one.entry,
+            (two) =>
+              two.objective === one.objective &&
+              two.sector === one.sector &&
+              two.entry === one.entry,
           );
           return [
             at(one.objective, one.sector, one.entry),
@@ -594,7 +621,7 @@ export const renderCampaignReports = (
       );
     }
     if (campaign.stale.length > 0) {
-      lines.push(
+      say(
         "",
         `campaign ${campaign.id}: ${count(campaign.stale.length, "ledger entry", "ledger entries")} no longer fire, or fire past their window. The code was fixed, or the sector moved on; clear them:`,
         ...campaign.stale.map((one) => at(one.objective, one.sector, one.entry)),
@@ -603,35 +630,38 @@ export const renderCampaignReports = (
       );
     }
     if (!campaign.arithmetic) {
-      lines.push(
+      say(
         "",
         `campaign ${campaign.id}: a ledger does not add up (holdouts ≠ initial + conceded − cleared − closed). A holdout was added by hand; remove it, or record it with \`objectives concede\`.`,
       );
     }
     const complete = campaign.complete && !campaign.missingLedger;
     if (complete && campaign.onComplete === "remove") {
-      lines.push(
+      say(
         "",
         `campaign ${campaign.id} is complete and declares onComplete: remove. Delete it from the manifest, and its ledgers.`,
       );
     }
     if (campaign.stalled) {
-      lines.push(
+      say(
         "",
         `notice: campaign ${campaign.id} has stalled — nothing has left a ledger, and no sector has been attested or noted, within its staleAfter.`,
       );
     }
     if (complete && campaign.onComplete === "keep") {
-      lines.push("", `notice: campaign ${campaign.id} is complete, and stays as a guard.`);
+      say("", `notice: campaign ${campaign.id} is complete, and stays as a guard.`);
     }
     if (campaign.plan.changed.length > 0 && campaign.plan.unreceipted.length === 0) {
-      lines.push(
+      say(
         "",
         `notice: campaign ${campaign.id}: plan changed — ${campaign.plan.changed.join(", ")} (receipted; the next clear re-baselines the sectors in window).`,
       );
     }
     if (campaign.plan.refined.length > 0) {
-      lines.push("", `notice: campaign ${campaign.id}: plan refined — ${campaign.plan.refined.join(", ")}.`);
+      say(
+        "",
+        `notice: campaign ${campaign.id}: plan refined — ${campaign.plan.refined.join(", ")}.`,
+      );
     }
     return lines;
   });
@@ -687,7 +717,10 @@ export const snapshotCampaignsOf = (
         ledgered: true,
       };
     });
-    const totalInitial = objectives.reduce((sum, one) => sum + one.initial + one.allowed - one.closed, 0);
+    const totalInitial = objectives.reduce(
+      (sum, one) => sum + one.initial + one.allowed - one.closed,
+      0,
+    );
     const totalCount = objectives.reduce((sum, one) => sum + one.count, 0);
     const sectors = [...evaluation.sectors.values()].filter((one) => one.name !== LEGACY_SECTOR);
     const legacy = evaluation.sectors.get(LEGACY_SECTOR);
@@ -728,7 +761,8 @@ export const snapshotCampaignsOf = (
       }),
       legacy: {
         files: evaluation.index.legacy.length,
-        holdouts: legacy === undefined ? 0 : Object.values(legacy.residue).reduce((a, b) => a + b, 0),
+        holdouts:
+          legacy === undefined ? 0 : Object.values(legacy.residue).reduce((a, b) => a + b, 0),
       },
       plan: report.plan,
       stalled: report.stalled,
@@ -743,7 +777,9 @@ const percent = (fraction: number): string => `${String(Math.round(fraction * 10
 // The status table: one row per campaign, its phase distribution beneath
 // when it has phases, its objectives beneath that. Stalled and complete
 // first, then by progress.
-export const renderCampaignRows = (campaigns: ReadonlyArray<SnapshotCampaign>): ReadonlyArray<string> => {
+export const renderCampaignRows = (
+  campaigns: ReadonlyArray<SnapshotCampaign>,
+): ReadonlyArray<string> => {
   const state = (one: SnapshotCampaign): string =>
     !one.ledgered ? "no ledger" : one.complete ? "complete" : one.stalled ? "stalled" : "";
   const ordered = [...campaigns].sort((left, right) => {
@@ -762,7 +798,9 @@ export const renderCampaignRows = (campaigns: ReadonlyArray<SnapshotCampaign>): 
         ? []
         : [
             `    phases: ${one.phases
-              .map((phase) => `${phase.id}${phase.defined ? "" : " (open)"} ${String(phase.sectors)}`)
+              .map(
+                (phase) => `${phase.id}${phase.defined ? "" : " (open)"} ${String(phase.sectors)}`,
+              )
               .join(" → ")}` +
               (one.legacy.files > 0 ? `  · legacy ${count(one.legacy.files, "file")}` : ""),
           ]),
@@ -834,12 +872,17 @@ export const clear = (
   const outcomes: Array<ClearOutcome> = [];
   for (const objective of rule.objectives) {
     if (only !== null && objective.id !== only) continue;
-    const before = ledgerOf(policy, rule, objective) ?? EMPTY_LEDGER(rule.id, objective.id, policy.now);
+    const before =
+      ledgerOf(policy, rule, objective) ?? EMPTY_LEDGER(rule.id, objective.id, policy.now);
     let ledger = before;
     const entered: Array<string> = [];
     const rebaselined: Array<string> = [];
     const phase = rule.phases.find((one) => one.objectives.includes(objective.id));
-    const receipted = phase !== undefined && plan.changed.includes(phase.id) && !plan.unreceipted.includes(phase.id);
+    // The phase naming the objective, when it changed with a receipt.
+    const receipted =
+      phase !== undefined && plan.changed.includes(phase.id) && !plan.unreceipted.includes(phase.id)
+        ? phase
+        : null;
     let rewritten = 0;
     for (const [name, state] of evaluation.sectors) {
       const inWindow = state.inWindow.some((one) => one.id === objective.id);
@@ -850,12 +893,12 @@ export const clear = (
       }
       if (ledger.sectors[name] === undefined) entered.push(name);
       else rewritten += reconcileSector(ledger, name, entries, objective.unit).drifted.length;
-      if (receipted && ledger.sectors[name] !== undefined) {
-        const concession = phase?.concessions.at(-1);
+      if (receipted !== null && ledger.sectors[name] !== undefined) {
+        const concession = receipted.concessions.at(-1);
         const next = rebaselinedSector(ledger, name, entries, {
           at: policy.now,
           by,
-          reason: `phase ${phase?.id ?? ""} changed: ${concession?.reason ?? ""}`,
+          reason: `phase ${receipted.id} changed: ${concession?.reason ?? ""}`,
         });
         if (next !== ledger) rebaselined.push(name);
         ledger = next;
@@ -882,7 +925,11 @@ export const clear = (
       left: sum(ledger, (one) => one.holdouts.length),
     });
     if (ledger !== before || ledgerOf(policy, rule, objective) === undefined) {
-      writeJson(policy.repoRoot, ledgerPathOf(policy.ledgerDir, rule.id, objective.id), serializeLedger(ledger));
+      writeJson(
+        policy.repoRoot,
+        ledgerPathOf(policy.ledgerDir, rule.id, objective.id),
+        serializeLedger(ledger),
+      );
     }
   }
   if (only === null) {
@@ -898,7 +945,11 @@ export const clear = (
         );
       }
     }
-    writeJson(policy.repoRoot, planPathOf(policy.ledgerDir, rule.id), serializePlanRecord(planOf(rule)));
+    writeJson(
+      policy.repoRoot,
+      planPathOf(policy.ledgerDir, rule.id),
+      serializePlanRecord(planOf(rule)),
+    );
     const legacy = policy.legacyLedgers.get(rule.id);
     if (legacy !== undefined) rmSync(path.resolve(policy.repoRoot, legacy), { force: true });
   }
@@ -923,10 +974,13 @@ export const concede = (
 ): Result.Result<ConcedeOutcome, string> => {
   const { rule } = evaluation;
   const objective = rule.objectives.find((one) => one.id === objectiveId);
-  if (objective === undefined) return Result.fail(`no objective of ${rule.id} is named "${objectiveId}"`);
+  if (objective === undefined)
+    return Result.fail(`no objective of ${rule.id} is named "${objectiveId}"`);
   let ledger = ledgerOf(policy, rule, objective);
   if (ledger === undefined) {
-    return Result.fail(`objective ${rule.id}/${objectiveId} has no ledger yet; run \`objectives clear ${rule.id}\` first.`);
+    return Result.fail(
+      `objective ${rule.id}/${objectiveId} has no ledger yet; run \`objectives clear ${rule.id}\` first.`,
+    );
   }
   const counted = hitsInWindow(evaluation);
   const unrecorded: Array<{ sector: string; entry: string }> = [];
@@ -941,20 +995,29 @@ export const concede = (
   const wanted =
     chosen === null
       ? unrecorded
-      : unrecorded.filter((one) => chosen.includes(one.entry) || chosen.includes(`${one.sector}:${one.entry}`));
+      : unrecorded.filter(
+          (one) => chosen.includes(one.entry) || chosen.includes(`${one.sector}:${one.entry}`),
+        );
   if (chosen !== null) {
     const unknown = chosen.filter(
       (one) => !unrecorded.some((two) => two.entry === one || `${two.sector}:${two.entry}` === one),
     );
     if (unknown.length > 0) {
-      return Result.fail(`these are not unrecorded hits of ${rule.id}/${objectiveId}: ${unknown.join(", ")}`);
+      return Result.fail(
+        `these are not unrecorded hits of ${rule.id}/${objectiveId}: ${unknown.join(", ")}`,
+      );
     }
   }
   const bySector = new Map<string, Array<string>>();
-  for (const one of wanted) bySector.set(one.sector, [...(bySector.get(one.sector) ?? []), one.entry]);
+  for (const one of wanted)
+    bySector.set(one.sector, [...(bySector.get(one.sector) ?? []), one.entry]);
   for (const [name, entries] of bySector) ledger = concededSector(ledger, name, entries, record);
   if (wanted.length > 0) {
-    writeJson(policy.repoRoot, ledgerPathOf(policy.ledgerDir, rule.id, objective.id), serializeLedger(ledger));
+    writeJson(
+      policy.repoRoot,
+      ledgerPathOf(policy.ledgerDir, rule.id, objective.id),
+      serializeLedger(ledger),
+    );
   }
   return Result.succeed({
     objective: objectiveId,
@@ -975,10 +1038,14 @@ export const attest = (
 ): Result.Result<string, string> => {
   const { rule } = evaluation;
   const state = evaluation.sectors.get(sector);
-  if (state === undefined) return Result.fail(`campaign ${rule.id} has no sector named "${sector}"`);
+  if (state === undefined)
+    return Result.fail(`campaign ${rule.id} has no sector named "${sector}"`);
   const phase = rule.phases.find((one) => one.id === phaseId);
   if (phase === undefined) return Result.fail(`campaign ${rule.id} has no phase "${phaseId}"`);
-  if (!phase.attested) return Result.fail(`phase ${phaseId} is not an attested phase; its objectives decide when a sector leaves it.`);
+  if (!phase.attested)
+    return Result.fail(
+      `phase ${phaseId} is not an attested phase; its objectives decide when a sector leaves it.`,
+    );
   const current = phaseIdOf(rule, state.phase);
   if (current !== phaseId) {
     return Result.fail(
@@ -993,7 +1060,11 @@ export const attest = (
     at: policy.now,
     by: entry.by,
   });
-  writeJson(policy.repoRoot, sectorRecordPathOf(policy.ledgerDir, rule.id, sector), serializeSectorRecord(after));
+  writeJson(
+    policy.repoRoot,
+    sectorRecordPathOf(policy.ledgerDir, rule.id, sector),
+    serializeSectorRecord(after),
+  );
   return Result.succeed(sectorRecordPathOf(policy.ledgerDir, rule.id, sector));
 };
 
@@ -1008,10 +1079,20 @@ export const note = (
 ): Result.Result<string, string> => {
   const { rule } = evaluation;
   const state = evaluation.sectors.get(sector);
-  if (state === undefined) return Result.fail(`campaign ${rule.id} has no sector named "${sector}"`);
+  if (state === undefined)
+    return Result.fail(`campaign ${rule.id} has no sector named "${sector}"`);
   const before = recordOf(policy, rule, sector) ?? EMPTY_SECTOR_RECORD(rule.id, sector, policy.now);
-  const after = notedRecord(before, { phase: phaseIdOf(rule, state.phase), text, by, at: policy.now });
-  writeJson(policy.repoRoot, sectorRecordPathOf(policy.ledgerDir, rule.id, sector), serializeSectorRecord(after));
+  const after = notedRecord(before, {
+    phase: phaseIdOf(rule, state.phase),
+    text,
+    by,
+    at: policy.now,
+  });
+  writeJson(
+    policy.repoRoot,
+    sectorRecordPathOf(policy.ledgerDir, rule.id, sector),
+    serializeSectorRecord(after),
+  );
   return Result.succeed(sectorRecordPathOf(policy.ledgerDir, rule.id, sector));
 };
 
@@ -1144,7 +1225,8 @@ export const nudgeOf = (
         if (baseEvaluation !== null) {
           before[objective.id] = baseEvaluation.sectors[name]?.[objective.id] ?? 0;
         } else {
-          before[objective.id] = ledgerOf(policy, rule, objective)?.sectors[name]?.holdouts.length ?? 0;
+          before[objective.id] =
+            ledgerOf(policy, rule, objective)?.sectors[name]?.holdouts.length ?? 0;
         }
       }
       const after = state.residue;
@@ -1154,21 +1236,25 @@ export const nudgeOf = (
       const ranked = inTouched
         .map((hit) => {
           const hunks = diff.touched.get(hit.violation.file) ?? [];
-          const rank =
-            hit.range === undefined
-              ? hit.entry === "~"
-                ? 2
-                : 1
-              : 0;
+          const rank = hit.range === undefined ? (hit.entry === "~" ? 2 : 1) : 0;
           const distance =
             hit.range === undefined
               ? Number.POSITIVE_INFINITY
               : distanceToHunks(hunks, hit.range.start.line + 1, hit.range.end.line + 1);
           return { hit, rank, distance };
         })
-        .sort((a, b) => a.rank - b.rank || a.distance - b.distance || a.hit.entry.localeCompare(b.hit.entry));
+        .sort((a, b) =>
+          a.rank !== b.rank
+            ? a.rank - b.rank
+            : a.distance !== b.distance
+              ? a.distance - b.distance
+              : a.hit.entry.localeCompare(b.hit.entry),
+        );
       const sectorLevel = own.filter((hit) => hit.entry === "~");
-      const shownSource = [...ranked.map((one) => one.hit), ...sectorLevel.filter((hit) => !inTouched.includes(hit))];
+      const shownSource = [
+        ...ranked.map((one) => one.hit),
+        ...sectorLevel.filter((hit) => !inTouched.includes(hit)),
+      ];
       const shown = shownSource.slice(0, HOLDOUT_CAP).map((hit) => ({
         file: hit.violation.file,
         subject: hit.violation.subject,
@@ -1191,25 +1277,32 @@ export const nudgeOf = (
                   .filter((hit) => hit.sector === name && hit.objective === objective.id)
                   .map((hit) => hit.entry),
               );
-        const state_ = ledger === undefined && baseEvaluation === null
-          ? { unrecorded: entries, stale: [] as ReadonlyArray<string>, ledgered: [] as ReadonlyArray<string> }
-          : baseEvaluation === null && ledger !== undefined
-            ? reconcileSector(ledger, name, entries, objective.unit)
-            : {
-                unrecorded: entries.filter((entry) => !knownBefore.has(entry)),
-                stale: [...knownBefore].filter((entry) => !entries.includes(entry)),
-                ledgered: entries.filter((entry) => knownBefore.has(entry)),
-              };
+        const state_ =
+          ledger === undefined && baseEvaluation === null
+            ? {
+                unrecorded: entries,
+                stale: [] as ReadonlyArray<string>,
+                ledgered: [] as ReadonlyArray<string>,
+              }
+            : baseEvaluation === null && ledger !== undefined
+              ? reconcileSector(ledger, name, entries, objective.unit)
+              : {
+                  unrecorded: entries.filter((entry) => !knownBefore.has(entry)),
+                  stale: [...knownBefore].filter((entry) => !entries.includes(entry)),
+                  ledgered: entries.filter((entry) => knownBefore.has(entry)),
+                };
         for (const entry of state_.unrecorded) {
           const hit = own.find((one) => one.objective === objective.id && one.entry === entry);
-          if (hit !== undefined && diff.touched.has(hit.violation.file)) added.push(`${objective.id}: ${entry}`);
+          if (hit !== undefined && diff.touched.has(hit.violation.file))
+            added.push(`${objective.id}: ${entry}`);
         }
         for (const entry of state_.stale) removed.push(`${objective.id}: ${entry}`);
         for (const hit of inTouched) {
           if (hit.objective !== objective.id || hit.range === undefined) continue;
           if (!knownBefore.has(hit.entry) && !state_.ledgered.includes(hit.entry)) continue;
           const hunks = diff.touched.get(hit.violation.file) ?? [];
-          if (distanceToHunks(hunks, hit.range.start.line + 1, hit.range.end.line + 1) === 0) editsHoldout = true;
+          if (distanceToHunks(hunks, hit.range.start.line + 1, hit.range.end.line + 1) === 0)
+            editsHoldout = true;
         }
         if (state_.stale.length > 0) editsHoldout = true;
       }
@@ -1233,13 +1326,21 @@ export const nudgeOf = (
         for (const objective of state.inWindow) {
           const ledger = ledgerOf(policy, rule, objective);
           if (ledger === undefined) continue;
-          const entries = own.filter((hit) => hit.objective === objective.id).map((hit) => hit.entry);
+          const entries = own
+            .filter((hit) => hit.objective === objective.id)
+            .map((hit) => hit.entry);
           const { unrecorded } = reconcileSector(ledger, name, entries, objective.unit);
           if (unrecorded.length === 0) continue;
           writeJson(
             policy.repoRoot,
             ledgerPathOf(policy.ledgerDir, rule.id, objective.id),
-            serializeLedger(concededSector(ledger, name, unrecorded, { at: policy.now, by, reason: `hotfix: ${hotfix}` })),
+            serializeLedger(
+              concededSector(ledger, name, unrecorded, {
+                at: policy.now,
+                by,
+                reason: `hotfix: ${hotfix}`,
+              }),
+            ),
           );
         }
         verdict = "hotfix";
@@ -1307,21 +1408,30 @@ const describeAsk = (ask: Ask): string => {
 
 export const renderNudge = (nudge: Nudge, now: number): ReadonlyArray<string> => {
   if (nudge.sectors.length === 0 && nudge.unbirths.length === 0) {
-    return [`nothing you touched is under a campaign (${count(nudge.touched.length, "file")} in the diff).`];
+    return [
+      `nothing you touched is under a campaign (${count(nudge.touched.length, "file")} in the diff).`,
+    ];
   }
   const lines: Array<string> = [];
+  const say = (...more: ReadonlyArray<string>): void => {
+    for (const one of more) lines.push(one);
+  };
   const residueOf = (vector: ResidueVector): string =>
     Object.entries(vector)
       .map(([id, n]) => `${id} ${String(n)}`)
       .join(" · ");
   for (const one of nudge.unbirths) {
-    lines.push(`${one.campaign}`, `  this diff un-births sector ${one.sector}: ${one.marker} was deleted; its files return to the legacy, where the first phase's objectives count for them.`, "");
+    say(
+      `${one.campaign}`,
+      `  this diff un-births sector ${one.sector}: ${one.marker} was deleted; its files return to the legacy, where the first phase's objectives count for them.`,
+      "",
+    );
   }
   let last = "";
   for (const one of nudge.sectors) {
     if (one.campaign !== last) {
-      if (last !== "") lines.push("");
-      lines.push(one.campaign);
+      if (last !== "") say("");
+      say(one.campaign);
       last = one.campaign;
     }
     // A campaign with no phases has one implicit one: its objectives.
@@ -1330,29 +1440,33 @@ export const renderNudge = (nudge: Nudge, now: number): ReadonlyArray<string> =>
         ? "its objectives"
         : `phase ${one.phase.id ?? "done"} (${String(one.phase.index + 1)} of ${String(one.phase.of)}${one.phase.open ? ", open" : ""})`;
     const quiet =
-      one.holdouts.total === 0 && one.direction === "neutral" && !one.phase.open && one.verdict === "ok" && one.belongsInSector.length === 0;
+      one.holdouts.total === 0 &&
+      one.direction === "neutral" &&
+      !one.phase.open &&
+      one.verdict === "ok" &&
+      one.belongsInSector.length === 0;
     if (quiet) {
-      lines.push(`  ${one.sector} at ${at} · nothing in your files, diff neutral`);
+      say(`  ${one.sector} at ${at} · nothing in your files, diff neutral`);
       continue;
     }
-    lines.push(`  ${one.sector} — ${at}${days(one.phase.since, now)}`);
+    say(`  ${one.sector} — ${at}${days(one.phase.since, now)}`);
     if (one.phase.open) {
-      lines.push(`    intent: ${one.intent ?? "(none stated)"}`);
+      say(`    intent: ${one.intent ?? "(none stated)"}`);
       if (one.notes.length > 0) {
-        lines.push(
+        say(
           `    notes (${String(one.notes.length)}, data, left at this phase): ${one.notes.map((n) => `${n.at.slice(0, 10)} ${JSON.stringify(n.text)}`).join(" · ")}`,
         );
       }
-      lines.push(
+      say(
         `    if this change taught you something about that shape: refine phase \`${one.phase.id ?? ""}\` in the manifest`,
         `    (a defined phase needs at least one objective with a probe), in its own commit — or leave a note:`,
         `      architecture campaigns note ${one.sector} "…" --campaign ${one.campaign}`,
       );
     } else {
       const toward = residueOf(one.toward);
-      if (toward !== "") lines.push(`    toward the next phase: ${toward}`);
+      if (toward !== "") say(`    toward the next phase: ${toward}`);
       if (one.holdouts.shown.length > 0) {
-        lines.push(
+        say(
           `    in the files you touched, nearest your change (${String(one.holdouts.shown.length)} of ${String(one.holdouts.total)}):`,
           ...one.holdouts.shown.map(
             (h) =>
@@ -1361,20 +1475,22 @@ export const renderNudge = (nudge: Nudge, now: number): ReadonlyArray<string> =>
         );
       }
       if (one.added.length > 0 || one.removed.length > 0) {
-        const delta = [
-          ...one.removed.map((r) => `−${r}`),
-          ...one.added.map((a) => `+${a}`),
-        ].join(" · ");
-        lines.push(`    this diff: ${delta}  ${one.direction}`);
+        const delta = [...one.removed.map((r) => `−${r}`), ...one.added.map((a) => `+${a}`)].join(
+          " · ",
+        );
+        say(`    this diff: ${delta}  ${one.direction}`);
       } else if (one.direction !== "neutral") {
-        lines.push(`    this diff: ${residueOf(one.residue.before)} → ${residueOf(one.residue.after)}  ${one.direction}`);
+        say(
+          `    this diff: ${residueOf(one.residue.before)} → ${residueOf(one.residue.after)}  ${one.direction}`,
+        );
       }
     }
-    for (const file of one.belongsInSector) lines.push(`    ${file} landed in the legacy inside the scope: this belongs in a sector`);
-    lines.push(`    onTouch: ${one.onTouch} — ${one.verdict}`);
-    lines.push(`    ask: ${describeAsk(one.ask)}`);
+    for (const file of one.belongsInSector)
+      say(`    ${file} landed in the legacy inside the scope: this belongs in a sector`);
+    say(`    onTouch: ${one.onTouch} — ${one.verdict}`);
+    say(`    ask: ${describeAsk(one.ask)}`);
   }
-  lines.push("", `testsChecked: unknown · ${nudge.ok ? "ok" : "not ok"}`);
+  say("", `testsChecked: unknown · ${nudge.ok ? "ok" : "not ok"}`);
   return lines;
 };
 
@@ -1406,14 +1522,23 @@ export const historyOf = (
     const counts: Record<string, number> = {};
     for (const objective of rule.objectives) {
       const text =
-        textAt(policy.repoRoot, commit.sha, ledgerPathOf(policy.ledgerDir, rule.id, objective.id)) ??
-        (rule.objectives.length === 1 ? textAt(policy.repoRoot, commit.sha, legacy) : null);
+        textAt(
+          policy.repoRoot,
+          commit.sha,
+          ledgerPathOf(policy.ledgerDir, rule.id, objective.id),
+        ) ?? (rule.objectives.length === 1 ? textAt(policy.repoRoot, commit.sha, legacy) : null);
       if (text === null) continue;
       try {
-        const raw = JSON.parse(text) as { sectors?: Record<string, { holdouts?: unknown[] }>; entries?: unknown[] };
+        const raw = JSON.parse(text) as {
+          sectors?: Record<string, { holdouts?: Array<unknown> }>;
+          entries?: Array<unknown>;
+        };
         counts[objective.id] =
           raw.entries?.length ??
-          Object.values(raw.sectors ?? {}).reduce((sum, one) => sum + (one.holdouts?.length ?? 0), 0);
+          Object.values(raw.sectors ?? {}).reduce(
+            (sum, one) => sum + (one.holdouts?.length ?? 0),
+            0,
+          );
       } catch {
         // an unreadable ledger at that commit contributes nothing
       }
@@ -1428,8 +1553,12 @@ export const historyOf = (
   });
 };
 
-export const renderHistory = (rule: CompiledCampaign, rows: ReadonlyArray<HistoryRow>): ReadonlyArray<string> => {
-  if (rows.length === 0) return [`${rule.id}: no history — no commit has touched its ledgers or the manifest.`];
+export const renderHistory = (
+  rule: CompiledCampaign,
+  rows: ReadonlyArray<HistoryRow>,
+): ReadonlyArray<string> => {
+  if (rows.length === 0)
+    return [`${rule.id}: no history — no commit has touched its ledgers or the manifest.`];
   const width = Math.max(...rule.objectives.map((one) => one.id.length), 4);
   return [
     `${rule.id}: ${count(rows.length, "commit")}`,
@@ -1469,14 +1598,17 @@ export const explainCampaignLines = (
   const record = recordOf(policy, rule, sector);
   return [
     `    ${rule.name}: sector ${sector}${at}${record?.reached === undefined || record.reached === null ? "" : `, reached ${record.reached}`}`,
-    `      in window: ${state.inWindow.map((one) => `${one.id}${firing.has(one.id) ? " ✗" : ""}`).join(", ") || "(nothing)"}`,
+    `      in window: ${state.inWindow.length === 0 ? "(nothing)" : state.inWindow.map((one) => `${one.id}${firing.has(one.id) ? " ✗" : ""}`).join(", ")}`,
     ...(own.length === 0
       ? []
       : [
           `      nearest holdouts in this file:`,
-          ...own.slice(0, HOLDOUT_CAP).map(
-            (hit) => `        ${hit.range === undefined ? "" : `:${String(hit.range.start.line + 1)}  `}${hit.objective}${hit.violation.subject === null ? "" : `  ${hit.violation.subject}`}`,
-          ),
+          ...own
+            .slice(0, HOLDOUT_CAP)
+            .map(
+              (hit) =>
+                `        ${hit.range === undefined ? "" : `:${String(hit.range.start.line + 1)}  `}${hit.objective}${hit.violation.subject === null ? "" : `  ${hit.violation.subject}`}`,
+            ),
         ]),
   ];
 };
@@ -1501,7 +1633,9 @@ export const baseSideAt = async (
     sha = null;
   }
   const cacheAt =
-    sha === null ? null : path.join(policy.repoRoot, "node_modules", ".cache", "goodbones", `base-${sha}.json`);
+    sha === null
+      ? null
+      : path.join(policy.repoRoot, "node_modules", ".cache", "goodbones", `base-${sha}.json`);
   if (cacheAt !== null && existsSync(cacheAt)) {
     try {
       return JSON.parse(readFileSync(cacheAt, "utf8")) as BaseSide;

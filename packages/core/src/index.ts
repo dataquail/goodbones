@@ -28,7 +28,6 @@ export {
   type CampaignInput,
   campaignsFailingTheirProbe,
   campaignsSelecting,
-  candidatesOf as detectorCandidatesOf,
   compileCampaignRule,
   compileCampaignRules,
   type CompiledCampaign,
@@ -37,6 +36,7 @@ export {
   type CompiledPerimeter,
   type CompiledSectorTerm,
   compileObjective,
+  candidatesOf as detectorCandidatesOf,
   detectorOf,
   evaluateObjective,
   evaluateObjectives,
@@ -108,9 +108,9 @@ export {
   clearedOf,
   clearedSector,
   closedOf,
+  concededSector,
   type Concession,
   type ConcessionRecord,
-  concededSector,
   decodeLedger,
   decodePlanRecord,
   decodeSectorRecord,
@@ -129,9 +129,9 @@ export {
   ledgerPathOf,
   Ledger as LedgerSchema,
   legacyLedgerPathOf,
+  type Note,
   NOTE_CAP,
   NOTE_LENGTH,
-  type Note,
   notedRecord,
   type PlanDiff,
   planDiffOf,
@@ -154,6 +154,13 @@ export {
   serializeSectorRecord,
 } from "./core/ledger.js";
 export {
+  type CompiledMemberRule,
+  compileMemberRules,
+  evaluateMemberSite,
+  memberRulesFailingTheirProbe,
+  memberRulesSelecting,
+} from "./core/members.js";
+export {
   compareResidue,
   derivePhase,
   type Direction,
@@ -174,27 +181,22 @@ export {
 } from "./core/phases.js";
 export {
   discoverSectors,
-  entryOf as sectorEntryOf,
   fixedPrefixOf,
   IMPLICIT_SECTOR,
   LEGACY_SECTOR,
+  membershipOf,
   parseSectorMarker,
+  type Placement,
   rootOf,
   type Sector,
-  type SectorDiscovery,
   SECTOR_HOLDOUT,
+  type SectorDiscovery,
+  entryOf as sectorEntryOf,
   type SectorIndex,
   type SectorMarker,
   sectorNamed,
   withoutExtension,
 } from "./core/sectors.js";
-export {
-  type CompiledMemberRule,
-  compileMemberRules,
-  evaluateMemberSite,
-  memberRulesFailingTheirProbe,
-  memberRulesSelecting,
-} from "./core/members.js";
 export {
   type Concentration,
   type ObservedEdge,
@@ -234,19 +236,19 @@ export {
   type GraphReachRule,
   type Holdout,
   type ImportProbe,
+  type ImportProbeTarget,
+  type ImportRule,
+  type MemberRule,
+  type MemberSubject,
   type ObjectiveRule,
   type OnTouch,
   type PerimeterRule,
   type PhaseConcession,
   type PhaseRule,
-  type SectorTerm,
-  type ImportProbeTarget,
-  type ImportRule,
-  type MemberRule,
-  type MemberSubject,
   type ProbeDiagnostic,
   type ResolveConfig,
   type ResolveScope,
+  type SectorTerm,
   type StructureConfig,
   type SurfaceRule,
 } from "./domain/architecture-config.js";
@@ -285,12 +287,12 @@ export {
   SNAPSHOT_SCHEMA_ID,
   SNAPSHOT_VERSION,
   type SnapshotCampaign,
-  type SnapshotObjective,
-  type SnapshotPhase,
-  type SnapshotSector,
   type SnapshotConcentration,
   snapshotJsonSchema,
+  type SnapshotObjective,
+  type SnapshotPhase,
   Snapshot as SnapshotSchema,
+  type SnapshotSector,
   type SnapshotSlack,
   type SnapshotVacancy,
   type SnapshotViolation,
@@ -329,22 +331,16 @@ export {
   type WalkedLanguage,
   type WorkspaceProject,
 } from "./infrastructure/walk.js";
-export {
-  ledgerKeyOf,
-  type LoadedPolicy,
-  loadPolicy,
-  type LoadPolicyInput,
-} from "./load/policy.js";
+export { ledgerKeyOf, type LoadedPolicy, loadPolicy, type LoadPolicyInput } from "./load/policy.js";
 export {
   END_STATE_ROOT,
   endStateObjectiveId,
-  lowerEndState,
   type LoweredRules,
+  lowerEndState,
   lowerManifest,
   type LowerOptions,
   type ProbeLanguage,
 } from "./manifest/compile.js";
-export { globToRegExp } from "./manifest/glob.js";
 export {
   type ExpandedManifest,
   type ExpandIssue,
@@ -353,6 +349,7 @@ export {
   originOf,
   type Substitution,
 } from "./manifest/expand.js";
+export { globToRegExp } from "./manifest/glob.js";
 export {
   type Candidate,
   candidatesOf,

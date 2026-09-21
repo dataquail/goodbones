@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync, symlinkSync, existsSync } from "node:fs";
+import { existsSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 
@@ -114,15 +114,10 @@ export const readDiff = (repoRoot: string, base: string | null): Diff => {
 
 // The distance, in lines, from a range to the nearest hunk of a file: zero
 // when they overlap. `Infinity` for a file with no hunk.
-export const distanceToHunks = (
-  hunks: ReadonlyArray<Hunk>,
-  start: number,
-  end: number,
-): number => {
+export const distanceToHunks = (hunks: ReadonlyArray<Hunk>, start: number, end: number): number => {
   let nearest = Number.POSITIVE_INFINITY;
   for (const hunk of hunks) {
-    const distance =
-      hunk.end < start ? start - hunk.end : end < hunk.start ? hunk.start - end : 0;
+    const distance = hunk.end < start ? start - hunk.end : end < hunk.start ? hunk.start - end : 0;
     if (distance < nearest) nearest = distance;
   }
   return nearest;
@@ -149,15 +144,24 @@ export const materializeTree = (
   ref: string,
 ): { readonly root: string; readonly dispose: () => void } => {
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), "goodbones-base-")));
-  execFileSync("sh", ["-c", `git archive ${JSON.stringify(ref)} | tar -x -C ${JSON.stringify(root)}`], {
-    cwd: repoRoot,
-    stdio: ["ignore", "ignore", "ignore"],
-  });
+  execFileSync(
+    "sh",
+    ["-c", `git archive ${JSON.stringify(ref)} | tar -x -C ${JSON.stringify(root)}`],
+    {
+      cwd: repoRoot,
+      stdio: ["ignore", "ignore", "ignore"],
+    },
+  );
   const modules = path.join(repoRoot, "node_modules");
   if (existsSync(modules) && !existsSync(path.join(root, "node_modules"))) {
     symlinkSync(modules, path.join(root, "node_modules"), "dir");
   }
-  return { root, dispose: () => rmSync(root, { recursive: true, force: true }) };
+  return {
+    root,
+    dispose: () => {
+      rmSync(root, { recursive: true, force: true });
+    },
+  };
 };
 
 // The commits that touched any of these paths, oldest first.

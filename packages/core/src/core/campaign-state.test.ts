@@ -11,6 +11,16 @@ import { type CampaignInput, compileCampaignRule, type CompiledCampaign } from "
 import { EMPTY_SECTOR_RECORD, reachedRecord, type SectorRecord } from "./ledger.js";
 import { LEGACY_SECTOR } from "./sectors.js";
 
+// The manifest's glob translation is the manifest tier's; a core test
+// stands in one just wide enough for a marker's `owns`.
+const globToRegExp = (glob: string): RegExp =>
+  new RegExp(
+    `^${glob
+      .replace(/[.]/g, "\\.")
+      .replace(/\*\*/g, ".*")
+      .replace(/(?<!\.)\*/g, "[^/]*")}`,
+  );
+
 const NOTHING: SourceFacts = {
   specifiers: [],
   bindings: new Map(),
@@ -103,7 +113,7 @@ describe("one campaign over its files", () => {
   const evaluation = evaluateCampaign(rule, {
     files: Object.keys(texts),
     inputOf: inputOf(texts),
-    readText: (file) => texts[file as keyof typeof texts] ?? null,
+    readText: (file) => (file in texts ? texts[file as keyof typeof texts] : null),
     globToRegExp,
     recordOf: () => undefined,
   });
@@ -150,8 +160,11 @@ describe("one campaign over its files", () => {
   });
 
   it("reports the residue toward the next phase: the current phase's objectives with holdouts", () => {
-    expect(towardNextOf(rule, evaluation.sectors.get("billing")!)).toEqual({ "no-io": 1 });
-    expect(towardNextOf(rule, evaluation.sectors.get("orders")!)).toEqual({});
+    const billing = evaluation.sectors.get("billing");
+    const orders = evaluation.sectors.get("orders");
+    if (billing === undefined || orders === undefined) throw new Error("sectors missing");
+    expect(towardNextOf(rule, billing)).toEqual({ "no-io": 1 });
+    expect(towardNextOf(rule, orders)).toEqual({});
   });
 
   it("reads the sector's record: a passed window stays shut", () => {
@@ -163,13 +176,18 @@ describe("one campaign over its files", () => {
         contentObjective("no-flag", "flag"),
       ],
     });
-    const record: SectorRecord = reachedRecord(EMPTY_SECTOR_RECORD("c", "billing", 0), flagged, 1, 0);
+    const record: SectorRecord = reachedRecord(
+      EMPTY_SECTOR_RECORD("c", "billing", 0),
+      flagged,
+      1,
+      0,
+    );
     const placed = evaluateCampaign(flagged, {
       files: ["src/billing/context.ts", "src/billing/a.ts"],
       inputOf: inputOf({ "src/billing/a.ts": "flag" }),
       readText: () => "",
       globToRegExp,
-      recordOf: (sector) => (sector === "billing" ? record : undefined),
+      recordOf: (sector: string) => (sector === "billing" ? record : undefined),
     });
     expect(placed.sectors.get("billing")?.phase).toBe(1);
     expect(placed.sectors.get("billing")?.residue).toEqual({ "no-flag": 1 });

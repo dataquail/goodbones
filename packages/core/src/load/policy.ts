@@ -39,8 +39,8 @@ import {
   type Ledger,
   ledgerPathOf,
   legacyLedgerPathOf,
-  type PlanRecord,
   planPathOf,
+  type PlanRecord,
   type SectorRecord,
 } from "../core/ledger.js";
 import {
@@ -68,8 +68,8 @@ import type { SourceFacts } from "../domain/facts.js";
 import type { ManifestLocator } from "../domain/manifest-location.js";
 import {
   END_STATE_ROOT,
-  lowerEndState,
   type LoweredRules,
+  lowerEndState,
   lowerManifest,
 } from "../manifest/compile.js";
 import { decodeManifest, DEFAULT_LEDGER_DIR, type Manifest } from "../manifest/manifest.js";
@@ -637,19 +637,15 @@ export const loadPolicy = (
       const endStructure = compileStructure(lowered.structure);
       if (Result.isFailure(endStructure)) return Result.fail(endStructure.failure);
       const label = (name: string): string => `${rule.name}/${phase.id}/endState ${name}`;
-      endStateFailures.push(
-        ...rulesFailingTheirProbe(endImports.success).map((one) => label(one.name)),
-        ...exportRulesFailingTheirProbe(endExports.success, extractor).map((one) =>
-          label(one.name),
-        ),
-        ...memberRulesFailingTheirProbe(endMembers.success, extractor).map((one) =>
-          label(one.name),
-        ),
-        ...surfaceRulesFailingTheirProbe(endSurface.success, extractor).map((one) =>
-          label(one.name),
-        ),
-        ...structureRulesFailingTheirProbe(endStructure.success).map(label),
-      );
+      for (const name of [
+        ...rulesFailingTheirProbe(endImports.success).map((one) => one.name),
+        ...exportRulesFailingTheirProbe(endExports.success, extractor).map((one) => one.name),
+        ...memberRulesFailingTheirProbe(endMembers.success, extractor).map((one) => one.name),
+        ...surfaceRulesFailingTheirProbe(endSurface.success, extractor).map((one) => one.name),
+        ...structureRulesFailingTheirProbe(endStructure.success),
+      ]) {
+        endStateFailures.push(label(name));
+      }
     }
   }
 

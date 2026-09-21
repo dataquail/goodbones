@@ -309,12 +309,14 @@ describe("loadPolicy", () => {
 // rules read the cached answer. A report that cannot be read is not a load
 // failure: the campaigns rule says so once, on a file.
 describe("loadPolicy reads every report at load", () => {
-  const campaign = (report: string) => `campaigns: [{
-    id: "type-errors", why: "w", how: "h", scope: ["packages/**"], unit: "match",
-    detect: { report: { ${report}, format: "tsc" } },
-    probes: { fires: [{ path: "packages/x.ts", report: [{ line: 1, code: "TS1", message: "m" }] }] },
-    staleAfter: "30d",
-  }]`;
+  const campaign = (report: string) => `campaigns: { "type-errors": {
+    why: "w", how: "h", scope: ["packages/**"], staleAfter: "30d",
+    objectives: { tsc: {
+      holdout: "match",
+      match: { report: { ${report}, format: "tsc" } },
+      probes: { fires: [{ path: "packages/x.ts", report: [{ line: 1, code: "TS1", message: "m" }] }] },
+    } },
+  } }`;
 
   it("runs a command before any file is linted, once", async () => {
     const stamp = path.join(scratch, "ran-at-load");

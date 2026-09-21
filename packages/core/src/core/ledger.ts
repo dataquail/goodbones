@@ -118,9 +118,7 @@ export const EMPTY_LEDGER = (campaign: string, objective: string, now: number): 
 });
 
 export const isLegacyLedger = (raw: unknown): boolean =>
-  typeof raw === "object" &&
-  raw !== null &&
-  (raw as { readonly version?: unknown }).version === 1;
+  typeof raw === "object" && raw !== null && (raw as { readonly version?: unknown }).version === 1;
 
 // A malformed ledger is refused, unlike a malformed baseline, which reads as
 // empty: an empty baseline reports every violation, the safe direction, while
@@ -183,9 +181,9 @@ export const sectorArithmeticHolds = (ledger: Ledger, sector: string): boolean =
 };
 
 export const ledgerArithmeticHolds = (ledger: Ledger): boolean =>
-  [...new Set([...Object.keys(ledger.sectors), ...ledger.concessions.map((one) => one.sector)])].every(
-    (sector) => sectorArithmeticHolds(ledger, sector),
-  );
+  [
+    ...new Set([...Object.keys(ledger.sectors), ...ledger.concessions.map((one) => one.sector)]),
+  ].every((sector) => sectorArithmeticHolds(ledger, sector));
 
 // A `match` entry is `file#anchor#hash`; an edit inside the anchored
 // declaration changes the hash and nothing else, and is the same entry.
@@ -375,7 +373,10 @@ export const rebaselinedSector = (
     lastCleared: at,
     holdouts: [],
   };
-  if (base.holdouts.length === holdouts.length && base.holdouts.every((one, i) => one === holdouts[i])) {
+  if (
+    base.holdouts.length === holdouts.length &&
+    base.holdouts.every((one, i) => one === holdouts[i])
+  ) {
     return ledger;
   }
   return {
@@ -500,7 +501,11 @@ export const decodeSectorRecord = (raw: unknown): Result.Result<SectorRecord, st
 export const serializeSectorRecord = (record: SectorRecord): string =>
   `${JSON.stringify(record, null, 2)}\n`;
 
-export const EMPTY_SECTOR_RECORD = (campaign: string, sector: string, now: number): SectorRecord => ({
+export const EMPTY_SECTOR_RECORD = (
+  campaign: string,
+  sector: string,
+  now: number,
+): SectorRecord => ({
   version: 1,
   campaign,
   sector,
@@ -563,9 +568,11 @@ export const notedRecord = (
 
 // The sector's own clock: when it last advanced, or was attested or noted.
 export const sectorClockOf = (record: SectorRecord): string =>
-  [record.since, ...record.attested.map((one) => one.at), ...record.notes.map((one) => one.at)].reduce(
-    (a, b) => (a > b ? a : b),
-  );
+  [
+    record.since,
+    ...record.attested.map((one) => one.at),
+    ...record.notes.map((one) => one.at),
+  ].reduce((a, b) => (a > b ? a : b));
 
 // ---------------------------------------------------------------------------
 // The plan record: what `clear` last saw of the campaign's phases, so that

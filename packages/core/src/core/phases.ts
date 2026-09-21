@@ -91,9 +91,7 @@ export const derivePhase = (
     const residue = phase.objectives.some((objectiveId) => {
       const objective = rule.objectives.find((one) => one.id === objectiveId);
       return (
-        objective !== undefined &&
-        !isShut(rule, objective, position) &&
-        counts(objectiveId) > 0
+        objective !== undefined && !isShut(rule, objective, position) && counts(objectiveId) > 0
       );
     });
     if (residue) return index;
@@ -106,9 +104,7 @@ export const derivePhase = (
 export const onTouchOf = (rule: CompiledCampaign, phase: number): OnTouch => {
   const at = rule.phases[phase];
   return (
-    at?.onTouch ??
-    rule.onTouch ??
-    (at !== undefined && isOpenPhase(at) ? "advise" : "ratchet")
+    at?.onTouch ?? rule.onTouch ?? (at !== undefined && isOpenPhase(at) ? "advise" : "ratchet")
   );
 };
 

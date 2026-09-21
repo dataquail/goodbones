@@ -1,130 +1,199 @@
 ---
 title: Ledger
-description: A campaign's record of every place the pattern still occurs, and of every time the count was allowed to go up.
+description: An objective's record of every place the pattern still occurs, per sector, and of every time a count was allowed to go up — with the sector's own record beside it.
 ---
 
-Each [campaign](/goodbones/architecture-rules/manifest/campaigns/) has a ledger: one JSON file
-under the manifest's `ledger` directory (default `.architecture-campaigns/`), named
-`<id>.json`. It is the [baseline](/goodbones/architecture-rules/enforcement/baseline/)'s
-cousin and not the baseline — same fingerprint, different file, different semantics. A
-baseline records violations a repository is carrying; a ledger records debt a campaign is
-paying down, and the file is where the burn-down lives.
+Each objective of a [campaign](/goodbones/architecture-rules/manifest/campaigns/) has a ledger:
+one JSON file under the manifest's `ledger` directory (default `.architecture-campaigns/`),
+at `<campaign>/<objective>.json`. It is the
+[baseline](/goodbones/architecture-rules/enforcement/baseline/)'s cousin and not the baseline —
+same fingerprint, different file, different semantics. A baseline records violations a
+repository is carrying; a ledger records debt an objective is paying down, per sector, and
+the file is where the burn-down lives.
 
 ```json
 {
-  "version": 1,
-  "id": "react-class-components",
-  "created": "2026-09-15T14:02:00.000Z",
-  "initial": 412,
-  "fixed": 26,
-  "lastProgress": "2026-09-14T09:11:00.000Z",
-  "regressions": [
+  "version": 2,
+  "campaign": "billing-ddd",
+  "objective": "no-raw-queries-outside-repository",
+  "created": "2026-09-22T21:56:54.000Z",
+  "sectors": {
+    "billing": {
+      "entered": "2026-09-22T21:56:54.000Z",
+      "initial": 212,
+      "cleared": 187,
+      "closed": 0,
+      "lastCleared": "2026-10-01T09:12:03.000Z",
+      "holdouts": ["InvoiceService.ts#reconcile#3bfd86f4"]
+    }
+  },
+  "concessions": [
     {
-      "at": "2026-09-10T16:40:00.000Z",
+      "sector": "billing",
+      "at": "2026-09-28T14:02:11.000Z",
       "by": "someone@example.com",
       "delta": 2,
-      "reason": "Vendor SDK wrapper only ships a class API until v4",
-      "entries": ["apps/web/src/vendor/Widget.tsx#Widget", "apps/web/src/vendor/Panel.tsx#Panel"]
+      "reason": "hotfix for invoice rounding; BILL-412",
+      "holdouts": ["InvoiceService.ts#void#9a1c02ef", "InvoiceService.ts#void#c31d7f08"]
     }
-  ],
-  "entries": [
-    "apps/web/src/checkout/CartPanel.tsx#CartPanel",
-    "apps/web/src/checkout/Totals.tsx#Totals"
   ]
 }
 ```
 
-Entries are `file` or `file#subject`, deduplicated and sorted, one per line — so a pull
-request that fixes three of them is a three-line deletion a reviewer can read. One file per
-campaign, so two pull requests migrating different components never conflict, and finishing
-a campaign is deleting its file.
+Holdouts are `file` or `file#subject`, written relative to the sector's root — the marker's
+folder, the matched glob, the file's own folder, or the repository for the implicit sector
+and the legacy — deduplicated and sorted, one per line, so a pull request that fixes three of
+them is a three-line deletion a reviewer can read. A sector's own holdout (a `sector` term
+that fails) is `~`. Every counter and the holdout list are per sector inside one file per
+objective, so two pull requests paying down the same objective in `billing` and `orders` edit
+different regions of the file and merge cleanly; finishing a campaign is deleting its folder.
 
 ## The arithmetic
 
-The count is not stored; it is `entries.length`, and `check` verifies that
+The count is not stored; it is `holdouts.length`, per sector, and `check` verifies that
 
 ```
-entries.length === initial + Σ regressions.delta − fixed
+holdouts.length === initial + Σ concessions.delta − cleared − closed
 ```
 
-An entry added by hand, with no regression record, fails the build — with no git history in
-the loop. That is what keeps the file honest: every number in it is derivable from the
-others, and the only way the count rises is through a record of why.
+`initial` is the count the day the sector entered the objective's window; `cleared` the
+holdouts that stopped firing and were cleared since; `closed` the holdouts still firing when
+the sector left the window — not progress, and never counted as such. A re-baseline
+concession (`{ from, to }`) counts as `to − from`. A holdout added by hand, with no
+concession, fails the build — with no git history in the loop. That is what keeps the file
+honest: every number in it is derivable from the others, and the only way a count rises is
+through a record of why.
 
-## The three commands
+## The two verbs
 
 ```bash
-architecture campaigns                                    # the status table
-architecture campaigns init react-class-components        # the first ledger, from what fires today
-architecture campaigns prune [react-class-components]     # drop what no longer fires
-architecture campaigns allow react-class-components --reason "vendor SDK ships a class API until v4"
+architecture objectives clear [<campaign>[/<objective>]]                    # reconcile with the code
+architecture objectives concede <campaign>[/<objective>] --reason "<why>"   # record why a count may rise
 ```
 
-**`init`** writes a campaign's first ledger: every hit is an entry, and the count is the
-`initial`. It refuses to overwrite one; `prune` and `allow` are how a ledger changes. Until
-a campaign with hits has a ledger, `check` fails and says which command to run.
+**`clear`** reconciles the ledger with the code wherever that is not a regression. A holdout
+that no longer fires leaves, and `cleared` rises by one; a `match` holdout whose hash moved
+under a still-present declaration — a `syntax` match edited, a `report` diagnostic reworded —
+is rewritten in place and counts as neither; `lastCleared` moves only when something left. A
+sector newly inside an objective's window is recorded with its `initial`, which is how a
+first ledger is written; a sector past a window has what still fires `closed`; a sector the
+code no longer births is closed the same way. A defined phase changed with a
+[concession](/goodbones/architecture-rules/manifest/campaigns/#changing-a-defined-phase) has
+its sectors re-baselined, each recording `{ from, to }` with the phase concession's reason.
+Unrecorded growth is left where it is: `clear` never adds a holdout. Alongside the ledgers it
+writes each sector's record and the campaign's plan, below. Until a sector in a window has an
+entry, `check` fails and names this command.
 
-**`prune`** only removes. A ledger entry the code no longer produces is stale, and `check`
-fails on it exactly as it fails on a stale baseline entry:
-
-```
-campaign react-class-components: 3 ledger entries no longer fire. The code was fixed; prune them:
-  apps/web/src/checkout/CartPanel.tsx#CartPanel
-  …
-
-  architecture campaigns prune react-class-components
-```
-
-Pruning bumps `fixed` by as many and stamps `lastProgress` — so progress lands as a visible
-diff, and the stall clock reads it. A `match` entry whose hash moved under a still-present
-declaration — a `syntax` match edited, a `report` diagnostic reworded — is rewritten in place
-and counts as neither fixed nor new.
-
-**`allow`** is the only command that adds entries, and it always appends a regression
-record: the entries, a reason, a timestamp, and an author — `--by`, else git's
+**`concede`** is the only verb that adds holdouts, and it always appends a concession: the
+sector, the holdouts, a reason, a timestamp, and an author — `--by`, else git's
 `user.email`, else `GIT_AUTHOR_EMAIL`, and refused without one. A hit the ledger does not
-carry is unrecorded growth, and `check` fails on it with the campaign's `how`:
+carry is unrecorded growth, and `check` fails on it with the objective's `how`:
 
 ```
-campaign react-class-components: 1 new hit the ledger does not carry. Fix it, or record why the count may rise:
-  apps/web/src/vendor/Widget.tsx  (Widget)
-      [campaign/react-class-components] Convert to a function component. …
+campaign billing-ddd: 1 new hit the ledger does not carry. Fix them, or record why the count may rise:
+  no-raw-queries-outside-repository · billing · InvoiceService.ts#refund#4b02a9e1
+      src/billing/InvoiceService.ts: Move the call behind the port.
 
-  architecture campaigns allow react-class-components --reason "<why>"
+  architecture objectives concede billing-ddd --reason "<why>"
 ```
 
-`--entries a,b` allows a subset and leaves the rest failing, for a pull request that
-legitimately adds one hit while another is an accident.
+`--holdouts a,b` concedes a subset and leaves the rest failing, for a pull request that
+legitimately adds one hit while another is an accident; `--sector <name>` narrows to one
+sector. `campaigns clear` and `campaigns concede` are accepted as the same verbs.
+
+## The sector's record
+
+What derivation cannot say about a sector lives in its own file,
+`<campaign>/sectors/<sector>.json`, written by `clear`, `campaigns attest` and
+`campaigns note`, and never edited by hand:
+
+```json
+{
+  "version": 1,
+  "campaign": "billing-ddd",
+  "sector": "billing",
+  "reached": "cutover",
+  "since": "2026-10-02T00:00:00.000Z",
+  "attested": [
+    {
+      "phase": "backfilled",
+      "reason": "backfill ran against production",
+      "evidence": "https://ci/runs/4812",
+      "at": "2026-10-01T15:10:00.000Z",
+      "by": "someone@example.com"
+    }
+  ],
+  "notes": [
+    {
+      "at": "2026-10-04T09:00:00.000Z",
+      "by": "someone@example.com",
+      "phase": "aggregates",
+      "text": "refunds read invoices but never write them"
+    }
+  ]
+}
+```
+
+`reached` is the furthest phase the sector has ever been derived at; it only advances, and it
+exists for one rule — a window the sector has passed never reopens for it. `since` is when it
+last advanced, and with the latest attestation and note it is the sector's own clock: the
+campaign's stall reads the later of an objective's `lastCleared` and that, so a sector standing
+in an attested or open phase is stalled only when nothing has been said about it either.
+Notes are capped — the last twenty, each at most five hundred characters — and the nudge shows
+only those left at the sector's current phase, marked as data, because free text shown to the
+next agent is an instruction channel whether or not anyone meant it as one.
+
+## The plan
+
+`<campaign>/plan.json` is what `clear` last saw of the campaign's phases — each phase's id,
+a digest of its definition, whether it was defined, and how many concessions it carried.
+`check` compares the manifest against it: an open phase that gained criteria, or a new phase,
+is **plan refined** and free; a defined phase whose definition changed, or was removed, is
+**plan changed** and fails `check` until the phase carries a new `concessions` entry. Both are
+reported apart in [`conformance`](/goodbones/architecture-rules/enforcement/conformance/),
+so the one a reviewer must read every time stays readable.
 
 ## What a reviewer looks for
 
-The ledger is designed to be read in a diff. A line deleted from `entries` and `fixed`
-going up by one is progress. A line added to `entries` must come with a new object under
-`regressions` naming it, with a reason the reviewer agrees with; a line added without one
-does not pass `check`, so it will not be in a green pull request. `lastProgress` moving is
-someone having paid something down; `regressions` growing is the count going up, on
-purpose, with a name on it.
+The ledger is designed to be read in a diff. A line deleted from a sector's `holdouts` and its
+`cleared` going up by one is progress. A line added must come with a new object under
+`concessions` naming it, with a reason the reviewer agrees with; a line added without one does
+not pass `check`, so it will not be in a green pull request. `closed` going up is a sector
+moving past a window, not paying anything down. A sector appearing under `sectors` with a
+large `initial` is code that just declared itself — a folder that grew a marker — and the
+legacy line in the conformance report shrank by the same amount; the report never collapses
+the two. A `{ from, to }` concession is a plan change landing, and the phase's own
+`concessions` entry in the manifest is where its reason is.
 
-Because the file is per campaign and the records name their author, `CODEOWNERS` on the
-ledger directory puts the campaign's owner on every change to its count:
+Because the files are per campaign and the records name their author, `CODEOWNERS` on the
+ledger directory puts the campaign's owner on every change to its counts:
 
 ```
-.architecture-campaigns/react-class-components.json  @dataquail/web-platform
+.architecture-campaigns/billing-ddd/  @dataquail/billing
 ```
 
 ## Stalls and completion
 
-Every campaign states `staleAfter`. A campaign with entries left whose `lastProgress` is
-older than that is **stalled** — a notice in `check`, and the first thing
-[`conformance`](/goodbones/architecture-rules/enforcement/conformance/) prints in its
-campaigns section, since a migration nobody is working on is the failure the whole apparatus
-exists to make visible.
+A campaign may state `staleAfter`. One with holdouts left whose objectives' `lastCleared`
+and sectors' clocks are all older than that is **stalled** — a notice in `check`, and the
+first thing [`conformance`](/goodbones/architecture-rules/enforcement/conformance/) prints
+in its campaigns section, since a migration nobody is working on is the failure the whole
+apparatus exists to make visible. A campaign with no `staleAfter` never stalls.
 
-A campaign at zero is **complete**. What happens next is its `onComplete`: `keep` leaves
-it in the manifest as a guard against recurrence — a new hit is unrecorded growth like any
-other — and `remove` makes `check` fail until the campaign and its ledger are deleted, so
+A campaign at zero everywhere is **complete**. What happens next is its `onComplete`: `keep`
+leaves it in the manifest as a guard against recurrence — a new hit is unrecorded growth like
+any other — and `remove` makes `check` fail until the campaign and its ledgers are deleted, so
 a finished migration does not linger as a rule about nothing.
 
 `ARCHITECTURE_NOW` (an ISO date, or epoch milliseconds) pins the clock every timestamp and
 stall is judged by, for a CI that replays a day or a test that needs a stall to have
 happened.
+
+## The history
+
+Every change to a ledger, a record or the plan is a `clear`, `concede`, `attest`, `note` or a
+manifest edit — so `architecture campaigns history [<campaign>]` walks those files' git
+history and renders the series: one row per commit, the holdouts per objective as the
+ledgers stood after it, and whether the manifest changed in it. It is a step function of
+human actions, not the code's own trend; the code's trend is the residue vectors, which CI
+emits per run through `conformance --json`.

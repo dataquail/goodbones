@@ -39,31 +39,37 @@ RuleTester.it = it.sequential;
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
+const objective = (
+  campaign: string,
+  id: string,
+  message: string,
+  holdout: "file" | "match",
+  match: CampaignRule["objectives"][number]["match"],
+): CampaignRule => ({
+  name: `campaign/${campaign}`,
+  id: campaign,
+  scope: "^unreachable/",
+  extensions: [],
+  phases: [],
+  objectives: [
+    {
+      name: `campaign/${campaign}/${id}`,
+      id,
+      campaign,
+      message,
+      holdout,
+      ...(match === undefined ? {} : { match }),
+      probes: { fires: [], ignores: [] },
+    },
+  ],
+  onComplete: "keep",
+});
+
 const rules: ReadonlyArray<CampaignRule> = [
-  {
-    name: "campaign/tsc-clean",
-    id: "tsc-clean",
-    message: "Fix the type error.",
-    why: "The report is the detector.",
-    scope: "^unreachable/",
-    unit: "match",
-    detect: { report: { command: ["tsc --noEmit"], format: "tsc" } },
-    probes: { fires: [], ignores: [] },
-    staleAfter: 1,
-    onComplete: "keep",
-  },
-  {
-    name: "campaign/no-todo",
-    id: "no-todo",
-    message: "Resolve the TODO.",
-    why: "A TODO is debt.",
-    scope: "^unreachable/",
-    unit: "file",
-    detect: { content: { regex: "TODO" } },
-    probes: { fires: [], ignores: [] },
-    staleAfter: 1,
-    onComplete: "keep",
-  },
+  objective("tsc-clean", "tsc", "Fix the type error.", "match", {
+    report: { command: ["tsc --noEmit"], format: "tsc" },
+  }),
+  objective("no-todo", "todo", "Resolve the TODO.", "file", { content: { regex: "TODO" } }),
 ];
 
 const compiled = compileCampaignRules(rules);
@@ -95,6 +101,9 @@ const policy: LoadedPolicy = {
   structure: EMPTY_STRUCTURE,
   campaignRules: compiled.success,
   ledgers: new Map(),
+  legacyLedgers: new Map(),
+  sectorRecords: new Map(),
+  plans: new Map(),
   ledgerDir: ".architecture-campaigns",
   functions: new Map(),
   now: 0,
@@ -125,7 +134,7 @@ new RuleTester({ cwd: repoRoot }).run("campaigns: a report that cannot be read",
           message:
             /^A report a campaign names could not be read.*`tsc --noEmit` could not be run: spawnSync \/bin\/sh ENOMEM\..*named by `file:`/s,
         },
-        { message: "[campaign/no-todo] Resolve the TODO." },
+        { message: "[campaign/no-todo/todo] Resolve the TODO." },
       ],
     },
   ],
@@ -140,7 +149,7 @@ new RuleTester({ cwd: repoRoot }).run("campaigns: the same failure, on the next 
     {
       code: "// TODO: still\nexport const c = 3;",
       filename: under("third.ts"),
-      errors: [{ message: "[campaign/no-todo] Resolve the TODO." }],
+      errors: [{ message: "[campaign/no-todo/todo] Resolve the TODO." }],
     },
   ],
 });

@@ -185,8 +185,10 @@ describe("loadPolicy with campaigns", () => {
     ...(ledger === undefined ? {} : { ledger }),
     campaigns,
   });
-  const one = (objectiveOverrides: Record<string, unknown> = {}, overrides: Record<string, unknown> = {}) =>
-    withCampaigns({ "js-to-go": campaign(objectiveOverrides, overrides) });
+  const one = (
+    objectiveOverrides: Record<string, unknown> = {},
+    overrides: Record<string, unknown> = {},
+  ) => withCampaigns({ "js-to-go": campaign(objectiveOverrides, overrides) });
 
   it("compiles a campaign, with the duration in milliseconds and the defaults filled", () => {
     const policy = unwrap(load(one(), [go()]));
@@ -300,9 +302,15 @@ describe("loadPolicy with campaigns", () => {
     const files = makeFileSystemFake([], {
       "ledgers/js-to-go/port-it.json": JSON.stringify(ledger),
       "ledgers/js-to-go/sectors/scope.json": JSON.stringify(record),
-      "ledgers/js-to-go/plan.json": JSON.stringify({ version: 1, campaign: "js-to-go", phases: [] }),
+      "ledgers/js-to-go/plan.json": JSON.stringify({
+        version: 1,
+        campaign: "js-to-go",
+        phases: [],
+      }),
     });
-    const withDir = unwrap(load(withCampaigns({ "js-to-go": campaign() }, "ledgers"), [go()], files));
+    const withDir = unwrap(
+      load(withCampaigns({ "js-to-go": campaign() }, "ledgers"), [go()], files),
+    );
     expect(withDir.ledgers.get("js-to-go/port-it")?.sectors.scope?.holdouts).toEqual([
       "svc/legacy/util.js",
     ]);
@@ -310,7 +318,9 @@ describe("loadPolicy with campaigns", () => {
     expect(withDir.plans.get("js-to-go")?.phases).toEqual([]);
     expect(withDir.legacyLedgers.size).toBe(0);
 
-    const malformed = makeFileSystemFake([], { "ledgers/js-to-go/port-it.json": '{"sectors": {}}' });
+    const malformed = makeFileSystemFake([], {
+      "ledgers/js-to-go/port-it.json": '{"sectors": {}}',
+    });
     const outcome = load(withCampaigns({ "js-to-go": campaign() }, "ledgers"), [go()], malformed);
     expect(Result.isFailure(outcome) && outcome.failure.message).toMatch(
       /the ledger ledgers\/js-to-go\/port-it.json does not decode/,
@@ -329,7 +339,9 @@ describe("loadPolicy with campaigns", () => {
       entries: ["svc/legacy/util.js"],
     };
     const files = makeFileSystemFake([], { "ledgers/js-to-go.json": JSON.stringify(old) });
-    const policy = unwrap(load(withCampaigns({ "js-to-go": campaign() }, "ledgers"), [go()], files));
+    const policy = unwrap(
+      load(withCampaigns({ "js-to-go": campaign() }, "ledgers"), [go()], files),
+    );
     const ledger = policy.ledgers.get("js-to-go/port-it");
     expect(ledger?.objective).toBe("port-it");
     expect(ledger?.sectors.scope?.holdouts).toEqual(["svc/legacy/util.js"]);
@@ -391,7 +403,9 @@ describe("loadPolicy with campaigns", () => {
       return loaded.failure.detail;
     };
     expect(detailOf(one({ sector: { oneRoot: true } }))).toMatch(/exactly one of `match`/);
-    expect(detailOf(one({ holdout: "sector" }))).toMatch(/holdout is `file`, `declaration` or `match`/);
+    expect(detailOf(one({ holdout: "sector" }))).toMatch(
+      /holdout is `file`, `declaration` or `match`/,
+    );
     expect(detailOf(one({ probes: { fires: [] } }))).toMatch(/at least one source it must report/);
   });
 
@@ -405,7 +419,11 @@ describe("loadPolicy with campaigns", () => {
           phases,
           objectives: {
             "port-it": objective(),
-            "no-shim": objective({ match: { path: { file: "shim" } }, probes: { fires: [{ path: "svc/shim.go" }] }, ...extra }),
+            "no-shim": objective({
+              match: { path: { file: "shim" } },
+              probes: { fires: [{ path: "svc/shim.go" }] },
+              ...extra,
+            }),
           },
         },
       });
@@ -419,20 +437,48 @@ describe("loadPolicy with campaigns", () => {
       }
     };
     expect(
-      detailOf(ladder([{ id: "open", intent: "?" }, { id: "a", objectives: ["port-it"] }])),
+      detailOf(
+        ladder([
+          { id: "open", intent: "?" },
+          { id: "a", objectives: ["port-it"] },
+        ]),
+      ),
     ).toMatch(/phase "open" is open \(it names no objective\) and is not last/);
-    expect(detailOf(ladder([{ id: "a" }]))).toMatch(/phase "a" names no objective and states no `intent`/);
+    expect(detailOf(ladder([{ id: "a" }]))).toMatch(
+      /phase "a" names no objective and states no `intent`/,
+    );
     expect(
-      detailOf(ladder([{ id: "a", objectives: ["port-it"] }, { id: "b", objectives: ["port-it"] }])),
+      detailOf(
+        ladder([
+          { id: "a", objectives: ["port-it"] },
+          { id: "b", objectives: ["port-it"] },
+        ]),
+      ),
     ).toMatch(/names the objective "port-it" in two phases/);
     expect(detailOf(ladder([{ id: "a", objectives: ["nope"] }]))).toMatch(
       /names an objective "nope" the campaign does not declare/,
     );
     expect(
-      detailOf(ladder([{ id: "a", objectives: ["no-shim"] }, { id: "b", objectives: ["port-it"] }], { until: "zzz" })),
+      detailOf(
+        ladder(
+          [
+            { id: "a", objectives: ["no-shim"] },
+            { id: "b", objectives: ["port-it"] },
+          ],
+          { until: "zzz" },
+        ),
+      ),
     ).toMatch(/runs `until: zzz`, and no phase has that id/);
     expect(
-      detailOf(ladder([{ id: "a", objectives: ["port-it"] }, { id: "b", objectives: ["no-shim"] }], { until: "a" })),
+      detailOf(
+        ladder(
+          [
+            { id: "a", objectives: ["port-it"] },
+            { id: "b", objectives: ["no-shim"] },
+          ],
+          { until: "a" },
+        ),
+      ),
     ).toMatch(/runs `until: a`, which is not after it/);
     // A well-formed ladder loads, defined and open apart.
     const policy = unwrap(
@@ -458,7 +504,11 @@ describe("loadPolicy with campaigns", () => {
       withCampaigns({
         "js-to-go": {
           scope: ["svc/**"],
-          perimeter: { match: { exports: {} }, holdout: "declaration", probes: { fires, ignores: [] } },
+          perimeter: {
+            match: { exports: {} },
+            holdout: "declaration",
+            probes: { fires, ignores: [] },
+          },
           objectives: { "port-it": objective() },
         },
       });
@@ -496,7 +546,11 @@ describe("loadPolicy with campaigns", () => {
           "~/": {
             layout: "open",
             children: {
-              "domain/": { layout: "open", children: {}, imports: { message: "domain reaches itself.", allow: ["~/domain/**"] } },
+              "domain/": {
+                layout: "open",
+                children: {},
+                imports: { message: "domain reaches itself.", allow: ["~/domain/**"] },
+              },
             },
           },
         },

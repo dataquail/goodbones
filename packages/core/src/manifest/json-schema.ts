@@ -114,7 +114,11 @@ const withKeyPatterns = (value: JsonValue): JsonValue => {
   if (!isObject(value)) return value;
   const rebuilt: Record<string, JsonValue> = {};
   for (const [childKey, entry] of entriesOf(value)) rebuilt[childKey] = withKeyPatterns(entry);
-  if (rebuilt.type === "object" && "patternProperties" in rebuilt && !("additionalProperties" in rebuilt)) {
+  if (
+    rebuilt.type === "object" &&
+    "patternProperties" in rebuilt &&
+    !("additionalProperties" in rebuilt)
+  ) {
     rebuilt.additionalProperties = false;
   }
   return rebuilt;

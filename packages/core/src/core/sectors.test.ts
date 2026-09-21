@@ -3,11 +3,6 @@ import { describe, expect, it } from "vitest";
 
 import type { CampaignRule } from "../domain/architecture-config.js";
 import { compileCampaignRule, type CompiledCampaign } from "./campaigns.js";
-
-// The manifest's glob translation is the manifest tier's; a core test
-// stands in one just wide enough for a marker's `owns`.
-const globToRegExp = (glob: string): RegExp =>
-  new RegExp(`^${glob.replace(/[.]/g, "\\.").replace(/\*\*/g, ".*").replace(/(?<!\.)\*/g, "[^/]*")}`);
 import {
   discoverSectors,
   entryOf,
@@ -19,6 +14,16 @@ import {
   type SectorDiscovery,
   withoutExtension,
 } from "./sectors.js";
+
+// The manifest's glob translation is the manifest tier's; a core test
+// stands in one just wide enough for a marker's `owns`.
+const globToRegExp = (glob: string): RegExp =>
+  new RegExp(
+    `^${glob
+      .replace(/[.]/g, "\\.")
+      .replace(/\*\*/g, ".*")
+      .replace(/(?<!\.)\*/g, "[^/]*")}`,
+  );
 
 const campaign = (overrides: Partial<CampaignRule> = {}): CompiledCampaign => {
   const compiled = compileCampaignRule({
@@ -52,7 +57,7 @@ describe("the marker", () => {
         "import x from 'y';\nexport const sector = { name: 'billing', owns: [\"src/controllers/billing*\", 'src/services/billing/**',], } as const;\n",
       ),
     ).toEqual({ name: "billing", owns: ["src/controllers/billing*", "src/services/billing/**"] });
-    expect(parseSectorMarker("export const sector: Sector = { name: \"a\" };")).toEqual({
+    expect(parseSectorMarker('export const sector: Sector = { name: "a" };')).toEqual({
       name: "a",
     });
     expect(parseSectorMarker("export const port = {};")).toBeNull();
@@ -84,9 +89,15 @@ describe("the marker", () => {
     expect([...index.sectors.keys()]).toEqual(["billing", "orders"]);
     const billing = index.sectors.get("billing");
     expect(billing?.roots).toEqual(["src/billing", "src/controllers"]);
-    expect(billing?.files).toEqual(["src/billing/context.ts", "src/controllers/billingController.ts"]);
+    expect(billing?.files).toEqual([
+      "src/billing/context.ts",
+      "src/controllers/billingController.ts",
+    ]);
     expect(billing?.marker).toBe("src/billing/context.ts");
-    expect(index.sectors.get("orders")?.files).toEqual(["src/orders/context.ts", "src/orders/order.ts"]);
+    expect(index.sectors.get("orders")?.files).toEqual([
+      "src/orders/context.ts",
+      "src/orders/order.ts",
+    ]);
     // The domain file is under the marker's folder but the marker lists
     // globs, so it is unclaimed: legacy.
     expect(index.legacy).toEqual(["src/billing/domain/invoice.ts", "src/services/legacy.ts"]);
@@ -120,7 +131,12 @@ describe("the other perimeters", () => {
     const rule = campaign({ perimeter: { kind: "glob", glob: "^src/components/[^/]*/" } });
     const index = discoverSectors(
       rule,
-      discovery(["src/components/Foo/Foo.tsx", "src/components/Foo/useFoo.ts", "src/components/Bar/Bar.tsx", "src/lib.ts"]),
+      discovery([
+        "src/components/Foo/Foo.tsx",
+        "src/components/Foo/useFoo.ts",
+        "src/components/Bar/Bar.tsx",
+        "src/lib.ts",
+      ]),
     );
     expect([...index.sectors.keys()]).toEqual(["src/components/Bar", "src/components/Foo"]);
     expect(index.sectors.get("src/components/Foo")?.files).toEqual([
@@ -213,12 +229,12 @@ describe("entries relative to the root", () => {
     };
     const hit = { kind: "campaign" as const, ruleName: "r", message: "m", file: "", subject: null };
     expect(rootOf(sector, "hapi/src/billing/a.ts")).toBe("hapi/src/billing");
-    expect(entryOf({ ...hit, file: "hapi/src/billing/a.ts", subject: "f#1" }, "hapi/src/billing")).toBe(
-      "a.ts#f#1",
-    );
-    expect(entryOf({ ...hit, file: "nest/src/billing/a.ts", subject: "f#1" }, "nest/src/billing")).toBe(
-      "a.ts#f#1",
-    );
+    expect(
+      entryOf({ ...hit, file: "hapi/src/billing/a.ts", subject: "f#1" }, "hapi/src/billing"),
+    ).toBe("a.ts#f#1");
+    expect(
+      entryOf({ ...hit, file: "nest/src/billing/a.ts", subject: "f#1" }, "nest/src/billing"),
+    ).toBe("a.ts#f#1");
     expect(entryOf({ ...hit, file: "src/a.ts" }, "")).toBe("src/a.ts");
     expect(fixedPrefixOf("src/controllers/billing*")).toBe("src/controllers");
     expect(fixedPrefixOf("src/**")).toBe("src");

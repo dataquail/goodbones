@@ -138,7 +138,12 @@ export const collectFindings = (
 ): Findings => {
   // A campaign may widen the walk past the packs' extensions; a file only a
   // campaign asked for is seen by the campaigns and by no other family.
-  const walked = listSourceFiles(policy.repoRoot, roots, policy.languages, widenedExtensions(policy));
+  const walked = listSourceFiles(
+    policy.repoRoot,
+    roots,
+    policy.languages,
+    widenedExtensions(policy),
+  );
   const known = new Set(policy.languages.flatMap((one) => one.extensions));
   const files = walked.filter((file) => known.has(path.extname(file)));
   const violations: Array<Violation> = [];
@@ -540,8 +545,19 @@ const renderCampaigns = (report: CheckReport): ReadonlyArray<string> =>
   renderCampaignReports(
     report.campaigns,
     report.violations.flatMap((one) =>
-      one.kind === "campaign" && one.objective !== undefined && one.sector !== undefined && one.entry !== undefined
-        ? [{ violation: one, objective: one.objective, sector: one.sector, entry: one.entry, ledgered: one.ledgered }]
+      one.kind === "campaign" &&
+      one.objective !== undefined &&
+      one.sector !== undefined &&
+      one.entry !== undefined
+        ? [
+            {
+              violation: one,
+              objective: one.objective,
+              sector: one.sector,
+              entry: one.entry,
+              ledgered: one.ledgered,
+            },
+          ]
         : [],
     ),
   );
@@ -1337,7 +1353,9 @@ const campaignFor = (
   const named = flagOf(argv, "--campaign");
   if (named !== undefined) {
     const found = policy.campaignRules.find((rule) => rule.id === named);
-    return found === undefined ? Result.fail(`no campaign is named "${named}"`) : Result.succeed(found);
+    return found === undefined
+      ? Result.fail(`no campaign is named "${named}"`)
+      : Result.succeed(found);
   }
   const [only] = policy.campaignRules;
   if (policy.campaignRules.length === 1 && only !== undefined) return Result.succeed(only);
@@ -1402,13 +1420,19 @@ export const objectives = (
           for (const outcome of outcomes) {
             const parts = [
               ...(outcome.entered.length > 0
-                ? [`${count(outcome.entered.length, "sector")} entered (${outcome.entered.join(", ")})`]
+                ? [
+                    `${count(outcome.entered.length, "sector")} entered (${outcome.entered.join(", ")})`,
+                  ]
                 : []),
               ...(outcome.cleared > 0 ? [`${count(outcome.cleared, "holdout")} cleared`] : []),
-              ...(outcome.rewritten > 0 ? [`${count(outcome.rewritten, "holdout")} rewritten`] : []),
+              ...(outcome.rewritten > 0
+                ? [`${count(outcome.rewritten, "holdout")} rewritten`]
+                : []),
               ...(outcome.closed > 0 ? [`${count(outcome.closed, "holdout")} closed`] : []),
               ...(outcome.rebaselined.length > 0
-                ? [`${count(outcome.rebaselined.length, "sector")} re-baselined (${outcome.rebaselined.join(", ")})`]
+                ? [
+                    `${count(outcome.rebaselined.length, "sector")} re-baselined (${outcome.rebaselined.join(", ")})`,
+                  ]
                 : []),
             ];
             lines.push(
@@ -1421,17 +1445,22 @@ export const objectives = (
       case "concede": {
         if (parsed.target === null) {
           return yield* Effect.fail(
-            fail("objectives concede needs a campaign: `objectives concede <campaign>[/<objective>] --reason <text>`"),
+            fail(
+              "objectives concede needs a campaign: `objectives concede <campaign>[/<objective>] --reason <text>`",
+            ),
           );
         }
         const rule = policy.campaignRules.find((one) => one.id === parsed.target?.campaign);
-        if (rule === undefined) return yield* Effect.fail(fail(`no campaign is named "${parsed.target.campaign}"`));
+        if (rule === undefined)
+          return yield* Effect.fail(fail(`no campaign is named "${parsed.target.campaign}"`));
         const objective = objectiveFor(rule, parsed.target.objective);
         if (Result.isFailure(objective)) return yield* Effect.fail(fail(objective.failure));
         const reason = flagOf(argv, "--reason");
         if (reason === undefined) {
           return yield* Effect.fail(
-            fail("objectives concede needs --reason <text>: growth is recorded with why, or not at all."),
+            fail(
+              "objectives concede needs --reason <text>: growth is recorded with why, or not at all.",
+            ),
           );
         }
         const by = authorOf(flagOf(argv, "--by"));
@@ -1441,7 +1470,8 @@ export const objectives = (
           );
         }
         const evaluation = evaluations().find((one) => one.rule.id === rule.id);
-        if (evaluation === undefined) return yield* Effect.fail(fail(`campaign ${rule.id} was not evaluated`));
+        if (evaluation === undefined)
+          return yield* Effect.fail(fail(`campaign ${rule.id} was not evaluated`));
         // `--holdouts` concedes a subset and refuses the rest: a pull
         // request that legitimately adds one hit while another is an
         // accident.
@@ -1449,21 +1479,33 @@ export const objectives = (
           (flagOf(argv, "--holdouts") ?? flagOf(argv, "--entries"))
             ?.split(",")
             .map((one) => one.trim()) ?? null;
-        const outcome = concede(policy, evaluation, objective.success, chosen, flagOf(argv, "--sector") ?? null, {
-          at: policy.now,
-          by,
-          reason,
-        });
+        const outcome = concede(
+          policy,
+          evaluation,
+          objective.success,
+          chosen,
+          flagOf(argv, "--sector") ?? null,
+          {
+            at: policy.now,
+            by,
+            reason,
+          },
+        );
         if (Result.isFailure(outcome)) return yield* Effect.fail(fail(outcome.failure));
         if (outcome.success.conceded.length === 0) {
-          return yield* report([`${rule.id}/${objective.success}: nothing to concede; every hit is in the ledger.`]);
+          return yield* report([
+            `${rule.id}/${objective.success}: nothing to concede; every hit is in the ledger.`,
+          ]);
         }
         return yield* report([
           `${rule.id}/${objective.success}: ${count(outcome.success.conceded.length, "holdout")} conceded, recorded by ${by}.`,
           ...outcome.success.conceded.map((one) => `  ${one.sector} · ${one.entry}`),
           ...(outcome.success.left.length === 0
             ? []
-            : ["", `${count(outcome.success.left.length, "hit")} left unrecorded; check still fails on them.`]),
+            : [
+                "",
+                `${count(outcome.success.left.length, "hit")} left unrecorded; check still fails on them.`,
+              ]),
         ]);
       }
       default:
@@ -1512,7 +1554,9 @@ export const campaigns = (
       }
       case "status": {
         if (!argv.includes("--changed")) {
-          return yield* Effect.fail(fail("campaigns status takes --changed: the nudge is scoped to a diff."));
+          return yield* Effect.fail(
+            fail("campaigns status takes --changed: the nudge is scoped to a diff."),
+          );
         }
         const base = flagOf(argv, "--base") ?? null;
         const diff = yield* Effect.try({
@@ -1528,7 +1572,8 @@ export const campaigns = (
                   baseSideAt(policy, base, roots, (repoRoot) =>
                     loadPolicyFromFile(repoRoot, configFilename),
                   ),
-                catch: (cause) => fail(`could not evaluate the base tree at ${base}: ${String(cause)}`),
+                catch: (cause) =>
+                  fail(`could not evaluate the base tree at ${base}: ${String(cause)}`),
               });
         const hotfix = flagOf(argv, "--hotfix") ?? null;
         const nudge = nudgeOf(
@@ -1540,45 +1585,79 @@ export const campaigns = (
           hotfix === null ? null : authorOf(flagOf(argv, "--by")),
         );
         yield* report(json ? [JSON.stringify(nudge, null, 2)] : renderNudge(nudge, policy.now));
-        if (!nudge.ok) return yield* Effect.fail(fail("the diff sends a sector back under its onTouch"));
+        if (!nudge.ok)
+          return yield* Effect.fail(fail("the diff sends a sector back under its onTouch"));
         return;
       }
       case "attest": {
         const [sector, phase] = parsed.args;
         if (sector === undefined || phase === undefined) {
-          return yield* Effect.fail(fail('campaigns attest needs a sector and a phase: `campaigns attest <sector> <phase> --reason "<why>"`'));
+          return yield* Effect.fail(
+            fail(
+              'campaigns attest needs a sector and a phase: `campaigns attest <sector> <phase> --reason "<why>"`',
+            ),
+          );
         }
         const reason = flagOf(argv, "--reason");
-        if (reason === undefined) return yield* Effect.fail(fail("campaigns attest needs --reason <text>."));
+        if (reason === undefined)
+          return yield* Effect.fail(fail("campaigns attest needs --reason <text>."));
         const by = authorOf(flagOf(argv, "--by"));
-        if (by === null) return yield* Effect.fail(fail("campaigns attest needs an author: pass --by <email>, or set git's user.email."));
+        if (by === null)
+          return yield* Effect.fail(
+            fail("campaigns attest needs an author: pass --by <email>, or set git's user.email."),
+          );
         const rule = campaignFor(policy, argv);
         if (Result.isFailure(rule)) return yield* Effect.fail(fail(rule.failure));
-        const evaluation = collectFindings(policy, roots).campaigns.find((one) => one.rule.id === rule.success.id);
-        if (evaluation === undefined) return yield* Effect.fail(fail(`campaign ${rule.success.id} was not evaluated`));
-        const written = attest(policy, evaluation, sector, phase, { reason, evidence: flagOf(argv, "--evidence"), by });
+        const evaluation = collectFindings(policy, roots).campaigns.find(
+          (one) => one.rule.id === rule.success.id,
+        );
+        if (evaluation === undefined)
+          return yield* Effect.fail(fail(`campaign ${rule.success.id} was not evaluated`));
+        const written = attest(policy, evaluation, sector, phase, {
+          reason,
+          evidence: flagOf(argv, "--evidence"),
+          by,
+        });
         if (Result.isFailure(written)) return yield* Effect.fail(fail(written.failure));
-        return yield* report([`${rule.success.id}: sector ${sector} attested at ${phase} by ${by}, in ${written.success}.`, "Run `objectives clear` to move it on."]);
+        return yield* report([
+          `${rule.success.id}: sector ${sector} attested at ${phase} by ${by}, in ${written.success}.`,
+          "Run `objectives clear` to move it on.",
+        ]);
       }
       case "note": {
         const [sector, text] = parsed.args;
         if (sector === undefined || text === undefined) {
-          return yield* Effect.fail(fail('campaigns note needs a sector and a text: `campaigns note <sector> "<text>"`'));
+          return yield* Effect.fail(
+            fail('campaigns note needs a sector and a text: `campaigns note <sector> "<text>"`'),
+          );
         }
         const by = authorOf(flagOf(argv, "--by"));
-        if (by === null) return yield* Effect.fail(fail("campaigns note needs an author: pass --by <email>, or set git's user.email."));
+        if (by === null)
+          return yield* Effect.fail(
+            fail("campaigns note needs an author: pass --by <email>, or set git's user.email."),
+          );
         const rule = campaignFor(policy, argv);
         if (Result.isFailure(rule)) return yield* Effect.fail(fail(rule.failure));
-        const evaluation = collectFindings(policy, roots).campaigns.find((one) => one.rule.id === rule.success.id);
-        if (evaluation === undefined) return yield* Effect.fail(fail(`campaign ${rule.success.id} was not evaluated`));
+        const evaluation = collectFindings(policy, roots).campaigns.find(
+          (one) => one.rule.id === rule.success.id,
+        );
+        if (evaluation === undefined)
+          return yield* Effect.fail(fail(`campaign ${rule.success.id} was not evaluated`));
         const written = note(policy, evaluation, sector, text, by);
         if (Result.isFailure(written)) return yield* Effect.fail(fail(written.failure));
-        return yield* report([`${rule.success.id}: note left on ${sector}, in ${written.success}.`]);
+        return yield* report([
+          `${rule.success.id}: note left on ${sector}, in ${written.success}.`,
+        ]);
       }
       case "history": {
         const [named] = parsed.args;
-        const targets = named === undefined ? policy.campaignRules : policy.campaignRules.filter((rule) => rule.id === named);
-        const manifestPath = path.relative(policy.repoRoot, manifestPathOf(policy.repoRoot, configFilename)).replaceAll(path.sep, "/");
+        const targets =
+          named === undefined
+            ? policy.campaignRules
+            : policy.campaignRules.filter((rule) => rule.id === named);
+        const manifestPath = path
+          .relative(policy.repoRoot, manifestPathOf(policy.repoRoot, configFilename))
+          .replaceAll(path.sep, "/");
         const lines: Array<string> = [];
         for (const rule of targets) {
           const rows = historyOf(policy, rule, flagOf(argv, "--since") ?? null, [manifestPath]);
@@ -1587,7 +1666,7 @@ export const campaigns = (
             continue;
           }
           if (lines.length > 0) lines.push("");
-          lines.push(...renderHistory(rule, rows));
+          for (const line of renderHistory(rule, rows)) lines.push(line);
         }
         return yield* report(lines);
       }

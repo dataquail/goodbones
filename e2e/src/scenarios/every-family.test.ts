@@ -49,7 +49,7 @@ describe("every family fires", () => {
       campaign: 1,
     });
     // The campaign has no ledger yet, so its hit is not carried, and the
-    // report says which campaign to init.
+    // report says which campaign to clear.
     expect(json.campaigns).toEqual([
       expect.objectContaining({ id: "legacy-to-modern", count: 1, missingLedger: true }),
     ]);

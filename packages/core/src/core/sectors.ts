@@ -326,8 +326,8 @@ export const rootOf = (sector: Sector, file: string): string =>
 export const SECTOR_HOLDOUT = "~";
 
 export const entryOf = (violation: Violation, root: string): string => {
-  const relative =
-    root === "" ? violation.file : violation.file.slice(root.length + 1) || violation.file;
+  const stripped = root === "" ? violation.file : violation.file.slice(root.length + 1);
+  const relative = stripped === "" ? violation.file : stripped;
   return violation.subject === null ? relative : `${relative}#${violation.subject}`;
 };
 
@@ -337,3 +337,62 @@ export const sectorNamed = (index: SectorIndex, name: string): Sector | null =>
   name === LEGACY_SECTOR
     ? { name, roots: [""], files: index.legacy, marker: null, declaration: null }
     : (index.sectors.get(name) ?? null);
+
+// Where one file's hits fall, for a host that sees one file at a time. A
+// `glob` or `file` perimeter answers from the path; `match` from the
+// anchors the perimeter's detector found in the file; `marker` and `nx`
+// from an index the host built at load, since those need the other files.
+// A file outside the scope, or unclaimed and outside `legacy`, is in no
+// sector, and the answer is `null`.
+export type Placement = { readonly sector: string; readonly root: string };
+
+export const membershipOf = (
+  rule: CompiledCampaign,
+  file: string,
+  index: SectorIndex | null,
+  anchors: ReadonlyArray<string>,
+): ((subject: string | null) => Placement | null) => {
+  const inScope = rule.scope.some((pattern) => pattern.test(file));
+  if (!inScope) return () => null;
+  const legacy = (): Placement | null =>
+    rule.legacy === null || rule.legacy.some((pattern) => pattern.test(file))
+      ? { sector: LEGACY_SECTOR, root: "" }
+      : null;
+  const perimeter = rule.perimeter;
+  if (perimeter === null) return () => ({ sector: IMPLICIT_SECTOR, root: "" });
+  switch (perimeter.kind) {
+    case "file": {
+      const placement = { sector: withoutExtension(file), root: folderOf(file) };
+      return () => placement;
+    }
+    case "glob": {
+      for (const pattern of perimeter.glob) {
+        const found = pattern.exec(file);
+        if (found === null) continue;
+        const name = found[0].replace(/\/$/, "");
+        return () => ({ sector: name, root: name });
+      }
+      return legacy;
+    }
+    case "match": {
+      const own = anchors.map((anchor) => ({ sector: `${file}#${anchor}`, root: folderOf(file) }));
+      return (subject) => {
+        if (subject !== null) {
+          const anchor = subject.split("#")[0] ?? subject;
+          const found = own.find((one) => one.sector === `${file}#${anchor}`);
+          if (found !== undefined) return found;
+        }
+        return own.length === 1 ? (own[0] ?? null) : legacy();
+      };
+    }
+    case "marker":
+    case "nx": {
+      if (index === null) return legacy;
+      const name = index.sectorOf(file);
+      if (name === null) return () => null;
+      const sector = sectorNamed(index, name);
+      const placement = { sector: name, root: sector === null ? "" : rootOf(sector, file) };
+      return () => placement;
+    }
+  }
+};

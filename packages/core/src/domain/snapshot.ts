@@ -91,10 +91,7 @@ export const SnapshotViolation = Schema.Struct({
     describe(Schema.String, "For a campaign hit: the sector the hit falls in."),
   ),
   entry: Schema.optionalKey(
-    describe(
-      Schema.String,
-      "For a campaign hit: its ledger entry, relative to the sector's root.",
-    ),
+    describe(Schema.String, "For a campaign hit: its ledger entry, relative to the sector's root."),
   ),
 });
 
@@ -158,7 +155,10 @@ export const SnapshotObjective = Schema.Struct({
     "Holdouts added since by `objectives concede` or a re-baseline, each with a concession.",
   ),
   count: describe(Schema.Finite, "Holdouts in the ledger now, every sector summed."),
-  cleared: describe(Schema.Finite, "Holdouts removed by `objectives clear` because they stopped firing."),
+  cleared: describe(
+    Schema.Finite,
+    "Holdouts removed by `objectives clear` because they stopped firing.",
+  ),
   closed: describe(
     Schema.Finite,
     "Holdouts still firing when a sector left the window — not progress.",

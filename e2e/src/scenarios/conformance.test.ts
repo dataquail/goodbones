@@ -13,7 +13,7 @@ import { createRepo, renderManifest, type Repo } from "../repo.js";
 // The shape `conformance --json` prints, as far as these scenarios read it.
 // Declared here rather than imported, since this is the contract under test.
 type ConformanceJson = {
-  readonly version: 1;
+  readonly version: 2;
   readonly ok: boolean;
   readonly files: number;
   readonly manifest: { readonly path: string; readonly sha256: string };
@@ -100,7 +100,7 @@ describe.sequential("conformance", () => {
   it("never fails, and says what check would have done", () => {
     const measured = conformance(repo, ["src", "lib", "scripts"]);
     expect(measured.code, measured.stderr).toBe(0);
-    expect(measured.json.version).toBe(1);
+    expect(measured.json.version).toBe(2);
     expect(measured.json.files).toBe(5);
     // src/server.ts reaches lib/, which the allowlist refuses.
     expect(measured.json.ok).toBe(false);

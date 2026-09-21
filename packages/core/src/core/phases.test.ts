@@ -78,7 +78,10 @@ const find = (rule: CompiledCampaign, id: string) => {
 describe("windows", () => {
   it("run from the naming phase to `until`, exclusive; an unnamed objective runs everywhere", () => {
     const rule = billing();
-    expect(windowOf(rule, find(rule, "no-io"))).toEqual({ from: 0, until: Number.POSITIVE_INFINITY });
+    expect(windowOf(rule, find(rule, "no-io"))).toEqual({
+      from: 0,
+      until: Number.POSITIVE_INFINITY,
+    });
     expect(windowOf(rule, find(rule, "has-flag"))).toEqual({ from: 2, until: 4 });
     expect(windowOf(rule, find(rule, "legacy-lines"))).toEqual({
       from: -1,
@@ -122,7 +125,8 @@ describe("the derived phase", () => {
     // An objective no phase names never places a sector.
     expect(at({ "legacy-lines": 40 }, ["backfilled"])).toBe(5);
     // The open phase is always residue: nothing the code does leaves it.
-    expect(isOpenPhase(rule.phases[5]!)).toBe(true);
+    const last = rule.phases[5];
+    expect(last !== undefined && isOpenPhase(last)).toBe(true);
     // A shut window is not residue: a sector that reached cutover and lost
     // its flag is not sent back to dual-write.
     expect(

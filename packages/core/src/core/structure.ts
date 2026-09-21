@@ -333,9 +333,11 @@ export const structureRulesFailingTheirProbe = (
 
   const layoutOnly = { ...structure, parity: [] };
   const reported = (file: string): ReadonlyArray<string> =>
-    evaluateStructure(layoutOnly, { exists: () => true, readText: () => null, list: () => [] }, file).map(
-      (violation) => violation.ruleName,
-    );
+    evaluateStructure(
+      layoutOnly,
+      { exists: () => true, readText: () => null, list: () => [] },
+      file,
+    ).map((violation) => violation.ruleName);
 
   for (const rule of structure.folders) {
     // A folder that admits any name claims its folder but states no policy, so

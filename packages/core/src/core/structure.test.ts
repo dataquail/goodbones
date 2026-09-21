@@ -93,7 +93,7 @@ const compiled = () => {
   return outcome.success;
 };
 
-const ALL_PRESENT: FileSystem = { exists: () => true, readText: () => null };
+const ALL_PRESENT: FileSystem = { exists: () => true, readText: () => null, list: () => [] };
 
 const namesAt = (file: string, fileSystem: FileSystem = ALL_PRESENT) =>
   evaluateStructure(compiled(), fileSystem, file).map((violation) => violation.ruleName);

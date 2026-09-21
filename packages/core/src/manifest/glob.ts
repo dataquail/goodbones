@@ -106,3 +106,8 @@ export const globToRegexSource = (
 export const anchored = (source: string): string => `^${source}$`;
 
 export const prefixed = (source: string): string => `^${source}`;
+
+// A repo-relative glob as the sector discovery compiles a marker's `owns`:
+// anchored at the start, so it names a subtree.
+export const globToRegExp = (glob: string): RegExp =>
+  new RegExp(prefixed(globToRegexSource(glob, {}, { declaring: false, nextGroup: 1 }).source));

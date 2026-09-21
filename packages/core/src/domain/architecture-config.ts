@@ -295,17 +295,23 @@ export const GraphConfig = Schema.Struct({
   reach: Schema.optionalKey(Schema.Array(GraphReachRule)),
 });
 
-// A campaign: a migration tracked as an object in the repository. Where a
-// rule says what may never happen, a campaign names a pattern the code is
-// moving away from, ledgers every place it still occurs, and refuses to let
-// the count go up unrecorded. Lowered from the manifest's `campaigns` list
-// with its globs resolved; the detector below is what the evaluator compiles.
+// A campaign: one multi-step refactor, tracked as an object in the
+// repository. Where a rule says what may never happen, a campaign names what
+// the code is moving away from — as `objectives`, each a detector with a
+// ledger that only shrinks on its own — over `sectors` the code declares
+// through a `perimeter`, through an ordered sequence of `phases` toward an
+// end. Lowered from the manifest's `campaigns` map with its globs resolved;
+// the detector below is what the evaluator compiles.
 
-// What a hit is: a whole file, a named declaration in it, or one matched
-// expression. The unit decides what a term from another level means (a
-// file-level term in a declaration campaign is a filter; a declaration-level
-// term in a file campaign is existential) and what the fingerprint anchors on.
+// What one holdout is: a whole file, a named declaration in it, one matched
+// expression, or the sector itself (for a presence objective — the sector is
+// the holdout while nothing in it matches). The first three are the unit a
+// per-file detector answers at; the unit decides what a term from another
+// level means (a file-level term in a declaration objective is a filter; a
+// declaration-level term in a file objective is existential) and what the
+// fingerprint anchors on.
 export const CampaignUnit = Schema.Literals(["file", "declaration", "match"]);
+export const Holdout = Schema.Literals(["file", "declaration", "match", "sector"]);
 
 // The detector's leaf terms. Every pattern is a regular-expression source,
 // as everywhere else in this config; the manifest writes globs and lowering
@@ -423,6 +429,22 @@ export const Detector = Schema.Union([
   Schema.Struct({ fn: Schema.String }),
 ]);
 
+// A term quantified over the sector's files rather than answered by one.
+// `has` takes an ordinary detector and holds when at least one file (or
+// declaration, or match) in the sector satisfies it — a presence, whose
+// holdout is the sector until something matches. `oneRoot` holds when every
+// file of the sector sits under the root its perimeter was found at, which
+// is what an `endState` needs; `oneHost` when every file matches the host.
+// Each needs the sector's file list and nothing else, so the CLI reports
+// them and the plugin, which sees one file, reads only their effect on the
+// sector's phase through the ledger.
+export const SectorTerm = Schema.Union([
+  Schema.Struct({ has: Detector }),
+  Schema.Struct({ oneRoot: Schema.Literal(true) }),
+  Schema.Struct({ oneHost: PatternList }),
+]);
+export type SectorTerm = (typeof SectorTerm)["Type"];
+
 // One diagnostic a probe stands in for, positions one-based as a tool
 // prints them.
 export const ProbeDiagnostic = Schema.Struct({
@@ -432,7 +454,7 @@ export const ProbeDiagnostic = Schema.Struct({
   message: Schema.optionalKey(Schema.String),
 });
 
-// A source the campaign is proven against: the path it would have, its text
+// A source an objective is proven against: the path it would have, its text
 // when a term needs one, the target of each of its edges (in place of the live
 // resolver), the files beside it (in place of the file system) and the
 // diagnostics reported on it (in place of the report source).
@@ -444,25 +466,120 @@ export const CampaignProbe = Schema.Struct({
   report: Schema.optionalKey(Schema.Array(ProbeDiagnostic)),
 });
 
+export const CampaignProbes = Schema.Struct({
+  fires: Schema.Array(CampaignProbe),
+  ignores: Schema.Array(CampaignProbe),
+});
+
+// An objective: a detector, a granularity, probes, and a ledger that only
+// shrinks on its own. Owned by one campaign; named by at most one phase (an
+// objective no phase names is in window in every phase). Exactly one of
+// `match` (a per-file detector, evaluated by both hosts) and `sector` (a
+// term over the sector's files, evaluated by the CLI) — or, for the
+// objectives an `endState` expands into, `endState` naming the family.
+export const ObjectiveRule = Schema.Struct({
+  // `campaign/<campaign>/<objective>`, the rule name a violation carries.
+  name: Schema.String,
+  id: Schema.String,
+  campaign: Schema.String,
+  // The `how`: what a reader at a holdout does about it.
+  message: Schema.String,
+  why: Schema.optionalKey(Schema.String),
+  holdout: Holdout,
+  match: Schema.optionalKey(Detector),
+  sector: Schema.optionalKey(SectorTerm),
+  endState: Schema.optionalKey(
+    Schema.Struct({
+      phase: Schema.String,
+      family: Schema.Literals(["imports", "exports", "members", "surface", "structure"]),
+    }),
+  ),
+  // The phase at which the objective stops counting, exclusive; absent, it
+  // counts to the end.
+  until: Schema.optionalKey(Schema.String),
+  probes: CampaignProbes,
+});
+
+// How a sector is recognized. The name is the sector's identity. A `marker`
+// is a file that names the sector (and may list the globs it owns); `glob`
+// is one sector per match; `match` one sector per detector match, keyed by
+// its anchor; `file` one sector per file, keyed by the path without its
+// extension; `nx` reads the workspace's projects. A campaign with none has
+// one implicit sector, the scope.
+export const PerimeterRule = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("file") }),
+  Schema.Struct({ kind: Schema.Literal("nx") }),
+  Schema.Struct({ kind: Schema.Literal("glob"), glob: PatternList }),
+  Schema.Struct({
+    kind: Schema.Literal("marker"),
+    marker: PatternList,
+    probes: Schema.optionalKey(Schema.Struct({ fires: PatternList, ignores: PatternList })),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("match"),
+    match: Detector,
+    unit: Schema.Literals(["declaration", "match"]),
+    probes: CampaignProbes,
+  }),
+]);
+export type PerimeterRule = (typeof PerimeterRule)["Type"];
+
+// What a touched sector owes beyond the nudge. A strict ladder: the ledger
+// records growth with a reason under `advise`; `ratchet` refuses it in a
+// touched sector; `paydown` adds that a diff editing a holdout-bearing
+// declaration must leave the sector with fewer holdouts.
+export const OnTouch = Schema.Literals(["advise", "ratchet", "paydown"]);
+export type OnTouch = (typeof OnTouch)["Type"];
+
+// A dated receipt for a change to a defined phase, which authorizes the next
+// `clear` to re-baseline the sectors in that phase's window.
+export const PhaseConcession = Schema.Struct({
+  reason: Schema.String,
+  at: Schema.String,
+  by: Schema.optionalKey(Schema.String),
+});
+
+// A phase: a named, ordered group of objectives. Defined when it names one
+// (or is attested, or carries an end state); open when it has only an
+// intent, and then it is last. `hash` is the phase's definition — its
+// position, its objectives and their detectors — so a change to a defined
+// phase is visible against the plan the ledger recorded.
+export const PhaseRule = Schema.Struct({
+  id: Schema.String,
+  intent: Schema.optionalKey(Schema.String),
+  objectives: Schema.Array(Schema.String),
+  attested: Schema.Boolean,
+  onTouch: Schema.optionalKey(OnTouch),
+  // The sector-relative node tree, carried as written; expanded per sector
+  // by the host that evaluates it.
+  endState: Schema.optionalKey(Schema.Unknown),
+  concessions: Schema.Array(PhaseConcession),
+  hash: Schema.String,
+});
+export type PhaseRule = (typeof PhaseRule)["Type"];
+
 export const CampaignRule = Schema.Struct({
-  // `campaign/<id>`, the rule name a violation carries.
+  // `campaign/<id>`.
   name: Schema.String,
   id: Schema.String,
   title: Schema.optionalKey(Schema.String),
-  // The `how`: what a reader at a hit does about it.
-  message: Schema.String,
-  why: Schema.String,
+  why: Schema.optionalKey(Schema.String),
   owner: Schema.optionalKey(Schema.String),
   scope: PatternList,
-  unit: CampaignUnit,
-  detect: Detector,
-  probes: Schema.Struct({
-    fires: Schema.Array(CampaignProbe),
-    ignores: Schema.Array(CampaignProbe),
-  }),
-  // Milliseconds without progress after which the campaign is stalled.
-  staleAfter: Schema.Finite,
-  // What `check` demands once the count is zero: keep the campaign as a
+  // Extensions the campaign widens the walk to, beyond the packs' — a
+  // JavaScript half a TypeScript pack does not visit.
+  extensions: Schema.Array(Schema.String),
+  // What the remainder of the scope counts as; absent, everything no sector
+  // claims is legacy.
+  legacy: Schema.optionalKey(PatternList),
+  perimeter: Schema.optionalKey(PerimeterRule),
+  onTouch: Schema.optionalKey(OnTouch),
+  phases: Schema.Array(PhaseRule),
+  objectives: Schema.Array(ObjectiveRule),
+  // Milliseconds without progress after which the campaign is stalled;
+  // absent, it never is.
+  staleAfter: Schema.optionalKey(Schema.Finite),
+  // What `check` demands once every count is zero: keep the campaign as a
   // guard against recurrence, or remove it from the manifest.
   onComplete: Schema.Literals(["keep", "remove"]),
 });
@@ -560,9 +677,13 @@ export type StructureFolder = (typeof StructureFolder)["Type"];
 export type StructureParity = (typeof StructureParity)["Type"];
 export type StructureNaming = (typeof StructureNaming)["Type"];
 export type CampaignUnit = (typeof CampaignUnit)["Type"];
+export type Holdout = (typeof Holdout)["Type"];
 export type CampaignProbe = (typeof CampaignProbe)["Type"];
+export type CampaignProbes = (typeof CampaignProbes)["Type"];
 export type ProbeDiagnostic = (typeof ProbeDiagnostic)["Type"];
 export type ReportFormat = (typeof ReportFormat)["Type"];
+export type ObjectiveRule = (typeof ObjectiveRule)["Type"];
+export type PhaseConcession = (typeof PhaseConcession)["Type"];
 export type CampaignRule = (typeof CampaignRule)["Type"];
 export type CaptureNarrowing = (typeof CaptureNarrowing)["Type"];
 

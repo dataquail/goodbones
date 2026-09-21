@@ -15,7 +15,7 @@ import {
 
 // A document with something in every section.
 const SAMPLE: Snapshot = {
-  version: 1,
+  version: 2,
   manifest: { path: "architecture.yaml", sha256: "abc" },
   roots: ["src"],
   files: 3,
@@ -74,13 +74,37 @@ const SAMPLE: Snapshot = {
       id: "react-class-components",
       title: "Class components to hooks",
       owner: "@dataquail/web-platform",
-      initial: 412,
-      allowed: 2,
       count: 388,
-      fixed: 26,
       progress: 0.0628,
-      lastProgress: "2026-09-14T09:11:00.000Z",
-      regressions: 1,
+      objectives: [
+        {
+          id: "class-shape",
+          phase: null,
+          initial: 412,
+          allowed: 2,
+          count: 388,
+          cleared: 26,
+          closed: 0,
+          progress: 0.0628,
+          lastCleared: "2026-09-14T09:11:00.000Z",
+          concessions: 1,
+          complete: false,
+          ledgered: true,
+        },
+      ],
+      phases: [{ id: "hooks", defined: true, sectors: 1 }],
+      sectors: [
+        {
+          name: "scope",
+          phase: "hooks",
+          reached: "hooks",
+          files: 900,
+          residue: { "class-shape": 388 },
+          stalled: false,
+        },
+      ],
+      legacy: { files: 0, holdouts: 0 },
+      plan: { refined: [], changed: [], unreceipted: [] },
       stalled: false,
       complete: false,
       onComplete: "keep",
@@ -128,9 +152,9 @@ describe("the conformance snapshot", () => {
   it("refuses a key the shape does not declare, and a version it does not know", () => {
     const validate = validator();
     expect(validate({ ...SAMPLE, extra: 1 })).toBe(false);
-    expect(validate({ ...SAMPLE, version: 2 })).toBe(false);
+    expect(validate({ ...SAMPLE, version: 1 })).toBe(false);
     expect(Result.isFailure(decodeSnapshot({ ...SAMPLE, extra: 1 }))).toBe(true);
-    expect(Result.isFailure(decodeSnapshot({ ...SAMPLE, version: 2 }))).toBe(true);
+    expect(Result.isFailure(decodeSnapshot({ ...SAMPLE, version: 1 }))).toBe(true);
   });
 
   it("refuses a violation of an unknown kind or a slack of an unknown kind", () => {

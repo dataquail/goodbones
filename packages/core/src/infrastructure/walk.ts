@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import * as path from "node:path";
 
 import type { Language } from "../ports/language.js";
@@ -24,13 +24,16 @@ export type WalkedLanguage = Pick<Language, "extensions" | "ignoredFiles">;
 // Which files count as source is the languages' to say: the extension set is
 // the union of theirs, and so is the set of files to step over. A root that
 // names a file is that file, whatever its extension — `architecture check
-// <file>` is a reasonable thing to type.
+// <file>` is a reasonable thing to type. `widened` adds the extensions a
+// campaign's scope names beyond the packs' — a file the pack cannot parse
+// contributes no facts, and only a campaign that asked for it sees it.
 export const listSourceFiles = (
   repoRoot: string,
   roots: ReadonlyArray<string>,
   languages: ReadonlyArray<WalkedLanguage>,
+  widened: ReadonlyArray<string> = [],
 ): ReadonlyArray<string> => {
-  const extensions = new Set(languages.flatMap((language) => language.extensions));
+  const extensions = new Set([...languages.flatMap((language) => language.extensions), ...widened]);
   const ignored = languages.flatMap((language) => language.ignoredFiles);
   const isSource = (entry: string): boolean =>
     extensions.has(path.extname(entry)) && !ignored.some((pattern) => pattern.test(entry));
@@ -120,4 +123,56 @@ export const listPackageRoots = (
     }
   }
   return [...found.values()].sort((a, b) => a.root.localeCompare(b.root));
+};
+
+export type WorkspaceProject = {
+  readonly name: string;
+  // Repo-relative folder with forward slashes.
+  readonly root: string;
+};
+
+// The workspace's projects, for an `nx` perimeter: every folder under the
+// roots holding a `project.json`, named by it — or, when it names nothing,
+// by the `package.json` beside it, or the folder. Read from the files
+// rather than from `nx graph`, so no process is spawned and a checkout
+// without the workspace's tooling installed still has its sectors.
+export const listWorkspaceProjects = (
+  repoRoot: string,
+  roots: ReadonlyArray<string>,
+): ReadonlyArray<WorkspaceProject> => {
+  const found: Array<WorkspaceProject> = [];
+  const nameIn = (absolute: string, file: string): string | null => {
+    try {
+      const parsed = JSON.parse(readFileSync(path.join(absolute, file), "utf8")) as unknown;
+      const name =
+        typeof parsed === "object" && parsed !== null
+          ? (parsed as { readonly name?: unknown }).name
+          : undefined;
+      return typeof name === "string" && name !== "" ? name : null;
+    } catch {
+      return null;
+    }
+  };
+  const walk = (absolute: string): void => {
+    if (existsSync(path.join(absolute, "project.json"))) {
+      const root = path.relative(repoRoot, absolute).replaceAll(path.sep, "/");
+      found.push({
+        name:
+          nameIn(absolute, "project.json") ??
+          nameIn(absolute, "package.json") ??
+          path.basename(absolute),
+        root,
+      });
+    }
+    for (const entry of readdirSync(absolute)) {
+      if (SKIPPED.has(entry)) continue;
+      const child = path.join(absolute, entry);
+      if (statSync(child).isDirectory()) walk(child);
+    }
+  };
+  for (const root of roots) {
+    const absolute = path.resolve(repoRoot, root);
+    if (statSync(absolute).isDirectory()) walk(absolute);
+  }
+  return found.sort((a, b) => a.root.localeCompare(b.root));
 };

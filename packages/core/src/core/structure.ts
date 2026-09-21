@@ -333,7 +333,7 @@ export const structureRulesFailingTheirProbe = (
 
   const layoutOnly = { ...structure, parity: [] };
   const reported = (file: string): ReadonlyArray<string> =>
-    evaluateStructure(layoutOnly, { exists: () => true, readText: () => null }, file).map(
+    evaluateStructure(layoutOnly, { exists: () => true, readText: () => null, list: () => [] }, file).map(
       (violation) => violation.ruleName,
     );
 

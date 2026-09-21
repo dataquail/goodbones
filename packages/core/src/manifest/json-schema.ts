@@ -31,13 +31,20 @@ const isObject = (value: JsonValue): value is JsonObject =>
 
 const isList = (value: JsonValue): value is ReadonlyArray<JsonValue> => Array.isArray(value);
 
-// The generator names the recursive schemas after its own internal wrappers.
-// A stable name is what a `$ref` in an error message or a docs page can
-// point at: the tree's node, and a campaign's detector.
-const DEFINITION_NAMES: Readonly<Record<string, string>> = {
-  Suspend_: "ManifestNode",
-  Union_: "Detector",
+// The generator names the recursive schemas after its own internal wrappers,
+// numbered in the order it meets them. A stable name is what a `$ref` in an
+// error message or a docs page can point at: the tree's node, and an
+// objective's detector — told apart by what each declares, since the order
+// moves with the manifest's shape.
+const definitionNameOf = (name: string, definition: JsonValue): string => {
+  if (!/^(Suspend|Union)_\d*$/.test(name)) return name;
+  const text = JSON.stringify(definition);
+  if (text.includes('"children"')) return "ManifestNode";
+  if (text.includes('"all"')) return "Detector";
+  return name;
 };
+
+const DEFINITION_NAMES: Record<string, string> = {};
 
 const USE_REFERENCE = "#/$defs/Use";
 const INCLUDE_REFERENCE = "#/$defs/Include";
@@ -98,6 +105,21 @@ const SCHEMA_PROPERTY: JsonObject = {
   description: "For editors. Ignored by the loader.",
 };
 
+// A `Record` whose keys are checked — the campaign and objective ids —
+// generates as `patternProperties`, which alone admits any other key beside
+// the matching ones. Closed here, so an editor flags an id in the wrong
+// shape as the loader would.
+const withKeyPatterns = (value: JsonValue): JsonValue => {
+  if (Array.isArray(value)) return value.map(withKeyPatterns);
+  if (!isObject(value)) return value;
+  const rebuilt: Record<string, JsonValue> = {};
+  for (const [childKey, entry] of entriesOf(value)) rebuilt[childKey] = withKeyPatterns(entry);
+  if (rebuilt.type === "object" && "patternProperties" in rebuilt && !("additionalProperties" in rebuilt)) {
+    rebuilt.additionalProperties = false;
+  }
+  return rebuilt;
+};
+
 export const manifestJsonSchema = (): JsonObject => {
   const generated = Schema.toJsonSchemaDocument(Manifest) as unknown as {
     readonly schema: JsonObject;
@@ -108,6 +130,9 @@ export const manifestJsonSchema = (): JsonObject => {
     throw new Error("the manifest schema generated with no properties");
   }
 
+  for (const [name, definition] of entriesOf(generated.definitions)) {
+    DEFINITION_NAMES[name] = definitionNameOf(name, definition);
+  }
   const definitions: Record<string, JsonValue> = {};
   for (const [name, definition] of entriesOf(generated.definitions)) {
     definitions[DEFINITION_NAMES[name] ?? name] = admitReferences(definition);
@@ -124,7 +149,7 @@ export const manifestJsonSchema = (): JsonObject => {
       $schema: SCHEMA_PROPERTY,
       defs: DEFS_PROPERTY,
       ...Object.fromEntries(
-        entriesOf(properties).map(([key, value]) => [key, admitReferences(value)]),
+        entriesOf(properties).map(([key, value]) => [key, withKeyPatterns(admitReferences(value))]),
       ),
     },
     $defs: { ...definitions, Use, Include },

@@ -3,8 +3,8 @@ import * as Schema from "effect/Schema";
 import * as SchemaIssue from "effect/SchemaIssue";
 
 import {
-  CampaignUnit,
   DeclarationKind,
+  Holdout,
   ImportProbeTarget,
   ProbeDiagnostic,
   ReportFormat,
@@ -438,7 +438,7 @@ const DetectorSpec = Schema.Union([
   Schema.Struct({ fn: Schema.String }),
 ]);
 
-// A source the campaign is proven against at load. `path` alone proves a
+// A source an objective is proven against at load. `path` alone proves a
 // path-shaped detector; `source` is parsed, `edges` answers the `imports`
 // term and a binding narrowing in place of the live resolver, `files`
 // answers `requires` in place of the file system, and `report` answers a
@@ -452,28 +452,171 @@ const CampaignProbe = Schema.Struct({
   report: Schema.optionalKey(Schema.Array(ProbeDiagnostic)),
 });
 
+const CampaignProbes = Schema.Struct({
+  fires: Schema.Array(CampaignProbe),
+  ignores: Schema.optionalKey(Schema.Array(CampaignProbe)),
+});
+
 // `30d`, `12h`: how long a campaign may go without progress before the
 // conformance report calls it stalled.
 const Duration = Schema.String.check(Schema.isPattern(/^\d+[dh]$/));
 
-const Campaign = Schema.Struct({
-  // The ledger file's name, and the rule name's tail: `campaign/<id>`.
-  id: Schema.String.check(Schema.isPattern(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)),
-  title: Schema.optionalKey(Schema.String),
-  why: Schema.String,
-  // What a reader at a hit does about it — the message every hit carries.
-  how: Schema.String,
-  owner: Schema.optionalKey(Schema.String),
-  // Which files the campaign selects. Alias-aware globs, as the graph rules
-  // take; a campaign's reach is its scope, so it joins no coverage row.
-  scope: Globs,
-  unit: CampaignUnit,
-  detect: DetectorSpec,
-  probes: Schema.Struct({
-    fires: Schema.Array(CampaignProbe),
-    ignores: Schema.optionalKey(Schema.Array(CampaignProbe)),
+const KebabId = Schema.String.check(Schema.isPattern(/^[a-z0-9]+(?:-[a-z0-9]+)*$/));
+
+// A term quantified over a sector's files: `has` a detector at least one
+// file (or declaration, or match) in the sector satisfies — a presence;
+// `oneRoot` every file under the root the perimeter was found at; `oneHost`
+// every file under the host named.
+const SectorTermSpec = Schema.Union([
+  Schema.Struct({ has: DetectorRef }),
+  Schema.Struct({ oneRoot: Schema.Literal(true) }),
+  Schema.Struct({ oneHost: Globs }),
+]);
+
+// An objective: a detector with a ledger that only shrinks on its own. The
+// `holdout` says what one ledger entry is; `match` is a per-file detector
+// and `sector` a term over the sector's files, exactly one of them.
+// `until` names the phase at which it stops counting.
+const Objective = Schema.Struct({
+  // What a reader at a holdout does about it — the message every hit
+  // carries; falls back to the campaign's.
+  how: Schema.optionalKey(Schema.String),
+  why: Schema.optionalKey(Schema.String),
+  holdout: Holdout,
+  match: Schema.optionalKey(DetectorRef),
+  sector: Schema.optionalKey(SectorTermSpec),
+  until: Schema.optionalKey(KebabId),
+  probes: Schema.optionalKey(CampaignProbes),
+}).check(
+  Schema.makeFilter((objective) => {
+    const issues: Array<Schema.FilterIssue> = [];
+    if ((objective.match === undefined) === (objective.sector === undefined)) {
+      issues.push(
+        "an objective names exactly one of `match` (a detector over each file) and `sector` (a term over the sector's files)",
+      );
+    }
+    if (objective.sector !== undefined && objective.holdout !== "sector") {
+      issues.push({
+        path: ["holdout"],
+        issue: "a `sector` objective's holdout is the sector: write `holdout: sector`",
+      });
+    }
+    if (objective.match !== undefined && objective.holdout === "sector") {
+      issues.push({
+        path: ["holdout"],
+        issue: "a `match` objective's holdout is `file`, `declaration` or `match`",
+      });
+    }
+    if (objective.match !== undefined && (objective.probes?.fires.length ?? 0) === 0) {
+      issues.push({
+        path: ["probes"],
+        issue:
+          "a `match` objective carries `probes.fires`: at least one source it must report, as every rule proves it can fire",
+      });
+    }
+    return issues;
   }),
-  staleAfter: Duration,
+);
+
+// How a sector is recognized. `file`: one per file, keyed by the path without
+// its extension. `nx`: the workspace's projects. `{ glob }`: one per match.
+// `{ marker }`: a file that names the sector — an exported `sector` object
+// with `name` and the globs it `owns`; without one, the folder. `{ match }`:
+// one per detector match, keyed by its anchor, and proven by probes at least
+// one of which is a sector in its end shape.
+const PerimeterSpec = Schema.Union([
+  Schema.Literals(["file", "nx"]),
+  Schema.Struct({ glob: Globs }),
+  Schema.Struct({
+    marker: Globs,
+    probes: Schema.optionalKey(
+      Schema.Struct({ fires: Schema.optionalKey(Globs), ignores: Schema.optionalKey(Globs) }),
+    ),
+  }),
+  Schema.Struct({
+    match: DetectorRef,
+    holdout: Schema.optionalKey(Schema.Literals(["declaration", "match"])),
+    probes: CampaignProbes,
+  }),
+]);
+
+const OnTouchSpec = Schema.Literals(["advise", "ratchet", "paydown"]);
+
+// A receipt for a change to a defined phase: a reason, dated.
+const PhaseConcessionSpec = Schema.Struct({
+  reason: Schema.String,
+  at: Schema.String,
+  by: Schema.optionalKey(Schema.String),
+});
+
+// A sector-relative node tree: one root, `~/`, standing for the sector,
+// shaped like the manifest's own tree with one allow entry of its own —
+// `{ sector, via }`, another sector through its port. Carried as written
+// and decoded as a tree once the lowering has rebased it for a sector, so
+// the node codec itself never learns the extra entry.
+const EndStateSpec = Schema.Record(Schema.String, Schema.Unknown);
+
+const decodeTree = Schema.decodeUnknownResult(Schema.Record(Schema.String, ManifestNodeSchema), {
+  errors: "all",
+  onExcessProperty: "error",
+});
+
+// A tree of nodes, as an `endState` is once rebased: decoded like the
+// manifest's own, every issue listed.
+export const decodeManifestTree = (
+  raw: unknown,
+): Result.Result<Readonly<Record<string, ManifestNode>>, string> => {
+  const decoded = decodeTree(raw);
+  return Result.isFailure(decoded)
+    ? Result.fail(
+        flatten(decoded.failure.issue)
+          .issues.map((issue) => `${renderManifestPath(pathOf(issue))}: ${issue.message}`)
+          .join("\n"),
+      )
+    : Result.succeed(decoded.success);
+};
+
+// A phase: a named, ordered group of objectives. Defined when it names one
+// (or is `attested`, or carries an `endState`); open when it has only an
+// intent, and then it is last.
+const Phase = Schema.Struct({
+  id: KebabId,
+  intent: Schema.optionalKey(Schema.String),
+  objectives: Schema.optionalKey(Schema.Array(KebabId)),
+  attested: Schema.optionalKey(Schema.Boolean),
+  onTouch: Schema.optionalKey(OnTouchSpec),
+  endState: Schema.optionalKey(EndStateSpec),
+  concessions: Schema.optionalKey(Schema.Array(PhaseConcessionSpec)),
+});
+
+// The scope, as globs or with the extensions the campaign widens the walk
+// to beyond the packs' own.
+const ScopeSpec = Schema.Union([
+  Globs,
+  Schema.Struct({ path: Globs, extensions: Schema.optionalKey(Schema.Array(Schema.String)) }),
+]);
+
+// A campaign: one multi-step refactor with an end. Everything above
+// `objectives` is optional, so a one-objective campaign is the minimal form.
+const Campaign = Schema.Struct({
+  title: Schema.optionalKey(Schema.String),
+  why: Schema.optionalKey(Schema.String),
+  // The message a holdout carries when its objective states no `how`.
+  how: Schema.optionalKey(Schema.String),
+  owner: Schema.optionalKey(Schema.String),
+  // Which files the campaign sees. Alias-aware globs, as the graph rules
+  // take; a campaign's reach is its scope, so it joins no coverage row.
+  // Defaults to every file.
+  scope: Schema.optionalKey(ScopeSpec),
+  // What the unclaimed remainder of the scope counts as; absent, all of it.
+  legacy: Schema.optionalKey(Globs),
+  perimeter: Schema.optionalKey(PerimeterSpec),
+  onTouch: Schema.optionalKey(OnTouchSpec),
+  phases: Schema.optionalKey(Schema.Array(Phase)),
+  // Sugar for the last phase's end state.
+  endState: Schema.optionalKey(EndStateSpec),
+  objectives: Schema.Record(KebabId, Objective),
+  staleAfter: Schema.optionalKey(Duration),
   onComplete: Schema.optionalKey(Schema.Literals(["keep", "remove"])),
 });
 
@@ -491,9 +634,9 @@ export const Manifest = Schema.Struct({
   exports: Schema.optionalKey(Schema.Array(ExportRestriction)),
   graph: Schema.optionalKey(Graph),
   limits: Schema.optionalKey(Limits),
-  campaigns: Schema.optionalKey(Schema.Array(Campaign)),
-  // Where each campaign's ledger is written: `<ledger>/<id>.json`, relative
-  // to the manifest. Defaults to `.architecture-campaigns`.
+  campaigns: Schema.optionalKey(Schema.Record(KebabId, Campaign)),
+  // Where the ledgers are written: `<ledger>/<campaign>/<objective>.json`,
+  // relative to the manifest. Defaults to `.architecture-campaigns`.
   ledger: Schema.optionalKey(Schema.String),
   // Shorthands expanded in every glob, so a pattern reads the way the repo's own
   // imports do rather than repeating `packages/server/src` on every line.
@@ -511,7 +654,13 @@ export type LimitsSpec = typeof Limits.Type;
 export type NamingSpec = typeof Naming.Type;
 export type ExportRestriction = typeof ExportRestriction.Type;
 export type CampaignSpec = typeof Campaign.Type;
+export type ObjectiveSpec = typeof Objective.Type;
+export type PhaseSpec = typeof Phase.Type;
+export type PerimeterSpec = typeof PerimeterSpec.Type;
+export type SectorTermSpec = typeof SectorTermSpec.Type;
+export type EndStateSpec = typeof EndStateSpec.Type;
 export type CampaignProbeSpec = typeof CampaignProbe.Type;
+export type CampaignProbesSpec = typeof CampaignProbes.Type;
 export type SyntaxTermSpec = typeof SyntaxTerm.Type;
 
 export const DEFAULT_LEDGER_DIR = ".architecture-campaigns";
@@ -639,6 +788,34 @@ const normalizeLegacyMembers = (
   return { input: { ...input, tree }, notices };
 };
 
+// The family's first shape — a list of campaigns each carrying one `detect`
+// — is refused by name, since the decoder's own message for it would be a
+// wall of union issues. A campaign now owns its `objectives`, each of which
+// is what a campaign used to be.
+const legacyCampaignsIssue = (input: unknown): string | null => {
+  if (!isRecord(input) || input.campaigns === undefined) return null;
+  if (isList(input.campaigns)) {
+    return (
+      "`campaigns` is a list. A campaign is now a map keyed by its id, and what a campaign used " +
+      "to be — a detector with a ledger — is one of its `objectives`: write " +
+      "`campaigns: { <id>: { objectives: { <objective>: { holdout, match, probes } } } }`, " +
+      "with `unit` renamed `holdout` and `detect` renamed `match`."
+    );
+  }
+  if (!isRecord(input.campaigns)) return null;
+  for (const [id, campaign] of Object.entries(input.campaigns)) {
+    if (!isRecord(campaign)) continue;
+    if ("detect" in campaign && !("objectives" in campaign)) {
+      return (
+        `campaign "${id}" carries a \`detect\` and no \`objectives\`. A campaign owns its ` +
+        `objectives, each a detector with a ledger: move \`detect\` (now \`match\`), \`unit\` ` +
+        `(now \`holdout\`) and \`probes\` under \`objectives: { <objective>: … }\`.`
+      );
+    }
+  }
+  return null;
+};
+
 export type DecodeManifestOptions = {
   // Turns a path in the file into a line and column. The YAML reader supplies
   // one; a JavaScript module has no positions to give and passes nothing.
@@ -714,6 +891,15 @@ export const decodeManifest = (
   }
   const { substitutions, value } = expanded.success;
 
+  const legacyCampaigns = legacyCampaignsIssue(value);
+  if (legacyCampaigns !== null) {
+    return Result.fail(
+      new ConfigInvalid({
+        configPath,
+        detail: `the manifest does not decode:\n${describeIssue(configPath, options.locate, substitutions, ["campaigns"], legacyCampaigns)}`,
+      }),
+    );
+  }
   const resolve = normalizeLegacyResolve(value);
   const members = normalizeLegacyMembers(resolve.input);
   const decoded = decode(members.input);

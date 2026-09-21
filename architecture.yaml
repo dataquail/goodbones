@@ -260,25 +260,29 @@ tree:
 # the loader returns a `Result` — and it is also the family's largest test:
 # both hosts evaluate it against this tree on every lint run.
 campaigns:
-  - id: lowering-reports-not-throws
+  lowering-reports-not-throws:
     title: Lowering reports through Result, not by throwing
     why: "`loadPolicy` returns a `Result`, but a manifest that lowers badly escapes it as a thrown `Error` — so a host that handles the failure value still has an exception to catch, and the message carries no line."
     how: "Return `Result.fail(new ConfigInvalid({ configPath, detail }))` from the lowering, threading the path the manifest was read from, and let `loadPolicy` pass it up. Keep the sentence; move it into `detail`."
     owner: "@dataquail"
     scope: ["@core/manifest/**"]
-    unit: match
-    detect:
-      all:
-        - path: { file: "\\.ts$", fileNot: "\\.test\\.ts$" }
-        - syntax: { pattern: "throw new Error($$$)" }
-    probes:
-      fires:
-        - path: packages/core/src/manifest/zzprobe.ts
-          source: 'const lower = () => { throw new Error("bad manifest"); };'
-      ignores:
-        - path: packages/core/src/manifest/zzprobe.test.ts
-          source: 'const lower = () => { throw new Error("bad manifest"); };'
-        - path: packages/core/src/manifest/zzprobe.ts
-          source: "const lower = () => Result.fail(new ConfigInvalid({ configPath, detail }));"
     staleAfter: 90d
     onComplete: keep
+    # The minimal campaign: one objective, no perimeter (the scope is its
+    # one sector), no phases. What the family's first shape was.
+    objectives:
+      throws-in-lowering:
+        holdout: match
+        match:
+          all:
+            - path: { file: "\\.ts$", fileNot: "\\.test\\.ts$" }
+            - syntax: { pattern: "throw new Error($$$)" }
+        probes:
+          fires:
+            - path: packages/core/src/manifest/zzprobe.ts
+              source: 'const lower = () => { throw new Error("bad manifest"); };'
+          ignores:
+            - path: packages/core/src/manifest/zzprobe.test.ts
+              source: 'const lower = () => { throw new Error("bad manifest"); };'
+            - path: packages/core/src/manifest/zzprobe.ts
+              source: "const lower = () => Result.fail(new ConfigInvalid({ configPath, detail }));"

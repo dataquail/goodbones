@@ -7,8 +7,13 @@ import type {
   CampaignUnit,
   DeclarationKind,
   Detector,
+  Holdout,
   ImportProbeTarget,
   MemberSubject,
+  ObjectiveRule,
+  OnTouch,
+  PerimeterRule,
+  PhaseRule,
   ReportFormat,
 } from "../domain/architecture-config.js";
 import { ImportUnresolved, PatternInvalid } from "../domain/architecture-error.js";
@@ -24,13 +29,19 @@ import { probeTargetOf } from "./imports.js";
 import { compilePatterns } from "./patterns.js";
 import { siblingsOf } from "./structure.js";
 
-// A campaign is a rule, a baseline and a conformance measure with one thing
-// the other families lack: a way to name a pattern the import graph cannot
-// see. The detector is a predicate algebra — `all`, `any`, `not` — over leaf
-// terms borrowed from the other families (`path`, `imports`, `exports`,
-// `members`, `requires`) and three of its own (`content`, `syntax`, `fn`).
+// A campaign is one multi-step refactor: `objectives` — each a rule, a
+// baseline and a conformance measure with one thing the other families lack,
+// a way to name a pattern the import graph cannot see — over `sectors` the
+// code declares through a `perimeter`, through ordered `phases`. This module
+// compiles a campaign and evaluates one objective on one file; the sectors
+// and the phases are `sectors.ts` and `phases.ts`. The detector is a
+// predicate algebra — `all`, `any`, `not` — over leaf terms borrowed from
+// the other families (`path`, `imports`, `exports`, `members`, `requires`)
+// and three of its own (`content`, `syntax`, `fn`).
 //
-// A campaign declares its unit: `file`, `declaration` or `match`. The unit
+// An objective declares what a holdout is: `file`, `declaration` or `match`
+// (or `sector`, for a term over the sector's files, which `sectors.ts`
+// answers). The unit
 // decides what a term from another level means. In a `file` campaign every
 // term is existential — "the file contains one" — and `not` is "contains
 // none". In a `declaration` or `match` campaign the candidates are what the
@@ -115,21 +126,67 @@ export type CompiledDetector =
     }
   | { readonly kind: "fn"; readonly name: string };
 
-export type CompiledCampaign = {
+export type CompiledSectorTerm =
+  | { readonly kind: "has"; readonly detect: CompiledDetector }
+  | { readonly kind: "oneRoot" }
+  | { readonly kind: "oneHost"; readonly hosts: ReadonlyArray<RegExp> };
+
+export type CompiledObjective = {
   readonly name: string;
   readonly id: string;
-  readonly title: string | null;
+  readonly campaign: string;
   readonly message: string;
-  readonly why: string;
-  readonly owner: string | null;
-  readonly scope: ReadonlyArray<RegExp>;
+  readonly why: string | null;
+  readonly holdout: Holdout;
+  // The unit a per-file detector answers at; `declaration` for the
+  // objectives no per-file detector answers, whose entries are `file#subject`.
   readonly unit: CampaignUnit;
-  readonly detect: CompiledDetector;
+  readonly detect: CompiledDetector | null;
+  readonly sector: CompiledSectorTerm | null;
+  readonly endState: { readonly phase: string; readonly family: string } | null;
+  readonly until: string | null;
   readonly probes: {
     readonly fires: ReadonlyArray<CampaignProbe>;
     readonly ignores: ReadonlyArray<CampaignProbe>;
   };
-  readonly staleAfter: number;
+};
+
+export type CompiledPerimeter =
+  | { readonly kind: "file" }
+  | { readonly kind: "nx" }
+  | { readonly kind: "glob"; readonly glob: ReadonlyArray<RegExp> }
+  | {
+      readonly kind: "marker";
+      readonly marker: ReadonlyArray<RegExp>;
+      readonly probes: {
+        readonly fires: ReadonlyArray<string>;
+        readonly ignores: ReadonlyArray<string>;
+      } | null;
+    }
+  | {
+      readonly kind: "match";
+      readonly detect: CompiledDetector;
+      readonly unit: "declaration" | "match";
+      readonly probes: {
+        readonly fires: ReadonlyArray<CampaignProbe>;
+        readonly ignores: ReadonlyArray<CampaignProbe>;
+      };
+    };
+
+export type CompiledCampaign = {
+  readonly name: string;
+  readonly id: string;
+  readonly title: string | null;
+  readonly why: string | null;
+  readonly owner: string | null;
+  readonly scope: ReadonlyArray<RegExp>;
+  readonly extensions: ReadonlyArray<string>;
+  readonly legacy: ReadonlyArray<RegExp> | null;
+  readonly perimeter: CompiledPerimeter | null;
+  readonly onTouch: OnTouch | null;
+  readonly phases: ReadonlyArray<PhaseRule>;
+  readonly objectives: ReadonlyArray<CompiledObjective>;
+  readonly staleAfter: number | null;
   readonly onComplete: "keep" | "remove";
 };
 
@@ -311,25 +368,120 @@ const compileDetector = (
   return Result.succeed({ kind: "fn", name: detector.fn });
 };
 
+export const compileObjective = (
+  rule: ObjectiveRule,
+): Result.Result<CompiledObjective, PatternInvalid> => {
+  let detect: CompiledDetector | null = null;
+  if (rule.match !== undefined) {
+    const compiled = compileDetector(rule.name, rule.match);
+    if (Result.isFailure(compiled)) return Result.fail(compiled.failure);
+    detect = compiled.success;
+  }
+  let sector: CompiledSectorTerm | null = null;
+  if (rule.sector !== undefined) {
+    if ("has" in rule.sector) {
+      const compiled = compileDetector(rule.name, rule.sector.has);
+      if (Result.isFailure(compiled)) return Result.fail(compiled.failure);
+      sector = { kind: "has", detect: compiled.success };
+    } else if ("oneRoot" in rule.sector) {
+      sector = { kind: "oneRoot" };
+    } else {
+      const hosts = compilePatterns(rule.name, "sector.oneHost", rule.sector.oneHost);
+      if (Result.isFailure(hosts)) return Result.fail(hosts.failure);
+      sector = { kind: "oneHost", hosts: hosts.success };
+    }
+  }
+  return Result.succeed({
+    name: rule.name,
+    id: rule.id,
+    campaign: rule.campaign,
+    message: rule.message,
+    why: rule.why ?? null,
+    holdout: rule.holdout,
+    unit: rule.holdout === "sector" ? "declaration" : rule.holdout,
+    detect,
+    sector,
+    endState: rule.endState ?? null,
+    until: rule.until ?? null,
+    probes: rule.probes,
+  });
+};
+
+const compilePerimeter = (
+  name: string,
+  perimeter: PerimeterRule,
+): Result.Result<CompiledPerimeter, PatternInvalid> => {
+  switch (perimeter.kind) {
+    case "file":
+    case "nx":
+      return Result.succeed({ kind: perimeter.kind });
+    case "glob": {
+      const glob = compilePatterns(name, "perimeter.glob", perimeter.glob);
+      return Result.isFailure(glob)
+        ? Result.fail(glob.failure)
+        : Result.succeed({ kind: "glob", glob: glob.success });
+    }
+    case "marker": {
+      const marker = compilePatterns(name, "perimeter.marker", perimeter.marker);
+      if (Result.isFailure(marker)) return Result.fail(marker.failure);
+      return Result.succeed({
+        kind: "marker",
+        marker: marker.success,
+        probes:
+          perimeter.probes === undefined
+            ? null
+            : {
+                fires: [...(typeof perimeter.probes.fires === "string" ? [perimeter.probes.fires] : perimeter.probes.fires)],
+                ignores: [...(typeof perimeter.probes.ignores === "string" ? [perimeter.probes.ignores] : perimeter.probes.ignores)],
+              },
+      });
+    }
+    case "match": {
+      const detect = compileDetector(`${name}/perimeter`, perimeter.match);
+      if (Result.isFailure(detect)) return Result.fail(detect.failure);
+      return Result.succeed({
+        kind: "match",
+        detect: detect.success,
+        unit: perimeter.unit,
+        probes: perimeter.probes,
+      });
+    }
+  }
+};
+
 export const compileCampaignRule = (
   rule: CampaignRule,
 ): Result.Result<CompiledCampaign, PatternInvalid> => {
   const scope = compilePatterns(rule.name, "scope", rule.scope);
   if (Result.isFailure(scope)) return Result.fail(scope.failure);
-  const detect = compileDetector(rule.name, rule.detect);
-  if (Result.isFailure(detect)) return Result.fail(detect.failure);
+  const legacy = compilePatterns(rule.name, "legacy", rule.legacy);
+  if (Result.isFailure(legacy)) return Result.fail(legacy.failure);
+  let perimeter: CompiledPerimeter | null = null;
+  if (rule.perimeter !== undefined) {
+    const compiled = compilePerimeter(rule.name, rule.perimeter);
+    if (Result.isFailure(compiled)) return Result.fail(compiled.failure);
+    perimeter = compiled.success;
+  }
+  const objectives: Array<CompiledObjective> = [];
+  for (const objective of rule.objectives) {
+    const one = compileObjective(objective);
+    if (Result.isFailure(one)) return Result.fail(one.failure);
+    objectives.push(one.success);
+  }
   return Result.succeed({
     name: rule.name,
     id: rule.id,
     title: rule.title ?? null,
-    message: rule.message,
-    why: rule.why,
+    why: rule.why ?? null,
     owner: rule.owner ?? null,
     scope: scope.success,
-    unit: rule.unit,
-    detect: detect.success,
-    probes: rule.probes,
-    staleAfter: rule.staleAfter,
+    extensions: rule.extensions,
+    legacy: rule.legacy === undefined ? null : legacy.success,
+    perimeter,
+    onTouch: rule.onTouch ?? null,
+    phases: rule.phases,
+    objectives,
+    staleAfter: rule.staleAfter ?? null,
     onComplete: rule.onComplete,
   });
 };
@@ -353,6 +505,19 @@ export const campaignsSelecting = (
   rules: ReadonlyArray<CompiledCampaign>,
   file: string,
 ): ReadonlyArray<CompiledCampaign> => rules.filter((rule) => anyMatches(rule.scope, file));
+
+// The objectives a host evaluates per file: those with a per-file detector.
+export const perFileObjectivesOf = (
+  rule: CompiledCampaign,
+): ReadonlyArray<CompiledObjective> =>
+  rule.objectives.filter((objective) => objective.detect !== null);
+
+// Whether any of these detectors reads the syntax tree — the parse a host
+// skips when none does.
+export const needsSyntax = (detectors: ReadonlyArray<CompiledDetector>): boolean =>
+  detectors.some((detect) =>
+    leafTermsOf(detect).some((leaf) => leaf === "syntax" || leaf === "report" || leaf === "fn"),
+  );
 
 // The leaf terms the compiled detector holds, in the order the evaluator
 // ranks them by cost.
@@ -416,6 +581,7 @@ export type CampaignInput = {
 export type CampaignHit = {
   readonly violation: Violation;
   readonly campaign: string;
+  readonly objective: string;
   readonly range?: Range;
 };
 
@@ -812,7 +978,11 @@ const universeOf = (evaluation: Evaluation, unit: CampaignUnit): ReadonlyArray<C
   return [...byKey.values()].sort((left, right) => left.key.localeCompare(right.key));
 };
 
-const hitOf = (rule: CompiledCampaign, file: string, candidate: Candidate): CampaignHit => ({
+const hitOf = (
+  rule: CompiledObjective,
+  file: string,
+  candidate: Candidate,
+): CampaignHit => ({
   violation: {
     kind: "campaign",
     ruleName: rule.name,
@@ -820,23 +990,49 @@ const hitOf = (rule: CompiledCampaign, file: string, candidate: Candidate): Camp
     file,
     subject: rule.unit === "file" ? null : candidate.key,
   },
-  campaign: rule.id,
+  campaign: rule.campaign,
+  objective: rule.id,
   ...(candidate.range === null ? {} : { range: candidate.range }),
 });
 
-export const evaluateCampaign = (
-  rule: CompiledCampaign,
+// The candidates a detector produces on one file at a unit, as the
+// perimeter and the sector terms ask it — without an objective to hang a
+// violation on.
+export const candidatesOf = (
+  detect: CompiledDetector,
+  unit: CampaignUnit,
+  input: CampaignInput,
+): ReadonlyArray<{ readonly key: string; readonly range: Range | null }> => {
+  const evaluation = evaluationOf(input);
+  const verdict = prepare(detect, unit, evaluation);
+  if (unit === "file") {
+    const holds = verdict ?? judge(detect, null, "file", evaluation);
+    return holds ? [{ key: "", range: null }] : [];
+  }
+  if (verdict === false) return [];
+  return universeOf(evaluation, unit)
+    .filter((candidate) => judge(detect, candidate, unit, evaluation))
+    .map((candidate) => ({ key: candidate.key, range: candidate.range }));
+};
+
+// One objective on one file. An objective with no per-file detector — a
+// sector term, an end state — answers nothing here; the host that holds
+// the sector's files answers it.
+export const evaluateObjective = (
+  rule: CompiledObjective,
   input: CampaignInput,
 ): ReadonlyArray<CampaignHit> => {
+  if (rule.detect === null) return [];
+  const detect = rule.detect;
   const evaluation = evaluationOf(input);
-  const verdict = prepare(rule.detect, rule.unit, evaluation);
+  const verdict = prepare(detect, rule.unit, evaluation);
   if (rule.unit === "file") {
-    const holds = verdict ?? judge(rule.detect, null, "file", evaluation);
+    const holds = verdict ?? judge(detect, null, "file", evaluation);
     return holds ? [hitOf(rule, input.file, FILE_CANDIDATE)] : [];
   }
   if (verdict === false) return [];
   return universeOf(evaluation, rule.unit)
-    .filter((candidate) => judge(rule.detect, candidate, rule.unit, evaluation))
+    .filter((candidate) => judge(detect, candidate, rule.unit, evaluation))
     .map((candidate) => hitOf(rule, input.file, candidate));
 };
 
@@ -877,14 +1073,20 @@ export const reportSpecsOf = (
         return;
     }
   };
-  for (const rule of rules) walk(rule.detect);
+  for (const rule of rules) {
+    for (const objective of rule.objectives) {
+      if (objective.detect !== null) walk(objective.detect);
+      if (objective.sector?.kind === "has") walk(objective.sector.detect);
+    }
+    if (rule.perimeter?.kind === "match") walk(rule.perimeter.detect);
+  }
   return [...seen.values()];
 };
 
-export const evaluateCampaigns = (
-  selected: ReadonlyArray<CompiledCampaign>,
+export const evaluateObjectives = (
+  selected: ReadonlyArray<CompiledObjective>,
   input: CampaignInput,
-): ReadonlyArray<CampaignHit> => selected.flatMap((rule) => evaluateCampaign(rule, input));
+): ReadonlyArray<CampaignHit> => selected.flatMap((rule) => evaluateObjective(rule, input));
 
 // One line per leaf term: how it reads, and what it answered for this file —
 // every leaf evaluated, with no short-circuit, since the point is to show
@@ -932,10 +1134,21 @@ const describeTarget = (target: Target): string => {
   }
 };
 
-export const explainCampaign = (
-  rule: CompiledCampaign,
+// The detector an objective reads a file with: its own, or the one its
+// `has` term quantifies over the sector's files.
+export const detectorOf = (rule: CompiledObjective): CompiledDetector | null =>
+  rule.detect ?? (rule.sector?.kind === "has" ? rule.sector.detect : null);
+
+export const explainObjective = (
+  rule: CompiledObjective,
+  input: CampaignInput,
+): ReadonlyArray<TermAnswer> => explainDetector(detectorOf(rule), input);
+
+export const explainDetector = (
+  detect: CompiledDetector | null,
   input: CampaignInput,
 ): ReadonlyArray<TermAnswer> => {
+  if (detect === null) return [];
   const evaluation = evaluationOf(input);
   const lines: Array<TermAnswer> = [];
   const walk = (term: CompiledDetector, negated: boolean): void => {
@@ -957,7 +1170,7 @@ export const explainCampaign = (
       }
     }
   };
-  walk(rule.detect, false);
+  walk(detect, false);
   return lines;
 };
 
@@ -1001,7 +1214,7 @@ export const probeInputOf = (
           : Result.succeed(probeTargetOf(target));
       },
     },
-    fileSystem: { exists: (at) => files.has(at), readText: () => null },
+    fileSystem: { exists: (at) => files.has(at), readText: () => null, list: () => [] },
     syntax: probe.source === undefined || matcher === null ? null : matcher.parse(probe.path, text),
     functions,
     reports: { diagnosticsOf: (_spec, file) => (file === probe.path ? reported : []) },
@@ -1011,17 +1224,21 @@ export const probeInputOf = (
 export type FailedProbe = {
   readonly name: string;
   readonly probe: CampaignProbe;
-  readonly expected: "fires" | "ignores";
+  readonly expected: "fires" | "ignores" | "end-shape";
   // For an `ignores` probe that fired: the first leaf term that held.
   readonly admittedBy?: string;
   // For a probe outside the campaign's own scope.
   readonly outOfScope?: boolean;
 };
 
-// Every campaign must fire on each of its `fires` probes and stay silent on
-// each of its `ignores` — the same vacuity check every family makes, with
-// the second half added because a campaign's detector is composed, and the
-// term that admits too much is the one the author wants named.
+// Every objective must fire on each of its `fires` probes and stay silent
+// on each of its `ignores` — the same vacuity check every family makes,
+// with the second half added because a detector is composed, and the term
+// that admits too much is the one the author wants named. A `match`
+// perimeter is proven the same way, plus one rule of its own: the perimeter
+// is the sector's identity across every phase, so at least one of its
+// `fires` probes must be a sector no objective fires on — its end shape —
+// or the sector would be un-born the moment the first phase was met.
 export const campaignsFailingTheirProbe = (
   rules: ReadonlyArray<CompiledCampaign>,
   extractor: FactExtractor,
@@ -1030,27 +1247,62 @@ export const campaignsFailingTheirProbe = (
 ): ReadonlyArray<FailedProbe> => {
   const failed: Array<FailedProbe> = [];
   for (const rule of rules) {
-    const check = (probe: CampaignProbe, expected: "fires" | "ignores"): void => {
+    const check = (
+      name: string,
+      detect: CompiledDetector,
+      unit: CampaignUnit,
+      probe: CampaignProbe,
+      expected: "fires" | "ignores",
+    ): CampaignInput | null => {
       if (!anyMatches(rule.scope, probe.path)) {
-        failed.push({ name: rule.name, probe, expected, outOfScope: true });
-        return;
+        failed.push({ name, probe, expected, outOfScope: true });
+        return null;
       }
       const input = probeInputOf(probe, extractor, matcherFor(probe.path), functions);
-      const hits = evaluateCampaign(rule, input);
-      if (expected === "fires" && hits.length === 0)
-        failed.push({ name: rule.name, probe, expected });
+      const hits = candidatesOf(detect, unit, input);
+      if (expected === "fires" && hits.length === 0) failed.push({ name, probe, expected });
       if (expected === "ignores" && hits.length > 0) {
-        const admitting = explainCampaign(rule, input).find((line) => line.answer);
+        const admitting = explainDetector(detect, input).find((line) => line.answer);
         failed.push({
-          name: rule.name,
+          name,
           probe,
           expected,
           ...(admitting === undefined ? {} : { admittedBy: admitting.term }),
         });
       }
+      return input;
     };
-    for (const probe of rule.probes.fires) check(probe, "fires");
-    for (const probe of rule.probes.ignores) check(probe, "ignores");
+    for (const objective of rule.objectives) {
+      const detect = detectorOf(objective);
+      if (detect === null) continue;
+      const unit = objective.sector?.kind === "has" ? "file" : objective.unit;
+      for (const probe of objective.probes.fires) check(objective.name, detect, unit, probe, "fires");
+      for (const probe of objective.probes.ignores) {
+        check(objective.name, detect, unit, probe, "ignores");
+      }
+    }
+    if (rule.perimeter?.kind === "match") {
+      const perimeter = rule.perimeter;
+      const name = `${rule.name}/perimeter`;
+      let endShape = false;
+      for (const probe of perimeter.probes.fires) {
+        const input = check(name, perimeter.detect, perimeter.unit, probe, "fires");
+        if (input === null) continue;
+        const firing = rule.objectives.some(
+          (objective) =>
+            objective.detect !== null &&
+            candidatesOf(objective.detect, objective.unit, input).length > 0,
+        );
+        if (!firing) endShape = true;
+      }
+      for (const probe of perimeter.probes.ignores) {
+        check(name, perimeter.detect, perimeter.unit, probe, "ignores");
+      }
+      const [first] = perimeter.probes.fires;
+      if (!endShape && first !== undefined) {
+        failed.push({ name, probe: first, expected: "end-shape" });
+      }
+    }
   }
   return failed;
 };

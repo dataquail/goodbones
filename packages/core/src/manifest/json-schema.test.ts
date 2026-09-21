@@ -130,77 +130,170 @@ describe("the manifest JSON Schema", () => {
     ]);
   });
 
-  // The campaign from the family's docs page, and a misspelled term key: the
-  // detector is a union of one-key objects, so the wrong key is refused rather
-  // than read as a term that matches nothing.
-  const campaigns = [
-    {
-      id: "react-class-components",
+  // The campaigns from the family's docs page — one per shape the design
+  // names — and a misspelled term key: the detector is a union of one-key
+  // objects, so the wrong key is refused rather than read as a term that
+  // matches nothing.
+  const campaigns = {
+    "react-class-components": {
       title: "Class components to hooks",
       why: "Class lifecycle methods block concurrent features.",
       how: "Convert to a function component.",
       owner: "@dataquail/web-platform",
       scope: ["apps/web/src/**/*.tsx"],
-      unit: "declaration",
-      detect: {
-        syntax: {
-          pattern: "class $NAME extends $BASE { $$$ }",
-          where: {
-            BASE: {
-              binding: { resolves: { external: "react" }, member: ["Component", "PureComponent"] },
+      objectives: {
+        "class-shape": {
+          holdout: "declaration",
+          match: {
+            syntax: {
+              pattern: "class $NAME extends $BASE { $$$ }",
+              where: {
+                BASE: {
+                  binding: { resolves: { external: "react" }, member: ["Component", "PureComponent"] },
+                },
+              },
             },
           },
-        },
-      },
-      probes: {
-        fires: [
-          {
-            path: "apps/web/src/a.tsx",
-            source: "import { Component } from 'react'; export class Foo extends Component {}",
-            edges: { react: { external: "react" } },
+          probes: {
+            fires: [
+              {
+                path: "apps/web/src/a.tsx",
+                source: "import { Component } from 'react'; export class Foo extends Component {}",
+                edges: { react: { external: "react" } },
+              },
+            ],
+            ignores: [{ path: "apps/web/src/b.tsx", source: "class Foo extends Base {}" }],
           },
-        ],
-        ignores: [{ path: "apps/web/src/b.tsx", source: "class Foo extends Base {}" }],
+        },
       },
       staleAfter: "30d",
       onComplete: "keep",
     },
-    {
-      id: "rsc-boundaries",
+    "rsc-boundaries": {
       why: "Server components render on the server.",
       how: "Add the directive or move the hook.",
       scope: ["app/**/*.tsx"],
-      unit: "file",
-      detect: {
-        all: [
-          { not: { content: { regex: "^[\"']use client[\"']" } } },
-          {
-            any: [
-              { syntax: { pattern: "$HOOK($$$)", where: { HOOK: { regex: "^use[A-Z]" } } } },
-              { imports: { resolves: { external: "framer-motion" } } },
-              { fn: "./campaigns/rsc.mjs#needsClientBoundary" },
+      objectives: {
+        "client-boundary": {
+          holdout: "file",
+          match: {
+            all: [
+              { not: { content: { regex: "^[\"']use client[\"']" } } },
+              {
+                any: [
+                  { syntax: { pattern: "$HOOK($$$)", where: { HOOK: { regex: "^use[A-Z]" } } } },
+                  { imports: { resolves: { external: "framer-motion" } } },
+                  { fn: "./campaigns/rsc.mjs#needsClientBoundary" },
+                ],
+              },
             ],
           },
-        ],
-      },
-      probes: { fires: [{ path: "app/x.tsx", source: "export default () => { useState(); }" }] },
-      staleAfter: "30d",
-    },
-    {
-      id: "type-errors",
-      why: "The strict tsconfig cannot land while these remain.",
-      how: "Fix the type error; do not add a cast.",
-      scope: ["src/**"],
-      unit: "match",
-      detect: {
-        report: { command: "tsc --noEmit --pretty false", format: "tsc", codesNot: ["TS6133"] },
-      },
-      probes: {
-        fires: [{ path: "src/a.ts", report: [{ line: 1, code: "TS2551", message: "m" }] }],
+          probes: { fires: [{ path: "app/x.tsx", source: "export default () => { useState(); }" }] },
+        },
       },
       staleAfter: "30d",
     },
-  ];
+    "billing-ddd": {
+      scope: "src/**",
+      legacy: "src/services/**",
+      perimeter: { marker: "**/context.ts", probes: { fires: "src/billing/context.ts" } },
+      onTouch: "ratchet",
+      phases: [
+        { id: "domain", intent: "a domain module with unit tests", objectives: ["no-io-in-domain"] },
+        { id: "repository", objectives: ["has-migration"], concessions: [{ reason: "widened", at: "2026-09-20" }] },
+        { id: "dual-write", objectives: ["has-flag"] },
+        { id: "backfilled", intent: "rows copied", attested: true },
+        { id: "cutover", objectives: ["no-flag"], onTouch: "paydown" },
+        { id: "aggregates", intent: "undecided until two contexts have reached cutover" },
+      ],
+      objectives: {
+        "no-io-in-domain": {
+          holdout: "declaration",
+          match: { all: [{ path: { file: "**/domain/**" } }, { members: { subject: "calls", name: "readFileSync" } }] },
+          probes: { fires: [{ path: "src/billing/domain/a.ts", source: "readFileSync()" }] },
+        },
+        "has-migration": { holdout: "sector", sector: { has: { path: { file: "**/migrations/*.ts" } } } },
+        "has-flag": {
+          holdout: "sector",
+          until: "cutover",
+          sector: { has: { content: { regex: "flags.billingDualWrite" } } },
+        },
+        "no-flag": {
+          holdout: "match",
+          match: { content: { regex: "flags.billingDualWrite" } },
+          probes: { fires: [{ path: "src/billing/a.ts", source: "flags.billingDualWrite" }] },
+        },
+      },
+    },
+    "hapi-strangler": {
+      scope: ["hapi/src/**", "nest/src/**"],
+      perimeter: { marker: "**/port.ts" },
+      phases: [
+        { id: "onion", objectives: ["one-root"] },
+        {
+          id: "cqrs",
+          objectives: ["one-host"],
+          endState: {
+            "~/": {
+              layout: "open",
+              children: {
+                "domain/": { layout: "open", children: {}, imports: { allow: ["~/domain/"] } },
+                "adapters/": { layout: "open", children: {}, imports: { allow: ["~/ports/", { sector: "*", via: "~/ports/" }] } },
+              },
+            },
+          },
+        },
+      ],
+      objectives: {
+        "one-root": { holdout: "sector", sector: { oneRoot: true } },
+        "one-host": { holdout: "sector", sector: { oneHost: "nest/**" } },
+      },
+    },
+    "js-to-ts": {
+      scope: { path: "src/**", extensions: [".js", ".jsx"] },
+      perimeter: "file",
+      phases: [{ id: "typescript", objectives: ["is-ts"] }, { id: "strict", objectives: ["strict-clean"] }],
+      objectives: {
+        "is-ts": {
+          holdout: "file",
+          match: { path: { file: "**/*.{js,jsx}" } },
+          probes: { fires: [{ path: "src/a.js" }], ignores: [{ path: "src/a.ts" }] },
+        },
+        "strict-clean": {
+          holdout: "match",
+          match: { report: { command: "tsc --noEmit --pretty false", format: "tsc", codesNot: ["TS6133"] } },
+          probes: {
+            fires: [{ path: "src/a.ts", report: [{ line: 1, code: "TS2551", message: "m" }] }],
+          },
+        },
+      },
+    },
+    "pages-to-app": {
+      scope: "src/**",
+      perimeter: {
+        match: { exports: { kinds: ["default"] } },
+        holdout: "declaration",
+        probes: { fires: [{ path: "src/pages/a.tsx", source: "export default function A() {}" }] },
+      },
+      objectives: {
+        "old-shape": {
+          holdout: "declaration",
+          match: { exports: { kinds: ["default"], declares: ["class"] } },
+          probes: { fires: [{ path: "src/pages/a.tsx", source: "export default class A {}" }] },
+        },
+      },
+    },
+    "by-project": {
+      perimeter: "nx",
+      objectives: {
+        "no-any": {
+          holdout: "match",
+          match: { content: { regex: ": any" } },
+          probes: { fires: [{ path: "libs/a.ts", source: "let x: any" }] },
+        },
+      },
+    },
+  };
 
   it("validates the campaign examples, and a ledger path", () => {
     const validate = validator();
@@ -213,24 +306,25 @@ describe("the manifest JSON Schema", () => {
     expect(validate(manifest), JSON.stringify(validate.errors, null, 2)).toBe(true);
   });
 
-  it("rejects a misspelled term key, and a duration in the wrong shape", () => {
+  it("rejects a misspelled term key, a duration in the wrong shape, and the family's first shape", () => {
     const validate = validator();
     const base = { resolve: { scopes: [{ files: "", language: "typescript" }] }, tree: {} };
-    const first = campaigns[0];
-    expect(
-      validate({ ...base, campaigns: [{ ...first, detect: { syntaxx: { pattern: "x" } } }] }),
-    ).toBe(false);
-    expect(
-      validate({ ...base, campaigns: [{ ...first, detect: { content: { regexp: "x" } } }] }),
-    ).toBe(false);
-    expect(validate({ ...base, campaigns: [{ ...first, staleAfter: "30 days" }] })).toBe(false);
-    expect(
-      validate({
-        ...base,
-        campaigns: [{ ...first, detect: { report: { command: "x", format: "junit" } } }],
-      }),
-    ).toBe(false);
-    expect(validate({ ...base, campaigns: [{ ...first, unit: "line" }] })).toBe(false);
+    const first = campaigns["react-class-components"];
+    const withObjective = (objective: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
+      ...base,
+      campaigns: {
+        one: { ...first, ...extra, objectives: { "class-shape": { ...first.objectives["class-shape"], ...objective } } },
+      },
+    });
+    expect(validate(withObjective({ match: { syntaxx: { pattern: "x" } } }))).toBe(false);
+    expect(validate(withObjective({ match: { content: { regexp: "x" } } }))).toBe(false);
+    expect(validate(withObjective({}, { staleAfter: "30 days" }))).toBe(false);
+    expect(validate(withObjective({ match: { report: { command: "x", format: "junit" } } }))).toBe(false);
+    expect(validate(withObjective({ holdout: "line" }))).toBe(false);
+    expect(validate({ ...base, campaigns: [{ id: "x" }] })).toBe(false);
+    expect(validate({ ...base, campaigns: { "Not Kebab": first } })).toBe(false);
+    expect(validate({ ...base, campaigns: { one: { ...first, perimeter: "folder" } } })).toBe(false);
+    expect(validate({ ...base, campaigns: { one: { ...first, onTouch: "nag" } } })).toBe(false);
   });
 });
 

@@ -18,7 +18,7 @@ import type { ViolationKind } from "./violation.js";
 export const SNAPSHOT_SCHEMA_ID =
   "https://dataquail.github.io/goodbones/schema/conformance.schema.json";
 
-export const SNAPSHOT_VERSION = 1;
+export const SNAPSHOT_VERSION = 2;
 
 const describe = <S extends Schema.Top>(schema: S, description: string) =>
   schema.annotate({ description });
@@ -130,46 +130,131 @@ export const SnapshotVacancy = Schema.Struct({
   ),
 });
 
-// One campaign's burn-down: what its ledger says, and what the clock says
-// about it. Every count is over ledger entries, which are hits by fingerprint.
+// One objective's burn-down: what its ledger says, summed over its sectors.
+export const SnapshotObjective = Schema.Struct({
+  id: describe(
+    Schema.String,
+    "The objective's id; its ledger is `<ledger>/<campaign>/<objective>.json`.",
+  ),
+  phase: describe(
+    Schema.NullOr(Schema.String),
+    "The phase naming the objective, or `null` for one no phase names — in window everywhere.",
+  ),
+  initial: describe(Schema.Finite, "Holdouts recorded as each sector entered the window, summed."),
+  allowed: describe(
+    Schema.Finite,
+    "Holdouts added since by `objectives concede` or a re-baseline, each with a concession.",
+  ),
+  count: describe(Schema.Finite, "Holdouts in the ledger now, every sector summed."),
+  cleared: describe(Schema.Finite, "Holdouts removed by `objectives clear` because they stopped firing."),
+  closed: describe(
+    Schema.Finite,
+    "Holdouts still firing when a sector left the window — not progress.",
+  ),
+  progress: describe(
+    Schema.Finite,
+    "`1 - count / (initial + allowed - closed)`: how much of everything ever ledgered has been paid down.",
+  ),
+  lastCleared: describe(
+    Schema.NullOr(Schema.String),
+    "When a holdout last left the ledger, ISO 8601 — the stall clock's reading; `null` with no ledger.",
+  ),
+  concessions: describe(Schema.Finite, "How many times a count was allowed to go up."),
+  complete: describe(Schema.Boolean, "No holdouts remain."),
+  ledgered: describe(
+    Schema.Boolean,
+    "Whether a ledger exists. An objective with none has been declared and not yet cleared.",
+  ),
+});
+
+// One phase of the ladder, and how many sectors stand at it.
+export const SnapshotPhase = Schema.Struct({
+  id: describe(Schema.String, "The phase's id."),
+  defined: describe(
+    Schema.Boolean,
+    "Whether the phase names criteria. An open phase has only an intent, and is last.",
+  ),
+  sectors: describe(Schema.Finite, "How many sectors are derived to stand at this phase."),
+});
+
+// One sector: where it stands, and its residue toward its next phase.
+export const SnapshotSector = Schema.Struct({
+  name: describe(Schema.String, "The sector's identity, as its perimeter names it."),
+  phase: describe(
+    Schema.NullOr(Schema.String),
+    "The phase the sector is derived to stand at, or `null` when it is past the last one.",
+  ),
+  reached: describe(
+    Schema.NullOr(Schema.String),
+    "The furthest phase the sector's record says it has reached; `null` before its first `clear`.",
+  ),
+  files: describe(Schema.Finite, "How many files the sector claims."),
+  residue: describe(
+    Schema.Record(Schema.String, Schema.Finite),
+    "One dimension per objective in window for the sector: its holdouts there, never summed.",
+  ),
+  stalled: describe(
+    Schema.Boolean,
+    "Holdouts remain for the sector and nothing has been cleared, attested or noted within `staleAfter`.",
+  ),
+});
+
+// One campaign: its objectives' burn-down, the distribution of its sectors
+// over its phases, the legacy remainder, and what changed in its plan.
 export const SnapshotCampaign = Schema.Struct({
-  id: describe(Schema.String, "The campaign's id; its ledger is `<ledger>/<id>.json`."),
+  id: describe(Schema.String, "The campaign's id; its ledgers are under `<ledger>/<id>/`."),
   title: Schema.optionalKey(describe(Schema.String, "The campaign's title, when it states one.")),
   owner: Schema.optionalKey(
     describe(Schema.String, "Who is running the campaign, as the manifest names them."),
   ),
-  initial: describe(Schema.Finite, "Entries the day the ledger was written."),
-  allowed: describe(
-    Schema.Finite,
-    "Entries added since by `campaigns allow`, each with a regression record.",
-  ),
-  count: describe(Schema.Finite, "Entries in the ledger now."),
-  fixed: describe(
-    Schema.Finite,
-    "Entries removed by `campaigns prune` since the ledger was written.",
-  ),
+  count: describe(Schema.Finite, "Holdouts across every objective and sector."),
   progress: describe(
     Schema.Finite,
-    "`1 - count / (initial + allowed)`: how much of everything ever ledgered has been paid down.",
+    "Cleared over everything ever ledgered, across the campaign's objectives.",
   ),
-  lastProgress: describe(
-    Schema.String,
-    "When an entry last left the ledger, ISO 8601 — the stall clock's reading.",
+  objectives: describe(Schema.Array(SnapshotObjective), "Every objective, in manifest order."),
+  phases: describe(
+    Schema.Array(SnapshotPhase),
+    "The ladder, in order, with how many sectors stand at each phase.",
   ),
-  regressions: describe(Schema.Finite, "How many times the count was allowed to go up."),
+  sectors: describe(Schema.Array(SnapshotSector), "Every sector the perimeter births, by name."),
+  legacy: describe(
+    Schema.Struct({
+      files: describe(Schema.Finite, "Files in the scope no sector claims."),
+      holdouts: describe(
+        Schema.Finite,
+        "Holdouts in the legacy, under the first phase's objectives — where a holdout moved out of a sector lands.",
+      ),
+    }),
+    "The unclaimed remainder of the scope, which stands at the first phase and is not a sink.",
+  ),
+  plan: describe(
+    Schema.Struct({
+      refined: describe(
+        Schema.Array(Schema.String),
+        "Phases refined since the last `clear`: an open phase that gained criteria, or a new one. Free.",
+      ),
+      changed: describe(
+        Schema.Array(Schema.String),
+        "Defined phases whose definition changed since the last `clear` — what a reviewer reads every time.",
+      ),
+      unreceipted: describe(
+        Schema.Array(Schema.String),
+        "Changed phases carrying no new concession; `check` fails on them.",
+      ),
+    }),
+    "What changed in the plan, refinements and changes apart.",
+  ),
   stalled: describe(
     Schema.Boolean,
-    "Entries remain and `lastProgress` is older than the campaign's `staleAfter`.",
+    "Holdouts remain and nothing has been cleared, attested or noted within the campaign's `staleAfter`.",
   ),
-  complete: describe(Schema.Boolean, "No entries remain."),
+  complete: describe(Schema.Boolean, "No holdouts remain in any objective."),
   onComplete: describe(
     Schema.Literals(["keep", "remove"]),
     "What the manifest asks once complete: keep the campaign as a guard, or remove it.",
   ),
-  ledgered: describe(
-    Schema.Boolean,
-    "Whether a ledger exists. A campaign with none has been declared and not yet initialised.",
-  ),
+  ledgered: describe(Schema.Boolean, "Whether every objective has a ledger."),
 });
 
 export const Snapshot = Schema.Struct({
@@ -271,6 +356,9 @@ export type SnapshotSlack = typeof SnapshotSlack.Type;
 export type SnapshotConcentration = typeof SnapshotConcentration.Type;
 export type SnapshotVacancy = typeof SnapshotVacancy.Type;
 export type SnapshotCampaign = typeof SnapshotCampaign.Type;
+export type SnapshotObjective = typeof SnapshotObjective.Type;
+export type SnapshotPhase = typeof SnapshotPhase.Type;
+export type SnapshotSector = typeof SnapshotSector.Type;
 
 // Decodes a document some other run wrote — the base of a pull request, a
 // stored one — refusing a key the shape does not declare, so a consumer never

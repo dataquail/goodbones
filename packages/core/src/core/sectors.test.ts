@@ -2,8 +2,12 @@ import * as Result from "effect/Result";
 import { describe, expect, it } from "vitest";
 
 import type { CampaignRule } from "../domain/architecture-config.js";
-import { globToRegExp } from "../manifest/glob.js";
 import { compileCampaignRule, type CompiledCampaign } from "./campaigns.js";
+
+// The manifest's glob translation is the manifest tier's; a core test
+// stands in one just wide enough for a marker's `owns`.
+const globToRegExp = (glob: string): RegExp =>
+  new RegExp(`^${glob.replace(/[.]/g, "\\.").replace(/\*\*/g, ".*").replace(/(?<!\.)\*/g, "[^/]*")}`);
 import {
   discoverSectors,
   entryOf,

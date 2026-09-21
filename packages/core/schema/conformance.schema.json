@@ -450,7 +450,19 @@
           },
           "ledgered": {
             "type": "boolean",
-            "description": "For a campaign hit: carried by the campaign's ledger, so `check` does not fail on it."
+            "description": "For a campaign hit: carried by the objective's ledger, so `check` does not fail on it."
+          },
+          "objective": {
+            "type": "string",
+            "description": "For a campaign hit: the objective that fired."
+          },
+          "sector": {
+            "type": "string",
+            "description": "For a campaign hit: the sector the hit falls in."
+          },
+          "entry": {
+            "type": "string",
+            "description": "For a campaign hit: its ledger entry, relative to the sector's root."
           }
         },
         "required": [

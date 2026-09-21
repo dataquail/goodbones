@@ -6,7 +6,6 @@ import type { SourceFacts } from "../domain/facts.js";
 import { makeFileSystemFake } from "../infrastructure/file-system-fake.js";
 import { makeModuleResolverFake } from "../infrastructure/module-resolver-fake.js";
 import { makeReportSourceFake } from "../infrastructure/report-source-fake.js";
-import { globToRegExp } from "../manifest/glob.js";
 import { evaluateCampaign, hitsInWindow, towardNextOf } from "./campaign-state.js";
 import { type CampaignInput, compileCampaignRule, type CompiledCampaign } from "./campaigns.js";
 import { EMPTY_SECTOR_RECORD, reachedRecord, type SectorRecord } from "./ledger.js";

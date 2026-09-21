@@ -7,15 +7,13 @@
     "scope": {
       "entered": "2026-09-15T21:56:54.278Z",
       "initial": 17,
-      "cleared": 0,
+      "cleared": 4,
       "closed": 0,
-      "lastCleared": "2026-09-15T21:56:54.278Z",
+      "lastCleared": "2026-09-21T14:32:45.111Z",
       "holdouts": [
-        "packages/core/src/manifest/compile.ts#lower#3bfd86f4",
-        "packages/core/src/manifest/compile.ts#lower#46c58f35",
-        "packages/core/src/manifest/compile.ts#lowerCampaign#4c41ebb9",
-        "packages/core/src/manifest/compile.ts#lowerCampaign#b692e5f4",
+        "packages/core/src/manifest/compile.ts#lowerEndState#22f92d21",
         "packages/core/src/manifest/compile.ts#probeSites#f46b0a25",
+        "packages/core/src/manifest/compile.ts#refuse#654e54c1",
         "packages/core/src/manifest/compile.ts#strayBasenameFor#ac6e45fc",
         "packages/core/src/manifest/compile.ts#violatingSampleFor#0b6bb558",
         "packages/core/src/manifest/compile.ts#violatingSampleFor#a0afd25d",
@@ -31,5 +29,17 @@
       ]
     }
   },
-  "concessions": []
+  "concessions": [
+    {
+      "sector": "scope",
+      "at": "2026-09-21T14:32:45.428Z",
+      "by": "zweidenbach@gmail.com",
+      "delta": 2,
+      "reason": "the campaigns layer: lowerCampaign refuses through one helper and lowerEndState refuses a tree that does not decode, inside the same lowering the campaign is about",
+      "holdouts": [
+        "packages/core/src/manifest/compile.ts#lowerEndState#22f92d21",
+        "packages/core/src/manifest/compile.ts#refuse#654e54c1"
+      ]
+    }
+  ]
 }

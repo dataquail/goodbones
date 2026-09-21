@@ -82,7 +82,19 @@ export const SnapshotViolation = Schema.Struct({
   baselined: describe(Schema.Boolean, "Carried by the baseline, so `check` does not fail on it."),
   ledgered: describe(
     Schema.Boolean,
-    "For a campaign hit: carried by the campaign's ledger, so `check` does not fail on it.",
+    "For a campaign hit: carried by the objective's ledger, so `check` does not fail on it.",
+  ),
+  objective: Schema.optionalKey(
+    describe(Schema.String, "For a campaign hit: the objective that fired."),
+  ),
+  sector: Schema.optionalKey(
+    describe(Schema.String, "For a campaign hit: the sector the hit falls in."),
+  ),
+  entry: Schema.optionalKey(
+    describe(
+      Schema.String,
+      "For a campaign hit: its ledger entry, relative to the sector's root.",
+    ),
   ),
 });
 

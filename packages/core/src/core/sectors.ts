@@ -161,11 +161,15 @@ const indexOf = (
   sectors: ReadonlyMap<string, Sector>,
   claims: ReadonlyMap<string, ReadonlyArray<Claim>>,
 ): SectorIndex => {
+  const seen = new Set(files);
   const legacyOf = (file: string): string | null =>
     rule.legacy === null || rule.legacy.some((pattern) => pattern.test(file))
       ? LEGACY_SECTOR
       : null;
+  // A file the campaign never saw — outside its scope, or not a source
+  // file at all — is in no sector.
   const sectorOf = (file: string): string | null => {
+    if (!seen.has(file)) return null;
     const claimed = claims.get(file);
     if (claimed !== undefined && claimed.length > 0) return claimed[0]?.sector ?? null;
     return legacyOf(file);

@@ -1157,7 +1157,11 @@ export const lowerEndState = (
       return value.flatMap((item: unknown) => {
         if (key === "allow" && isRecord(item) && typeof item.via === "string") {
           const named = item.sector;
-          const via = item.via.startsWith("~/") ? item.via.slice(2) : String(item.via);
+          // `~/ports/` names a folder: everything under it.
+          const via = (item.via.startsWith("~/") ? item.via.slice(2) : String(item.via)).replace(
+            /\/$/,
+            "/**",
+          );
           return sectors
             .filter((one) => named === "*" || named === undefined || one.name === named)
             .filter((one) => one.root !== root)

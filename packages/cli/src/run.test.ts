@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -13,6 +13,7 @@ import { loadPolicyFromFile as loadPolicy } from "./config-loader.js";
 import {
   campaigns,
   check as checkWith,
+  objectives,
   type CheckReport,
   type CliFailure,
   collectFindings,
@@ -524,7 +525,7 @@ describe.sequential("conformance", () => {
     const policy = await loadPolicy(repoRoot);
     const snapshot = snapshotOf(policy, ROOTS, path.join(repoRoot, "architecture.config.mjs"));
 
-    expect(snapshot.version).toBe(1);
+    expect(snapshot.version).toBe(2);
     expect(snapshot.files).toBe(6);
     expect(snapshot.roots).toEqual(ROOTS);
     expect(snapshot.manifest.path).toBe("architecture.config.mjs");
@@ -798,42 +799,70 @@ describe.sequential("resolution and a damaged baseline", () => {
   });
 });
 
-// A repository running two campaigns: a `file` one over a path shape, and a
-// `match` one through the real ast-grep matcher. Driven through the ledger's
-// whole life: no ledger, init, a fix, the stale failure, prune, a regression,
-// the unrecorded-growth failure, allow, and what conformance says.
+// A repository running two campaigns of the minimal shape — one objective
+// each, no perimeter, no phases: a `file` one over a path shape, and a
+// `match` one through the real ast-grep matcher. Driven through the
+// ledger's whole life: no ledger, clear, a fix, the stale failure, clear
+// again, a regression, the unrecorded-growth failure, concede, and what
+// conformance says.
 const campaignRoot = path.resolve(here, "../../../.tmp-cli-campaign-tests");
-const ledgerAt = (id: string) => path.join(campaignRoot, ".architecture-campaigns", `${id}.json`);
+const ledgerAt = (campaign: string, objective: string) =>
+  path.join(campaignRoot, ".architecture-campaigns", campaign, `${objective}.json`);
+
+type LedgerFile = {
+  sectors: Record<
+    string,
+    {
+      entered: string;
+      initial: number;
+      cleared: number;
+      closed: number;
+      lastCleared: string;
+      holdouts: Array<string>;
+    }
+  >;
+  concessions: Array<Record<string, unknown>>;
+  created: string;
+};
+
+const readLedger = (campaign: string, objective: string): LedgerFile =>
+  JSON.parse(readFileSync(ledgerAt(campaign, objective), "utf8")) as LedgerFile;
 
 const CAMPAIGN_MANIFEST = `export default {
   resolve: { scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.json" } }], unresolved: "off" },
-  campaigns: [
-    {
-      id: "legacy-to-modern",
+  campaigns: {
+    "legacy-to-modern": {
       why: "Nothing new is written under legacy/, and what is there moves out.",
       how: "Move the module under src/modern/ and update its importers.",
       owner: "@team/platform",
       scope: ["src/**"],
-      unit: "file",
-      detect: { path: { file: "^src/legacy/" } },
-      probes: { fires: [{ path: "src/legacy/util.ts" }], ignores: [{ path: "src/util.ts" }] },
       staleAfter: "14d",
       onComplete: "remove",
+      objectives: {
+        "out-of-legacy": {
+          holdout: "file",
+          match: { path: { file: "^src/legacy/" } },
+          probes: { fires: [{ path: "src/legacy/util.ts" }], ignores: [{ path: "src/util.ts" }] },
+        },
+      },
     },
-    {
-      id: "no-throw",
+    "no-throw": {
       why: "Errors are returned, not thrown.",
       how: "Return a Result instead of throwing.",
       scope: ["src/**"],
-      unit: "match",
-      detect: { syntax: { pattern: "throw new Error($$$)" } },
-      probes: {
-        fires: [{ path: "src/a.ts", source: "function f() { throw new Error('x'); }" }],
-        ignores: [{ path: "src/b.ts", source: "function f() { return 1; }" }],
-      },
       staleAfter: "30d",
+      objectives: {
+        throws: {
+          holdout: "match",
+          match: { syntax: { pattern: "throw new Error($$$)" } },
+          probes: {
+            fires: [{ path: "src/a.ts", source: "function f() { throw new Error('x'); }" }],
+            ignores: [{ path: "src/b.ts", source: "function f() { return 1; }" }],
+          },
+        },
+      },
     },
-  ],
+  },
   tree: { "src/": { layout: "open", children: {} } },
 };
 `;
@@ -867,11 +896,11 @@ afterAll(() => {
 });
 
 describe.sequential("campaigns", () => {
-  it("fails check on a campaign with hits and no ledger, and says how to init it", async () => {
+  it("fails check on a campaign with hits and no ledger, and says how to clear it", async () => {
     const { exit, output } = await checkCampaigns();
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(output).toContain("campaign legacy-to-modern: 2 hits and no ledger");
-    expect(output).toContain("architecture campaigns init legacy-to-modern");
+    expect(output).toContain("campaign legacy-to-modern: 1 sector in an objective's window that no ledger has seen");
+    expect(output).toContain("architecture objectives clear legacy-to-modern");
     const { output: json } = await checkCampaigns("json");
     const report = JSON.parse(json) as CheckReport;
     expect(report.ok).toBe(false);
@@ -882,34 +911,46 @@ describe.sequential("campaigns", () => {
     expect(
       report.violations.filter((one) => one.kind === "campaign").map((one) => one.fingerprint),
     ).toEqual([
-      "campaign|campaign/legacy-to-modern|src/legacy/one.ts|",
-      "campaign|campaign/legacy-to-modern|src/legacy/two.ts|",
-      expect.stringMatching(/^campaign\|campaign\/no-throw\|src\/thrower\.ts\|parse#[0-9a-f]{8}$/),
+      "campaign|campaign/legacy-to-modern/out-of-legacy|src/legacy/one.ts|",
+      "campaign|campaign/legacy-to-modern/out-of-legacy|src/legacy/two.ts|",
+      expect.stringMatching(
+        /^campaign\|campaign\/no-throw\/throws\|src\/thrower\.ts\|parse#[0-9a-f]{8}$/,
+      ),
     ]);
+    expect(report.violations.find((one) => one.kind === "campaign")).toMatchObject({
+      objective: "out-of-legacy",
+      sector: "scope",
+      entry: "src/legacy/one.ts",
+    });
   });
 
-  it("init writes a ledger from what fires today, and refuses to overwrite it", async () => {
+  it("clear writes a first ledger from what fires today, under the implicit sector", async () => {
     const policy = await campaignPolicy("2026-09-01T00:00:00Z");
-    const first = await captureReport(campaigns(policy, ["src"], ["init", "legacy-to-modern"]));
+    const first = await captureReport(objectives(policy, ["src"], ["clear", "legacy-to-modern"]));
     expect(Exit.isSuccess(first.exit)).toBe(true);
     expect(first.output).toContain(
-      "2 hits recorded in .architecture-campaigns/legacy-to-modern.json",
+      "legacy-to-modern/out-of-legacy: 1 sector entered (scope); 2 holdouts left.",
     );
-    const ledger = JSON.parse(readFileSync(ledgerAt("legacy-to-modern"), "utf8")) as {
-      initial: number;
-      entries: Array<string>;
-      created: string;
-    };
-    expect(ledger.initial).toBe(2);
-    expect(ledger.entries).toEqual(["src/legacy/one.ts", "src/legacy/two.ts"]);
+    const ledger = readLedger("legacy-to-modern", "out-of-legacy");
+    expect(ledger.sectors.scope).toMatchObject({
+      initial: 2,
+      cleared: 0,
+      closed: 0,
+      entered: "2026-09-01T00:00:00.000Z",
+      holdouts: ["src/legacy/one.ts", "src/legacy/two.ts"],
+    });
     expect(ledger.created).toBe("2026-09-01T00:00:00.000Z");
-
-    const again = await captureReport(
-      campaigns(await campaignPolicy(), ["src"], ["init", "legacy-to-modern"]),
-    );
-    expect(Exit.isFailure(again.exit)).toBe(true);
+    // The sector's record and the plan are written beside it.
+    expect(
+      JSON.parse(
+        readFileSync(
+          path.join(campaignRoot, ".architecture-campaigns/legacy-to-modern/sectors/scope.json"),
+          "utf8",
+        ),
+      ) as { reached: string | null },
+    ).toMatchObject({ reached: null });
     await captureReport(
-      campaigns(await campaignPolicy("2026-09-01T00:00:00Z"), ["src"], ["init", "no-throw"]),
+      objectives(await campaignPolicy("2026-09-01T00:00:00Z"), ["src"], ["clear", "no-throw"]),
     );
   });
 
@@ -923,27 +964,25 @@ describe.sequential("campaigns", () => {
     ).toBe(true);
   });
 
-  it("fails on a fixed entry until it is pruned, and prune stamps progress", async () => {
+  it("fails on a fixed holdout until it is cleared, and clear stamps progress", async () => {
     rmSync(path.join(campaignRoot, "src/legacy/two.ts"));
     const { exit, output } = await checkCampaigns();
     expect(Exit.isFailure(exit)).toBe(true);
     expect(output).toContain("campaign legacy-to-modern: 1 ledger entry no longer fire");
-    expect(output).toContain("architecture campaigns prune legacy-to-modern");
+    expect(output).toContain("architecture objectives clear legacy-to-modern");
 
-    const pruned = await captureReport(
-      campaigns(await campaignPolicy("2026-09-10T00:00:00Z"), ["src"], ["prune"]),
+    const cleared = await captureReport(
+      objectives(await campaignPolicy("2026-09-10T00:00:00Z"), ["src"], ["clear"]),
     );
-    expect(Exit.isSuccess(pruned.exit)).toBe(true);
-    expect(pruned.output).toContain("legacy-to-modern: 1 entry pruned; 1 entry left.");
-    expect(pruned.output).toContain("no-throw: nothing to prune.");
-    const ledger = JSON.parse(readFileSync(ledgerAt("legacy-to-modern"), "utf8")) as {
-      fixed: number;
-      lastProgress: string;
-      entries: Array<string>;
-    };
-    expect(ledger.fixed).toBe(1);
-    expect(ledger.lastProgress).toBe("2026-09-10T00:00:00.000Z");
-    expect(ledger.entries).toEqual(["src/legacy/one.ts"]);
+    expect(Exit.isSuccess(cleared.exit)).toBe(true);
+    expect(cleared.output).toContain("legacy-to-modern/out-of-legacy: 1 holdout cleared; 1 holdout left.");
+    expect(cleared.output).toContain("no-throw/throws: nothing to clear; 1 holdout left.");
+    const ledger = readLedger("legacy-to-modern", "out-of-legacy");
+    expect(ledger.sectors.scope).toMatchObject({
+      cleared: 1,
+      lastCleared: "2026-09-10T00:00:00.000Z",
+      holdouts: ["src/legacy/one.ts"],
+    });
     expect(Exit.isSuccess((await checkCampaigns()).exit)).toBe(true);
   });
 
@@ -957,71 +996,67 @@ describe.sequential("campaigns", () => {
     const report = JSON.parse(output) as CheckReport;
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(report.campaigns.find((one) => one.id === "no-throw")?.drifted).toBe(1);
-    const pruned = await captureReport(
-      campaigns(await campaignPolicy(), ["src"], ["prune", "no-throw"]),
+    const cleared = await captureReport(
+      objectives(await campaignPolicy(), ["src"], ["clear", "no-throw"]),
     );
-    expect(pruned.output).toContain("no-throw: 0 entries pruned, 1 entry rewritten; 1 entry left.");
+    expect(cleared.output).toContain("no-throw/throws: 1 holdout rewritten; 1 holdout left.");
   });
 
-  it("fails on unrecorded growth, and allow records the regression with a reason and an author", async () => {
+  it("fails on unrecorded growth, and concede records it with a reason and an author", async () => {
     writeIn(campaignRoot, "src/legacy/three.ts", "export const three = 3;\n");
     const { exit, output } = await checkCampaigns();
     expect(Exit.isFailure(exit)).toBe(true);
     expect(output).toContain("campaign legacy-to-modern: 1 new hit the ledger does not carry");
     expect(output).toContain("Move the module under src/modern/ and update its importers.");
-    expect(output).toContain('architecture campaigns allow legacy-to-modern --reason "<why>"');
+    expect(output).toContain('architecture objectives concede legacy-to-modern --reason "<why>"');
 
     const refused = await captureReport(
-      campaigns(await campaignPolicy(), ["src"], ["allow", "legacy-to-modern"]),
+      objectives(await campaignPolicy(), ["src"], ["concede", "legacy-to-modern"]),
     );
     expect(Exit.isFailure(refused.exit)).toBe(true);
 
-    const allowedRun = await captureReport(
-      campaigns(
+    const conceded = await captureReport(
+      objectives(
         await campaignPolicy("2026-09-12T00:00:00Z"),
         ["src"],
-        [
-          "allow",
-          "legacy-to-modern",
-          "--reason",
-          "vendored until v4",
-          "--by",
-          "someone@example.com",
-        ],
+        ["concede", "legacy-to-modern", "--reason", "vendored until v4", "--by", "someone@example.com"],
       ),
     );
-    expect(Exit.isSuccess(allowedRun.exit)).toBe(true);
-    expect(allowedRun.output).toContain(
-      "legacy-to-modern: 1 entry allowed, recorded as a regression by someone@example.com",
+    expect(Exit.isSuccess(conceded.exit)).toBe(true);
+    expect(conceded.output).toContain(
+      "legacy-to-modern/out-of-legacy: 1 holdout conceded, recorded by someone@example.com",
     );
-    const ledger = JSON.parse(readFileSync(ledgerAt("legacy-to-modern"), "utf8")) as {
-      regressions: Array<{ delta: number; reason: string; by: string; entries: Array<string> }>;
-      entries: Array<string>;
-    };
-    expect(ledger.regressions).toEqual([
+    const ledger = readLedger("legacy-to-modern", "out-of-legacy");
+    expect(ledger.concessions).toEqual([
       {
+        sector: "scope",
         at: "2026-09-12T00:00:00.000Z",
         by: "someone@example.com",
         delta: 1,
         reason: "vendored until v4",
-        entries: ["src/legacy/three.ts"],
+        holdouts: ["src/legacy/three.ts"],
       },
     ]);
-    expect(ledger.entries).toEqual(["src/legacy/one.ts", "src/legacy/three.ts"]);
+    expect(ledger.sectors.scope?.holdouts).toEqual(["src/legacy/one.ts", "src/legacy/three.ts"]);
     expect(Exit.isSuccess((await checkCampaigns()).exit)).toBe(true);
   });
 
   it("fails when the ledger does not add up", async () => {
-    const at = ledgerAt("legacy-to-modern");
-    const ledger = JSON.parse(readFileSync(at, "utf8")) as { entries: Array<string> };
+    const at = ledgerAt("legacy-to-modern", "out-of-legacy");
+    const ledger = readLedger("legacy-to-modern", "out-of-legacy");
     writeIn(campaignRoot, "src/legacy/four.ts", "export const four = 4;\n");
+    const scope = ledger.sectors.scope;
+    if (scope === undefined) throw new Error("no scope sector");
     writeFileSync(
       at,
-      JSON.stringify({ ...ledger, entries: [...ledger.entries, "src/legacy/four.ts"] }),
+      JSON.stringify({
+        ...ledger,
+        sectors: { scope: { ...scope, holdouts: [...scope.holdouts, "src/legacy/four.ts"] } },
+      }),
     );
     const { exit, output } = await checkCampaigns();
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(output).toContain("the ledger does not add up");
+    expect(output).toContain("a ledger does not add up");
     rmSync(path.join(campaignRoot, "src/legacy/four.ts"));
     writeFileSync(at, `${JSON.stringify(ledger, null, 2)}\n`);
   });
@@ -1036,7 +1071,13 @@ describe.sequential("campaigns", () => {
     const snapshot = JSON.parse(stalled.output) as Snapshot;
     expect(Result.isSuccess(decodeSnapshot(snapshot))).toBe(true);
     expect(
-      snapshot.campaigns.map((one) => [one.id, one.count, one.fixed, one.allowed, one.stalled]),
+      snapshot.campaigns.map((one) => [
+        one.id,
+        one.count,
+        one.objectives[0]?.cleared,
+        one.objectives[0]?.allowed,
+        one.stalled,
+      ]),
     ).toEqual([
       ["legacy-to-modern", 2, 1, 1, true],
       ["no-throw", 1, 0, 0, true],
@@ -1044,6 +1085,17 @@ describe.sequential("campaigns", () => {
     // 2 left of 3 ever ledgered.
     expect(snapshot.campaigns[0]?.progress).toBeCloseTo(1 / 3);
     expect(snapshot.campaigns[0]?.owner).toBe("@team/platform");
+    expect(snapshot.campaigns[0]?.sectors).toEqual([
+      {
+        name: "scope",
+        phase: null,
+        reached: null,
+        files: 4,
+        residue: { "out-of-legacy": 2 },
+        stalled: true,
+      },
+    ]);
+    expect(snapshot.campaigns[0]?.plan).toEqual({ refined: [], changed: [], unreceipted: [] });
 
     const text = await captureReport(
       conformanceWith(await campaignPolicy("2026-10-15T00:00:00Z"), ["src"], {
@@ -1052,9 +1104,8 @@ describe.sequential("campaigns", () => {
       }),
     );
     expect(text.output).toContain("campaigns: 2 campaigns, 2 stalled");
-    expect(text.output).toMatch(
-      /legacy-to-modern\s+33%\s+2 left\s+1 fixed\s+1 allowed\s+@team\/platform\s+stalled/,
-    );
+    expect(text.output).toMatch(/legacy-to-modern\s+33%\s+2 left\s+@team\/platform\s+stalled/);
+    expect(text.output).toMatch(/out-of-legacy\s+33%\s+2 left\s+1 cleared\s+1 conceded/);
   });
 
   it("notices a stall in check without failing, and fails a complete campaign declared remove", async () => {
@@ -1066,7 +1117,7 @@ describe.sequential("campaigns", () => {
 
     rmSync(path.join(campaignRoot, "src/legacy/one.ts"));
     rmSync(path.join(campaignRoot, "src/legacy/three.ts"));
-    await captureReport(campaigns(await campaignPolicy(), ["src"], ["prune", "legacy-to-modern"]));
+    await captureReport(objectives(await campaignPolicy(), ["src"], ["clear", "legacy-to-modern"]));
     const done = await checkCampaigns();
     expect(Exit.isFailure(done.exit)).toBe(true);
     expect(done.output).toContain(
@@ -1078,20 +1129,64 @@ describe.sequential("campaigns", () => {
     const status = await captureReport(campaigns(await campaignPolicy(), ["src"], []));
     expect(status.output).toContain("2 campaigns under src");
     expect(status.output).toMatch(/legacy-to-modern\s+100%\s+0 left.*complete/);
-    const explained = await captureReport(explain(await campaignPolicy(), "src/thrower.ts"));
+    const explained = await captureReport(explain(await campaignPolicy(), "src/thrower.ts", ["src"]));
     expect(explained.output).toContain("campaigns:");
+    expect(explained.output).toContain("campaign/no-throw: sector scope");
+    expect(explained.output).toContain("in window: throws ✗");
     expect(explained.output).toContain(
-      "campaign/no-throw — Errors are returned, not thrown. (match; 1 hit)",
+      "campaign/no-throw/throws — Errors are returned, not thrown. (match; fires here)",
     );
     expect(explained.output).toMatch(/✓ syntax \{"pattern":"throw new Error\(\$\$\$\)"\} \(1\)/);
   });
 
-  it("routes the campaigns command through run", async () => {
+  it("refuses the family's first verbs by name, and routes the commands through run", async () => {
+    const retired = await captureReport(
+      run(campaignRoot, ["campaigns", "init", "no-throw", "src"], "architecture.config.mjs"),
+    );
+    expect(Exit.isFailure(retired.exit)).toBe(true);
+    const failure = Exit.isFailure(retired.exit) ? Cause.squash(retired.exit.cause) : null;
+    expect((failure as { message?: string } | null)?.message).toContain("`campaigns init` is gone");
     const { exit, output } = await captureReport(
       run(campaignRoot, ["campaigns", "src"], "architecture.config.mjs"),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(output).toContain("2 campaigns under src");
+    const cleared = await captureReport(
+      run(campaignRoot, ["objectives", "clear", "src"], "architecture.config.mjs"),
+    );
+    expect(Exit.isSuccess(cleared.exit)).toBe(true);
+  });
+
+  it("reads a ledger in the family's first layout, and clear moves it", async () => {
+    const dir = path.join(campaignRoot, ".architecture-campaigns");
+    const holdouts = readLedger("no-throw", "throws").sectors.scope?.holdouts ?? [];
+    rmSync(path.join(dir, "no-throw"), { recursive: true, force: true });
+    const legacyAt = path.join(dir, "no-throw.json");
+    writeFileSync(
+      legacyAt,
+      JSON.stringify({
+        version: 1,
+        id: "no-throw",
+        created: "2026-09-01T00:00:00.000Z",
+        initial: 1,
+        fixed: 0,
+        lastProgress: "2026-09-01T00:00:00.000Z",
+        regressions: [],
+        entries: holdouts,
+      }),
+    );
+    // `check` still fails on the complete campaign declared remove; the
+    // old ledger carries the other's one hit.
+    const { output } = await checkCampaigns("json");
+    const report = JSON.parse(output) as CheckReport;
+    expect(report.campaigns.find((one) => one.id === "no-throw")).toMatchObject({
+      new: [],
+      stale: [],
+      missingLedger: false,
+    });
+    await captureReport(objectives(await campaignPolicy(), ["src"], ["clear", "no-throw"]));
+    expect(readLedger("no-throw", "throws").sectors.scope).toMatchObject({ initial: 1, holdouts });
+    expect(existsSync(legacyAt)).toBe(false);
   });
 });
 
@@ -1102,31 +1197,37 @@ const reportRoot = path.resolve(here, "../../../.tmp-cli-report-tests");
 
 const REPORT_MANIFEST = `export default {
   resolve: { scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.json" } }], unresolved: "off" },
-  campaigns: [
-    {
-      id: "type-errors",
+  campaigns: {
+    "type-errors": {
       why: "The strict tsconfig cannot land while these remain.",
       how: "Fix the type error; do not add a cast.",
       scope: ["src/**"],
-      unit: "match",
-      detect: { report: { command: "node report.mjs", format: "tsc", codesNot: ["TS6133"] } },
-      probes: {
-        fires: [{ path: "src/a.ts", report: [{ line: 1, code: "TS2551", message: "m" }] }],
-        ignores: [{ path: "src/b.ts", report: [{ line: 1, code: "TS6133", message: "unused" }] }],
-      },
       staleAfter: "30d",
+      objectives: {
+        tsc: {
+          holdout: "match",
+          match: { report: { command: "node report.mjs", format: "tsc", codesNot: ["TS6133"] } },
+          probes: {
+            fires: [{ path: "src/a.ts", report: [{ line: 1, code: "TS2551", message: "m" }] }],
+            ignores: [{ path: "src/b.ts", report: [{ line: 1, code: "TS6133", message: "unused" }] }],
+          },
+        },
+      },
     },
-    {
-      id: "lint-debt",
+    "lint-debt": {
       why: "Every finding the linter carries is a finding nobody reads.",
       how: "Fix the finding, or disable the rule with a reason.",
       scope: ["src/**"],
-      unit: "match",
-      detect: { report: { file: "oxlint.json", format: "oxlint" } },
-      probes: { fires: [{ path: "src/a.ts", report: [{ line: 1, code: "eslint(no-debugger)" }] }] },
       staleAfter: "30d",
+      objectives: {
+        oxlint: {
+          holdout: "match",
+          match: { report: { file: "oxlint.json", format: "oxlint" } },
+          probes: { fires: [{ path: "src/a.ts", report: [{ line: 1, code: "eslint(no-debugger)" }] }] },
+        },
+      },
     },
-  ],
+  },
   tree: { "src/": { layout: "open", children: {} } },
 };
 `;
@@ -1189,10 +1290,10 @@ describe.sequential("a report term", () => {
       // Two identical diagnostics at two positions in `parse` are two
       // entries, and the one printed twice at one position is one; TS6133 is
       // excluded by `codesNot`; the one past the end of the file has no anchor.
-      expect.stringMatching(/^campaign\/type-errors\|#TS1005#[0-9a-f]{8}$/),
-      expect.stringMatching(/^campaign\/type-errors\|parse#TS2551#[0-9a-f]{8}$/),
-      expect.stringMatching(/^campaign\/type-errors\|parse#TS2551#[0-9a-f]{8}~2$/),
-      expect.stringMatching(/^campaign\/lint-debt\|parse#eslint\(no-debugger\)#[0-9a-f]{8}$/),
+      expect.stringMatching(/^campaign\/type-errors\/tsc\|#TS1005#[0-9a-f]{8}$/),
+      expect.stringMatching(/^campaign\/type-errors\/tsc\|parse#TS2551#[0-9a-f]{8}$/),
+      expect.stringMatching(/^campaign\/type-errors\/tsc\|parse#TS2551#[0-9a-f]{8}~2$/),
+      expect.stringMatching(/^campaign\/lint-debt\/oxlint\|parse#eslint\(no-debugger\)#[0-9a-f]{8}$/),
     ]);
     expect(report.campaigns.map((one) => [one.id, one.count])).toEqual([
       ["type-errors", 3],
@@ -1201,15 +1302,16 @@ describe.sequential("a report term", () => {
   });
 
   it("explains the term and its answer", async () => {
-    const { output } = await captureReport(explain(await loadPolicy(reportRoot), "src/a.ts"));
+    const { output } = await captureReport(
+      explain(await loadPolicy(reportRoot), "src/a.ts", ["src"]),
+    );
     expect(output).toContain("✓ report tsc `node report.mjs` (3)");
     expect(output).toContain("✓ report oxlint file oxlint.json (1)");
   });
 
   it("is ledgered like any other campaign, and a reworded message is a drifted entry", async () => {
     const policy = await loadPolicy(reportRoot);
-    await captureReport(campaigns(policy, ["src"], ["init", "type-errors"]));
-    await captureReport(campaigns(policy, ["src"], ["init", "lint-debt"]));
+    await captureReport(objectives(policy, ["src"], ["clear"]));
     const ok = await captureReport(check(await loadPolicy(reportRoot), ["src"], "json"));
     expect(Exit.isSuccess(ok.exit), ok.output).toBe(true);
 

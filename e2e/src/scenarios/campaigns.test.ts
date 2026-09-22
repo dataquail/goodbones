@@ -368,12 +368,37 @@ const phased = (): Readonly<Record<string, unknown>> => ({
 });
 
 let ladder: Repo;
+// git sets GIT_DIR, GIT_INDEX_FILE and friends in the environment of every
+// hook it runs, and those WIN OVER `cwd`. Inheriting them means a fixture's
+// `git init` + `git commit` in a temp directory silently retargets whatever
+// repository invoked the hook — which, when `pnpm run precommit` runs as the
+// pre-commit hook, is this one. That is not hypothetical: it committed a
+// fixture over the working tree and left the branch pointing at it.
+//
+// So the fixture's git runs with the ambient repository stripped out of the
+// environment, and `cwd` means what it says.
+const AMBIENT_GIT = [
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_INDEX_FILE",
+  "GIT_COMMON_DIR",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_NAMESPACE",
+  "GIT_PREFIX",
+  "GIT_CEILING_DIRECTORIES",
+  "GIT_QUARANTINE_PATH",
+];
+
+const withoutAmbientGit = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv =>
+  Object.fromEntries(Object.entries(env).filter(([key]) => !AMBIENT_GIT.includes(key)));
+
 const git = (...args: ReadonlyArray<string>): string =>
   execFileSync("git", args, {
     cwd: ladder.root,
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...withoutAmbientGit(process.env),
       GIT_AUTHOR_NAME: "t",
       GIT_AUTHOR_EMAIL: "t@example.com",
       GIT_COMMITTER_NAME: "t",

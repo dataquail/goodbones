@@ -492,6 +492,41 @@ searches the immediate children or ancestors unless it says `stopBy: end`. `patt
 engine-neutral by construction; a later matcher over a different tree would ship a
 documented kind mapping rather than a compatibility surprise.
 
+## Where this family lives
+
+`campaigns` is the one family `@goodbones/core` does not own. It ships as
+[`@goodbones/campaigns`](https://www.npmjs.com/package/@goodbones/campaigns), a package that
+depends on the core and on nothing else, and both hosts pull it in for you — there is nothing to
+install and nothing to configure.
+
+The split is visible in exactly one place, and only if you are embedding the loader yourself
+rather than using the CLI or the plugin. A host composes the family as an extension:
+
+```ts
+import { campaignsExtension, campaignsOf } from "@goodbones/campaigns";
+import { loadPolicy } from "@goodbones/core";
+
+const policy = loadPolicy({
+  // …
+  extensions: [campaignsExtension({ functions, reports })],
+});
+
+const { campaignRules, ledgers } = campaignsOf(policy);
+```
+
+An extension claims its own top-level manifest keys — here `campaigns` and `ledger` — and decodes
+them with its own codec. The core splits those keys off before decoding the rest, so a manifest
+key that belongs to no loaded family is still refused as a misspelling, and the errors a campaign's
+own codec reports still name the line and the `use` they came through. A policy loaded without the
+extension simply has no campaigns; `architecture check` on a manifest that declares none is not an
+error either way.
+
+Why it is separate: the six architecture families answer "what may never happen", and this one
+answers "what is the code moving away from, and how far has it got". The second question needs a
+ledger, a git diff, a clock and another program's diagnostics, none of which the first needs. Every
+dependency runs one way — nothing in the core imports this family — so keeping them in one package
+only meant a policy that states architecture alone paid for machinery it never ran.
+
 The matcher is `@goodbones/ast-grep`, which both hosts compose into the TypeScript pack.
 The plugin parses `sourceCode.text` with the same matcher the CLI uses, so this family's
 parity contract is _one engine_ rather than a corpus. A campaign whose `scope` covers a

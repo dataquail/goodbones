@@ -10,6 +10,7 @@ by an oxlint plugin in the editor and a CLI in CI. Published as independent pack
 | Package                                        | What it does                                                                                                                    |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | [`@goodbones/core`](packages/core)             | The manifest schema, the evaluators, the ports a language pack implements, and the loader. Names no language.                   |
+| [`@goodbones/campaigns`](packages/campaigns)   | The campaigns family — a refactor as objectives over sectors through phases — as a loader extension over the core.              |
 | [`@goodbones/typescript`](packages/typescript) | The TypeScript language pack: facts through oxc-parser, resolution through `unrs-resolver`.                                     |
 | [`@goodbones/ast-grep`](packages/ast-grep)     | The syntax matcher for the campaigns family's `syntax` term, over `@ast-grep/napi`.                                             |
 | [`@goodbones/cli`](packages/cli)               | The `architecture` CLI: `check`, `baseline`, `campaigns`, `objectives`, `coverage`, `explain`, `facts`, and the graph family.   |
@@ -28,6 +29,7 @@ packages/
   core/         @goodbones/core
   typescript/   @goodbones/typescript
   ast-grep/     @goodbones/ast-grep
+  campaigns/    @goodbones/campaigns
   cli/          @goodbones/cli
   oxlint/       @goodbones/oxlint
 website/        Astro + Starlight documentation site (GitHub Pages)

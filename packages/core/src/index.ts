@@ -3,6 +3,15 @@
 // manifest into a policy. A host composes these with a language pack and the
 // live file system; a language pack implements the ports. Nothing here names a
 // language. The fakes are under `@goodbones/core/testing`.
+//
+// A family the core does not own — `campaigns`, in @goodbones/campaigns —
+// arrives as a `PolicyExtension` the host passes to `loadPolicy`: it claims
+// its own manifest keys, decodes them with its own codec, and reads its state
+// back off `LoadedPolicy.extensions`. What such a family needs from here is
+// exported deliberately: the glob primitives its lowering must match
+// character for character, the pattern vocabulary its detectors share with
+// the other families, and `lowerManifest` itself, which an `endState` runs a
+// sector-relative tree through.
 export {
   type Baseline,
   type BaselineFilter,
@@ -14,43 +23,6 @@ export {
   staleEntriesOf,
   unbaselined,
 } from "./core/baseline.js";
-export {
-  type CampaignEvaluation,
-  type CampaignEvaluationInput,
-  evaluateCampaign,
-  hitsInWindow,
-  type ObjectiveHit,
-  type SectorState,
-  towardNextOf,
-} from "./core/campaign-state.js";
-export {
-  type CampaignHit,
-  type CampaignInput,
-  campaignsFailingTheirProbe,
-  campaignsSelecting,
-  compileCampaignRule,
-  compileCampaignRules,
-  type CompiledCampaign,
-  type CompiledDetector,
-  type CompiledObjective,
-  type CompiledPerimeter,
-  type CompiledSectorTerm,
-  compileObjective,
-  candidatesOf as detectorCandidatesOf,
-  detectorOf,
-  evaluateObjective,
-  evaluateObjectives,
-  explainDetector,
-  explainObjective,
-  type FailedProbe,
-  leafTermsOf,
-  matchKeyOf,
-  needsSyntax,
-  perFileObjectivesOf,
-  probeInputOf,
-  reportSpecsOf,
-  type TermAnswer,
-} from "./core/campaigns.js";
 export {
   type Coverage,
   type CoverageFamily,
@@ -102,58 +74,6 @@ export {
   type SelectedRule,
 } from "./core/imports.js";
 export {
-  allowedOf,
-  type Attestation,
-  attestedRecord,
-  clearedOf,
-  clearedSector,
-  closedOf,
-  concededSector,
-  type Concession,
-  type ConcessionRecord,
-  decodeLedger,
-  decodePlanRecord,
-  decodeSectorRecord,
-  deltaOf,
-  EMPTY_LEDGER,
-  EMPTY_SECTOR_RECORD,
-  encodeSectorName,
-  holdoutsOf,
-  initialOf,
-  isComplete,
-  isLegacyLedger,
-  isStalled,
-  lastClearedOf,
-  type Ledger,
-  ledgerArithmeticHolds,
-  ledgerPathOf,
-  Ledger as LedgerSchema,
-  legacyLedgerPathOf,
-  type Note,
-  NOTE_CAP,
-  NOTE_LENGTH,
-  notedRecord,
-  type PlanDiff,
-  planDiffOf,
-  planOf,
-  planPathOf,
-  type PlanRecord,
-  positionOf,
-  progressOf,
-  reachedRecord,
-  rebaselinedSector,
-  reconcileSector,
-  type Reconciliation,
-  sectorArithmeticHolds,
-  sectorClockOf,
-  type SectorLedger,
-  type SectorRecord,
-  sectorRecordPathOf,
-  serializeLedger,
-  serializePlanRecord,
-  serializeSectorRecord,
-} from "./core/ledger.js";
-export {
   type CompiledMemberRule,
   compileMemberRules,
   evaluateMemberSite,
@@ -161,42 +81,15 @@ export {
   memberRulesSelecting,
 } from "./core/members.js";
 export {
-  compareResidue,
-  derivePhase,
-  type Direction,
-  donePhaseOf,
-  inWindow,
-  isDefinedPhase,
-  isOpenPhase,
-  isShut,
-  LEGACY_PHASE,
-  objectivesInWindow,
-  onTouchOf,
-  type Residue as ResidueVector,
-  type SectorPosition,
-  UNPLACED,
-  type Window,
-  windowOf,
-  worsened,
-} from "./core/phases.js";
-export {
-  discoverSectors,
-  fixedPrefixOf,
-  IMPLICIT_SECTOR,
-  LEGACY_SECTOR,
-  membershipOf,
-  parseSectorMarker,
-  type Placement,
-  rootOf,
-  type Sector,
-  SECTOR_HOLDOUT,
-  type SectorDiscovery,
-  entryOf as sectorEntryOf,
-  type SectorIndex,
-  type SectorMarker,
-  sectorNamed,
-  withoutExtension,
-} from "./core/sectors.js";
+  compilePatterns,
+  firstFromMatch,
+  matchesAny,
+  type Selectable,
+  sourcesOf,
+  targetAllowed,
+  type Targeted,
+  validateTargetPatterns,
+} from "./core/patterns.js";
 export {
   type Concentration,
   type ObservedEdge,
@@ -210,6 +103,7 @@ export {
   EMPTY_STRUCTURE,
   evaluateStructure,
   requiredSiblingsOf,
+  siblingsOf,
   structureRulesFailingTheirProbe,
 } from "./core/structure.js";
 export {
@@ -221,34 +115,22 @@ export {
 } from "./core/surface.js";
 export {
   type Allowance,
-  type BindingKind,
-  type CampaignProbe,
-  type CampaignProbes,
-  type CampaignRule,
-  type CampaignUnit,
-  type DeclarationKind,
-  type Detector,
+  BindingKind,
+  DeclarationKind,
   type ExportFix,
   type ExportRule,
   type GraphConfig,
   type GraphCycleRule,
   type GraphOrphanRule,
   type GraphReachRule,
-  type Holdout,
   type ImportProbe,
-  type ImportProbeTarget,
+  ImportProbeTarget,
   type ImportRule,
   type MemberRule,
-  type MemberSubject,
-  type ObjectiveRule,
-  type OnTouch,
-  type PerimeterRule,
-  type PhaseConcession,
-  type PhaseRule,
-  type ProbeDiagnostic,
+  MemberSubject,
+  PatternList,
   type ResolveConfig,
   type ResolveScope,
-  type SectorTerm,
   type StructureConfig,
   type SurfaceRule,
 } from "./domain/architecture-config.js";
@@ -271,14 +153,6 @@ export {
   type ManifestPosition,
   renderManifestPath,
 } from "./domain/manifest-location.js";
-export {
-  type Diagnostic,
-  indexByFile,
-  parseReport,
-  type ParseReportOptions,
-  type ReportFormat,
-  uniqueDiagnostics,
-} from "./domain/report.js";
 export {
   CONFORMANCE_MEASURES,
   type ConformanceMeasure,
@@ -303,10 +177,6 @@ export {
   type Violation,
   type ViolationKind,
 } from "./domain/violation.js";
-export {
-  loadCampaignFunctions,
-  type LoadedCampaignFunctions,
-} from "./infrastructure/campaign-functions.js";
 export { makeFileSystemLive } from "./infrastructure/file-system-live.js";
 export {
   findManifestFile,
@@ -321,7 +191,6 @@ export {
   type IncludeReader,
   type SourceDocument,
 } from "./infrastructure/manifest-include.js";
-export { makeReportSourceLive } from "./infrastructure/report-source-live.js";
 export {
   listPackageRoots,
   listSourceFiles,
@@ -331,12 +200,17 @@ export {
   type WalkedLanguage,
   type WorkspaceProject,
 } from "./infrastructure/walk.js";
-export { ledgerKeyOf, type LoadedPolicy, loadPolicy, type LoadPolicyInput } from "./load/policy.js";
 export {
-  END_STATE_ROOT,
-  endStateObjectiveId,
+  type ExtensionContext,
+  type ExtensionRoute,
+  type LoadedExtension,
+  type PolicyExtension,
+} from "./load/extension.js";
+export { type LoadedPolicy, loadPolicy, type LoadPolicyInput } from "./load/policy.js";
+export {
+  CONVENTIONS,
+  expandAliases,
   type LoweredRules,
-  lowerEndState,
   lowerManifest,
   type LowerOptions,
   type ProbeLanguage,
@@ -349,7 +223,15 @@ export {
   originOf,
   type Substitution,
 } from "./manifest/expand.js";
-export { globToRegExp } from "./manifest/glob.js";
+export { type ManifestExtension } from "./manifest/extension.js";
+export {
+  anchored,
+  type CaptureIndex,
+  type GlobCompilation,
+  globToRegExp,
+  globToRegexSource,
+  prefixed,
+} from "./manifest/glob.js";
 export {
   type Candidate,
   candidatesOf,
@@ -366,29 +248,20 @@ export {
   MANIFEST_NODE_SCHEMA_ID,
   MANIFEST_SCHEMA_ID,
   manifestJsonSchema,
+  type ManifestJsonSchemaOptions,
   manifestNodeJsonSchema,
 } from "./manifest/json-schema.js";
 export {
-  type CampaignSpec,
   type DecodedManifest,
   decodeManifest,
   type DecodeManifestOptions,
-  DEFAULT_LEDGER_DIR,
-  type DetectorSpec,
-  durationMs,
+  decodeManifestTree,
+  globsOf,
   type Manifest,
   type ManifestNode,
   Manifest as ManifestSchema,
-  type ObjectiveSpec,
-  type PerimeterSpec,
-  type PhaseSpec,
+  SurfaceConvention,
 } from "./manifest/manifest.js";
-export {
-  type CampaignPredicate,
-  type CampaignPredicateInput,
-  type CampaignSubject,
-  type Range,
-} from "./ports/campaign-predicate.js";
 export { type FactExtractor } from "./ports/fact-extractor.js";
 export { type FileSystem } from "./ports/file-system.js";
 export { type Language } from "./ports/language.js";
@@ -397,12 +270,6 @@ export {
   type ModuleResolver,
   type ResolvedTarget,
 } from "./ports/module-resolver.js";
-export {
-  NO_REPORTS,
-  type ReportSource,
-  reportSourcesOf,
-  type ReportSpec,
-} from "./ports/report-source.js";
 export {
   type Position,
   type SyntaxMatch,

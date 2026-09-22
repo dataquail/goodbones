@@ -1,33 +1,41 @@
+import {
+  type BindingKind,
+  compilePatterns,
+  type DeclarationKind,
+  type ExportSite,
+  type FactExtractor,
+  type FileSystem,
+  type ImportProbeTarget,
+  ImportUnresolved,
+  type MemberSite,
+  type MemberSubject,
+  type ModuleResolver,
+  PatternInvalid,
+  probeTargetOf,
+  type ResolvedTarget,
+  siblingsOf,
+  type SourceFacts,
+  type SyntaxMatch,
+  type SyntaxMatcher,
+  type SyntaxTree,
+  type Violation,
+} from "@goodbones/core";
 import * as Result from "effect/Result";
 
 import type {
-  BindingKind,
   CampaignProbe,
   CampaignRule,
   CampaignUnit,
-  DeclarationKind,
   Detector,
   Holdout,
-  ImportProbeTarget,
-  MemberSubject,
   ObjectiveRule,
   OnTouch,
   PerimeterRule,
   PhaseRule,
   ReportFormat,
-} from "../domain/architecture-config.js";
-import { ImportUnresolved, PatternInvalid } from "../domain/architecture-error.js";
-import type { ExportSite, MemberSite, SourceFacts } from "../domain/facts.js";
-import type { Violation } from "../domain/violation.js";
+} from "../domain/config.js";
 import type { CampaignPredicate, Range } from "../ports/campaign-predicate.js";
-import type { FactExtractor } from "../ports/fact-extractor.js";
-import type { FileSystem } from "../ports/file-system.js";
-import type { ModuleResolver, ResolvedTarget } from "../ports/module-resolver.js";
 import type { ReportSource, ReportSpec } from "../ports/report-source.js";
-import type { SyntaxMatch, SyntaxMatcher, SyntaxTree } from "../ports/syntax-matcher.js";
-import { probeTargetOf } from "./imports.js";
-import { compilePatterns } from "./patterns.js";
-import { siblingsOf } from "./structure.js";
 
 // A campaign is one multi-step refactor: `objectives` — each a rule, a
 // baseline and a conformance measure with one thing the other families lack,

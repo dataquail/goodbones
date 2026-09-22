@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 // Through the core's barrel on purpose: this is the surface a host sees, and a
 // re-export that stops resolving is a break no internal test would notice.
+import { campaignsOf } from "@goodbones/campaigns";
 import { ConfigInvalid, ReportUnavailable } from "@goodbones/core";
 import * as Result from "effect/Result";
 import { afterAll, describe, expect, it } from "vitest";
@@ -330,7 +331,7 @@ describe("loadPolicy reads every report at load", () => {
     );
     expect(readFileSync(stamp, "utf8")).toBe("x");
     // The rules ask the same source and get the cached answer, not a second run.
-    policy.reports.diagnosticsOf({ command, format: "tsc" }, "packages/x.ts");
+    campaignsOf(policy).reports.diagnosticsOf({ command, format: "tsc" }, "packages/x.ts");
     expect(readFileSync(stamp, "utf8")).toBe("x");
   });
 
@@ -348,7 +349,7 @@ describe("loadPolicy reads every report at load", () => {
     );
     expect(readFileSync(stamp, "utf8").split("").sort().join("")).toBe("ab");
     // The same diagnostic from both commands is one, and nothing runs again.
-    expect(policy.reports.diagnosticsOf({ command, format: "tsc" }, "packages/x.ts")).toHaveLength(
+    expect(campaignsOf(policy).reports.diagnosticsOf({ command, format: "tsc" }, "packages/x.ts")).toHaveLength(
       1,
     );
     expect(readFileSync(stamp, "utf8")).toHaveLength(2);
@@ -362,7 +363,7 @@ describe("loadPolicy reads every report at load", () => {
       ),
     );
     expect(() =>
-      policy.reports.diagnosticsOf({ file: "no-such-report.txt", format: "tsc" }, "packages/x.ts"),
+      campaignsOf(policy).reports.diagnosticsOf({ file: "no-such-report.txt", format: "tsc" }, "packages/x.ts"),
     ).toThrow(ReportUnavailable);
   });
 });

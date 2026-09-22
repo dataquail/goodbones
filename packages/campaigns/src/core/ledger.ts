@@ -1,7 +1,7 @@
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
-import type { CampaignUnit } from "../domain/architecture-config.js";
+import type { CampaignUnit } from "../domain/config.js";
 import type { CompiledCampaign } from "./campaigns.js";
 import { isDefinedPhase, type SectorPosition } from "./phases.js";
 import { IMPLICIT_SECTOR } from "./sectors.js";

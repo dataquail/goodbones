@@ -2,20 +2,24 @@ import * as path from "node:path";
 
 import { astGrepMatcher } from "@goodbones/ast-grep";
 import {
+  campaignsExtension,
+  campaignsOf,
   discoverSectors,
+  loadCampaignFunctions,
+  makeReportSourceLive,
+  reportSpecsOf,
+  type SectorIndex,
+} from "@goodbones/campaigns";
+import {
   findManifestFile,
   globToRegExp,
   listSourceFiles,
   listWorkspaceProjects,
-  loadCampaignFunctions,
   type LoadedPolicy,
   loadPolicy,
   makeFileSystemLive,
-  makeReportSourceLive,
   readManifestFile,
-  reportSpecsOf,
   ReportUnavailable,
-  type SectorIndex,
 } from "@goodbones/core";
 import { typescriptLanguage } from "@goodbones/typescript";
 import * as Result from "effect/Result";
@@ -29,7 +33,7 @@ export type { LoadedPolicy } from "@goodbones/core";
 // or the file itself, and need nothing here.
 export const discoverSectorIndexes = (policy: LoadedPolicy): ReadonlyMap<string, SectorIndex> => {
   const indexes = new Map<string, SectorIndex>();
-  const needing = policy.campaignRules.filter(
+  const needing = campaignsOf(policy).campaignRules.filter(
     (rule) => rule.perimeter?.kind === "marker" || rule.perimeter?.kind === "nx",
   );
   if (needing.length === 0) return indexes;
@@ -97,11 +101,10 @@ export const loadPolicyFromFile = async (
     locate: read.locate,
     languages: [typescriptLanguage({ syntax: astGrepMatcher() })],
     fileSystem: makeFileSystemLive(repoRoot),
-    functions,
     // A `report` command runs once per process — once per editor session
     // for oxlint's language server, which then sees that report until it
     // restarts. A report the build writes to a file is the predictable form.
-    reports: makeReportSourceLive(repoRoot),
+    extensions: [campaignsExtension({ functions, reports: makeReportSourceLive(repoRoot) })],
     now: hostNow(),
   });
   if (Result.isFailure(loaded)) throw loaded.failure;
@@ -115,11 +118,12 @@ export const loadPolicyFromFile = async (
   // commands run at once. A report that cannot be read is not a load
   // failure — the campaigns rule reports it once, on the first file a
   // campaign naming it selects; one that does not parse is.
+  const campaigns = campaignsOf(policy);
   await Promise.all(
-    reportSpecsOf(policy.campaignRules).map(async (spec) => {
-      if (policy.reports.read !== undefined) return policy.reports.read(spec);
+    reportSpecsOf(campaigns.campaignRules).map(async (spec) => {
+      if (campaigns.reports.read !== undefined) return campaigns.reports.read(spec);
       try {
-        policy.reports.diagnosticsOf(spec, "");
+        campaigns.reports.diagnosticsOf(spec, "");
       } catch (cause) {
         if (!(cause instanceof ReportUnavailable)) throw cause;
       }

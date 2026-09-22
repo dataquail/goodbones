@@ -2,9 +2,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
+import { ReportUnavailable } from "@goodbones/core";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { ReportUnavailable } from "../domain/architecture-error.js";
 import { makeReportSourceLive } from "./report-source-live.js";
 
 const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), "goodbones-report-"));

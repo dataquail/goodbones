@@ -124,8 +124,21 @@ const withKeyPatterns = (value: JsonValue): JsonValue => {
   return rebuilt;
 };
 
-export const manifestJsonSchema = (): JsonObject => {
-  const generated = Schema.toJsonSchemaDocument(Manifest) as unknown as {
+export type ManifestJsonSchemaOptions = {
+  // The manifest keys of families the core does not own, as the fields of
+  // their own codecs — `CampaignsManifest.fields` from @goodbones/campaigns.
+  // Generated together with the core's, so the published schema describes the
+  // manifest a host with those families loaded will actually decode, and a
+  // host without them publishes a schema without those keys.
+  readonly extensions?: ReadonlyArray<Schema.Struct.Fields> | undefined;
+};
+
+export const manifestJsonSchema = (options: ManifestJsonSchemaOptions = {}): JsonObject => {
+  const whole =
+    options.extensions === undefined || options.extensions.length === 0
+      ? Manifest
+      : Schema.Struct(Object.assign({}, Manifest.fields, ...options.extensions));
+  const generated = Schema.toJsonSchemaDocument(whole) as unknown as {
     readonly schema: JsonObject;
     readonly definitions: JsonObject;
   };
@@ -164,8 +177,8 @@ export const manifestJsonSchema = (): JsonObject => {
 // `architecture.yaml` that the root manifest `include`s is shaped like. The
 // node's object form, with the `$schema` and `defs` keys such a file may carry
 // at the top, over the same definitions as the whole manifest.
-export const manifestNodeJsonSchema = (): JsonObject => {
-  const whole = manifestJsonSchema();
+export const manifestNodeJsonSchema = (options: ManifestJsonSchemaOptions = {}): JsonObject => {
+  const whole = manifestJsonSchema(options);
   const definitions = whole.$defs;
   if (definitions === undefined || !isObject(definitions)) {
     throw new Error("the manifest schema generated with no definitions");

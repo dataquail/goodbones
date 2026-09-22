@@ -7,13 +7,13 @@
     "scope": {
       "entered": "2026-09-15T21:56:54.278Z",
       "initial": 17,
-      "cleared": 4,
+      "cleared": 6,
       "closed": 0,
-      "lastCleared": "2026-09-21T14:32:45.111Z",
+      "lastCleared": "2026-09-22T14:02:41.652Z",
       "holdouts": [
-        "packages/core/src/manifest/compile.ts#lowerEndState#22f92d21",
+        "packages/campaigns/src/manifest/lower.ts#lowerEndState#22f92d21",
+        "packages/campaigns/src/manifest/lower.ts#refuse#654e54c1",
         "packages/core/src/manifest/compile.ts#probeSites#f46b0a25",
-        "packages/core/src/manifest/compile.ts#refuse#654e54c1",
         "packages/core/src/manifest/compile.ts#strayBasenameFor#ac6e45fc",
         "packages/core/src/manifest/compile.ts#violatingSampleFor#0b6bb558",
         "packages/core/src/manifest/compile.ts#violatingSampleFor#a0afd25d",
@@ -39,6 +39,17 @@
       "holdouts": [
         "packages/core/src/manifest/compile.ts#lowerEndState#22f92d21",
         "packages/core/src/manifest/compile.ts#refuse#654e54c1"
+      ]
+    },
+    {
+      "sector": "scope",
+      "at": "2026-09-22T14:02:51.073Z",
+      "by": "zweidenbach@gmail.com",
+      "delta": 2,
+      "reason": "the campaigns family moved to @goodbones/campaigns: the same two throws — lowerCampaign's one refuse helper and lowerEndState's undecodable tree — are now in packages/campaigns/src/manifest/lower.ts. The count did not rise; the file did.",
+      "holdouts": [
+        "packages/campaigns/src/manifest/lower.ts#lowerEndState#22f92d21",
+        "packages/campaigns/src/manifest/lower.ts#refuse#654e54c1"
       ]
     }
   ]

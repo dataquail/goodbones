@@ -2,14 +2,17 @@ import * as path from "node:path";
 
 import { astGrepMatcher } from "@goodbones/ast-grep";
 import {
+  campaignsExtension,
+  loadCampaignFunctions,
+  makeReportSourceLive,
+} from "@goodbones/campaigns";
+import {
   type ConfigInvalid,
   findManifestFile,
   type Language,
-  loadCampaignFunctions,
   type LoadedPolicy,
   loadPolicy,
   makeFileSystemLive,
-  makeReportSourceLive,
   type PatternInvalid,
   readManifestFile,
 } from "@goodbones/core";
@@ -66,8 +69,7 @@ export const loadPolicyFromFile = async (
     locate: read.locate,
     languages: hostLanguages(),
     fileSystem: makeFileSystemLive(repoRoot),
-    functions,
-    reports: makeReportSourceLive(repoRoot),
+    extensions: [campaignsExtension({ functions, reports: makeReportSourceLive(repoRoot) })],
     now: hostNow(),
   });
   if (Result.isFailure(loaded)) throw loaded.failure;
@@ -88,6 +90,6 @@ export const loadPolicyFromManifest = (
     manifest,
     languages: hostLanguages(),
     fileSystem: makeFileSystemLive(repoRoot),
-    reports: makeReportSourceLive(repoRoot),
+    extensions: [campaignsExtension({ reports: makeReportSourceLive(repoRoot) })],
     now: hostNow(),
   });

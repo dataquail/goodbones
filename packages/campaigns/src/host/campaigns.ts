@@ -3,24 +3,11 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import * as path from "node:path";
 
 import {
-  attestedRecord,
-  type CampaignEvaluation,
-  type CampaignInput,
-  clearedSector,
-  compareResidue,
-  type CompiledCampaign,
-  type CompiledObjective,
   compileExportRules,
   compileImportRules,
   compileMemberRules,
   compileStructure,
   compileSurfaceRules,
-  concededSector,
-  detectorOf,
-  type Direction,
-  EMPTY_LEDGER,
-  EMPTY_SECTOR_RECORD,
-  evaluateCampaign,
   evaluateMemberSite,
   evaluateResolvedEdge,
   evaluateSelectedBindings,
@@ -28,29 +15,45 @@ import {
   evaluateSurface,
   exportRulesSelecting,
   globToRegExp,
+  listSourceFiles,
+  listWorkspaceProjects,
+  type LoadedPolicy,
+  memberRulesSelecting,
+  rulesSelecting,
+  type SnapshotCampaign,
+  type SourceFacts,
+  surfaceRulesSelecting,
+  type Violation,
+} from "@goodbones/core";
+import * as Result from "effect/Result";
+
+import {
+  type CampaignEvaluation,
+  evaluateCampaign,
   hitsInWindow,
+  type ObjectiveHit,
+  towardNextOf,
+} from "../core/campaign-state.js";
+import {
+  type CampaignInput,
+  type CompiledCampaign,
+  type CompiledObjective,
+  detectorOf,
+  needsSyntax,
+} from "../core/campaigns.js";
+import {
+  attestedRecord,
+  clearedSector,
+  concededSector,
+  EMPTY_LEDGER,
+  EMPTY_SECTOR_RECORD,
   isComplete,
-  isDefinedPhase,
-  isOpenPhase,
   isStalled,
   lastClearedOf,
   type Ledger,
   ledgerArithmeticHolds,
-  ledgerKeyOf,
   ledgerPathOf,
-  LEGACY_SECTOR,
-  listSourceFiles,
-  listWorkspaceProjects,
-  type LoadedPolicy,
-  lowerEndState,
-  memberRulesSelecting,
-  needsSyntax,
   notedRecord,
-  type ObjectiveHit,
-  type OnTouch,
-  onTouchOf,
-  parseSectorMarker,
-  type PhaseRule,
   planDiffOf,
   planOf,
   planPathOf,
@@ -58,9 +61,6 @@ import {
   reachedRecord,
   rebaselinedSector,
   reconcileSector,
-  type ResidueVector,
-  rulesSelecting,
-  type Sector,
   sectorArithmeticHolds,
   sectorClockOf,
   type SectorRecord,
@@ -68,15 +68,20 @@ import {
   serializeLedger,
   serializePlanRecord,
   serializeSectorRecord,
-  type SnapshotCampaign,
-  type SourceFacts,
-  surfaceRulesSelecting,
-  towardNextOf,
-  type Violation,
+} from "../core/ledger.js";
+import {
+  compareResidue,
+  type Direction,
+  isDefinedPhase,
+  isOpenPhase,
+  onTouchOf,
+  type Residue as ResidueVector,
   worsened,
-} from "@goodbones/core";
-import * as Result from "effect/Result";
-
+} from "../core/phases.js";
+import { LEGACY_SECTOR, parseSectorMarker, type Sector } from "../core/sectors.js";
+import type { OnTouch, PhaseRule } from "../domain/config.js";
+import { campaignsOf, ledgerKeyOf } from "../load/extension.js";
+import { lowerEndState } from "../manifest/lower.js";
 import {
   type Commit,
   commitOf,
@@ -122,7 +127,7 @@ const filesFor = (
 
 // The extensions every campaign widens the walk to, for the walker.
 export const widenedExtensions = (policy: LoadedPolicy): ReadonlyArray<string> => [
-  ...new Set(policy.campaignRules.flatMap((rule) => rule.extensions)),
+  ...new Set(campaignsOf(policy).campaignRules.flatMap((rule) => rule.extensions)),
 ];
 
 const readersOf = (policy: LoadedPolicy): Readers => {
@@ -239,10 +244,10 @@ export const evaluateCampaigns = (
   files: ReadonlyArray<string>,
   readers: Readers = readersOf(policy),
 ): ReadonlyArray<CampaignEvaluation> => {
-  const projects = policy.campaignRules.some((rule) => rule.perimeter?.kind === "nx")
+  const projects = campaignsOf(policy).campaignRules.some((rule) => rule.perimeter?.kind === "nx")
     ? listWorkspaceProjects(policy.repoRoot, roots)
     : [];
-  return policy.campaignRules.map((rule) => {
+  return campaignsOf(policy).campaignRules.map((rule) => {
     const detectors = [
       ...rule.objectives.flatMap((one) => {
         const detect = detectorOf(one);
@@ -260,8 +265,8 @@ export const evaluateCampaigns = (
         resolver: policy.resolver,
         fileSystem: policy.fileSystem,
         syntax: parses ? policy.syntax.parse(file, text) : null,
-        functions: policy.functions,
-        reports: policy.reports,
+        functions: campaignsOf(policy).functions,
+        reports: campaignsOf(policy).reports,
       };
     };
     const input = {
@@ -270,7 +275,7 @@ export const evaluateCampaigns = (
       readText: (file: string) => readers.textOf(file),
       globToRegExp,
       projects,
-      recordOf: (sector: string) => policy.sectorRecords.get(ledgerKeyOf(rule.id, sector)),
+      recordOf: (sector: string) => campaignsOf(policy).sectorRecords.get(ledgerKeyOf(rule.id, sector)),
     };
     if (!rule.objectives.some((one) => one.endState !== null)) return evaluateCampaign(rule, input);
     // An end state's `{ sector, via }` entries need every sector's root, so
@@ -296,10 +301,10 @@ export const evaluateCampaigns = (
 };
 
 const ledgerOf = (policy: LoadedPolicy, rule: CompiledCampaign, objective: CompiledObjective) =>
-  policy.ledgers.get(ledgerKeyOf(rule.id, objective.id));
+  campaignsOf(policy).ledgers.get(ledgerKeyOf(rule.id, objective.id));
 
 const recordOf = (policy: LoadedPolicy, rule: CompiledCampaign, sector: string) =>
-  policy.sectorRecords.get(ledgerKeyOf(rule.id, sector));
+  campaignsOf(policy).sectorRecords.get(ledgerKeyOf(rule.id, sector));
 
 const phaseIdOf = (rule: CompiledCampaign, phase: number): string | null =>
   rule.phases[phase]?.id ?? null;
@@ -495,7 +500,7 @@ export const campaignReportsOf = (
         residue: state.residue,
       })),
       drift: evaluation.index.drift,
-      plan: planDiffOf(rule, policy.plans.get(rule.id)),
+      plan: planDiffOf(rule, campaignsOf(policy).plans.get(rule.id)),
     };
   });
 
@@ -866,7 +871,7 @@ export const clear = (
 ): ReadonlyArray<ClearOutcome> => {
   const { rule } = evaluation;
   const counted = hitsInWindow(evaluation);
-  const plan = planDiffOf(rule, policy.plans.get(rule.id));
+  const plan = planDiffOf(rule, campaignsOf(policy).plans.get(rule.id));
   const outcomes: Array<ClearOutcome> = [];
   for (const objective of rule.objectives) {
     if (only !== null && objective.id !== only) continue;
@@ -925,7 +930,7 @@ export const clear = (
     if (ledger !== before || ledgerOf(policy, rule, objective) === undefined) {
       writeJson(
         policy.repoRoot,
-        ledgerPathOf(policy.ledgerDir, rule.id, objective.id),
+        ledgerPathOf(campaignsOf(policy).ledgerDir, rule.id, objective.id),
         serializeLedger(ledger),
       );
     }
@@ -938,17 +943,17 @@ export const clear = (
       if (after !== before || recordOf(policy, rule, name) === undefined) {
         writeJson(
           policy.repoRoot,
-          sectorRecordPathOf(policy.ledgerDir, rule.id, name),
+          sectorRecordPathOf(campaignsOf(policy).ledgerDir, rule.id, name),
           serializeSectorRecord(after),
         );
       }
     }
     writeJson(
       policy.repoRoot,
-      planPathOf(policy.ledgerDir, rule.id),
+      planPathOf(campaignsOf(policy).ledgerDir, rule.id),
       serializePlanRecord(planOf(rule)),
     );
-    const legacy = policy.legacyLedgers.get(rule.id);
+    const legacy = campaignsOf(policy).legacyLedgers.get(rule.id);
     if (legacy !== undefined) rmSync(path.resolve(policy.repoRoot, legacy), { force: true });
   }
   return outcomes;
@@ -1013,7 +1018,7 @@ export const concede = (
   if (wanted.length > 0) {
     writeJson(
       policy.repoRoot,
-      ledgerPathOf(policy.ledgerDir, rule.id, objective.id),
+      ledgerPathOf(campaignsOf(policy).ledgerDir, rule.id, objective.id),
       serializeLedger(ledger),
     );
   }
@@ -1060,10 +1065,10 @@ export const attest = (
   });
   writeJson(
     policy.repoRoot,
-    sectorRecordPathOf(policy.ledgerDir, rule.id, sector),
+    sectorRecordPathOf(campaignsOf(policy).ledgerDir, rule.id, sector),
     serializeSectorRecord(after),
   );
-  return Result.succeed(sectorRecordPathOf(policy.ledgerDir, rule.id, sector));
+  return Result.succeed(sectorRecordPathOf(campaignsOf(policy).ledgerDir, rule.id, sector));
 };
 
 // `note`: a dated remark for the next person or agent to touch the sector,
@@ -1088,10 +1093,10 @@ export const note = (
   });
   writeJson(
     policy.repoRoot,
-    sectorRecordPathOf(policy.ledgerDir, rule.id, sector),
+    sectorRecordPathOf(campaignsOf(policy).ledgerDir, rule.id, sector),
     serializeSectorRecord(after),
   );
-  return Result.succeed(sectorRecordPathOf(policy.ledgerDir, rule.id, sector));
+  return Result.succeed(sectorRecordPathOf(campaignsOf(policy).ledgerDir, rule.id, sector));
 };
 
 // ---------------------------------------------------------------------------
@@ -1331,7 +1336,7 @@ export const nudgeOf = (
           if (unrecorded.length === 0) continue;
           writeJson(
             policy.repoRoot,
-            ledgerPathOf(policy.ledgerDir, rule.id, objective.id),
+            ledgerPathOf(campaignsOf(policy).ledgerDir, rule.id, objective.id),
             serializeLedger(
               concededSector(ledger, name, unrecorded, {
                 at: policy.now,
@@ -1513,8 +1518,8 @@ export const historyOf = (
   since: string | null,
   manifestPaths: ReadonlyArray<string>,
 ): ReadonlyArray<HistoryRow> => {
-  const dir = `${policy.ledgerDir}/${rule.id}`;
-  const legacy = `${policy.ledgerDir}/${rule.id}.json`;
+  const dir = `${campaignsOf(policy).ledgerDir}/${rule.id}`;
+  const legacy = `${campaignsOf(policy).ledgerDir}/${rule.id}.json`;
   const commits = commitsTouching(policy.repoRoot, [dir, legacy, ...manifestPaths], since);
   return commits.map((commit: Commit) => {
     const counts: Record<string, number> = {};
@@ -1523,7 +1528,7 @@ export const historyOf = (
         textAt(
           policy.repoRoot,
           commit.sha,
-          ledgerPathOf(policy.ledgerDir, rule.id, objective.id),
+          ledgerPathOf(campaignsOf(policy).ledgerDir, rule.id, objective.id),
         ) ?? (rule.objectives.length === 1 ? textAt(policy.repoRoot, commit.sha, legacy) : null);
       if (text === null) continue;
       try {

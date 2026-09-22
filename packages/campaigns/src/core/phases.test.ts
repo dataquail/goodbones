@@ -1,7 +1,7 @@
 import * as Result from "effect/Result";
 import { describe, expect, it } from "vitest";
 
-import type { CampaignRule, ObjectiveRule } from "../domain/architecture-config.js";
+import type { CampaignRule, ObjectiveRule } from "../domain/config.js";
 import { compileCampaignRule, type CompiledCampaign } from "./campaigns.js";
 import {
   compareResidue,

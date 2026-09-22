@@ -3,6 +3,7 @@ import * as path from "node:path";
 import {
   type CampaignHit,
   type CampaignInput,
+  campaignsOf,
   campaignsSelecting,
   type CompiledCampaign,
   type CompiledObjective,
@@ -10,20 +11,18 @@ import {
   detectorCandidatesOf,
   detectorOf,
   evaluateObjectives,
-  formatMessage,
   ledgerKeyOf,
   LEGACY_PHASE,
   LEGACY_SECTOR,
-  type LoadedPolicy,
   membershipOf,
   needsSyntax,
   objectivesInWindow,
   positionOf,
   reconcileSector,
-  ReportUnavailable,
   sectorEntryOf,
   type SectorIndex,
-} from "@goodbones/core";
+} from "@goodbones/campaigns";
+import { formatMessage, type LoadedPolicy, ReportUnavailable } from "@goodbones/core";
 import { sourceFactsOf } from "@goodbones/typescript";
 
 import {
@@ -70,7 +69,7 @@ const unledgered = (
   }
   for (const [objectiveId, own] of byObjective) {
     const objective = rule.objectives.find((one) => one.id === objectiveId);
-    const ledger = policy.ledgers.get(ledgerKeyOf(rule.id, objectiveId));
+    const ledger = campaignsOf(policy).ledgers.get(ledgerKeyOf(rule.id, objectiveId));
     if (objective === undefined || ledger === undefined) continue;
     const entries = own.map((hit) => sectorEntryOf(hit.violation, root));
     const known = new Set(reconcileSector(ledger, sector, entries, objective.unit).ledgered);
@@ -90,10 +89,10 @@ const inWindowFor = (
   rule: CompiledCampaign,
   sector: string,
 ): ReadonlyArray<CompiledObjective> => {
-  const record = policy.sectorRecords.get(ledgerKeyOf(rule.id, sector));
+  const record = campaignsOf(policy).sectorRecords.get(ledgerKeyOf(rule.id, sector));
   const position = positionOf(rule, record);
   const counts = (objectiveId: string): number =>
-    policy.ledgers.get(ledgerKeyOf(rule.id, objectiveId))?.sectors[sector]?.holdouts.length ?? 0;
+    campaignsOf(policy).ledgers.get(ledgerKeyOf(rule.id, objectiveId))?.sectors[sector]?.holdouts.length ?? 0;
   const phase =
     sector === LEGACY_SECTOR || record === undefined
       ? Math.min(LEGACY_PHASE, rule.phases.length)
@@ -142,7 +141,7 @@ export const makeCampaignsRule = (
           // seen only by a campaign that widened its scope to it, so both
           // hosts answer about the same files.
           const extension = path.extname(file);
-          selected = campaignsSelecting(policy.campaignRules, file).filter(
+          selected = campaignsSelecting(campaignsOf(policy).campaignRules, file).filter(
             (rule) =>
               known.size === 0 || known.has(extension) || rule.extensions.includes(extension),
           );
@@ -165,8 +164,8 @@ export const makeCampaignsRule = (
             resolver: policy.resolver,
             fileSystem: policy.fileSystem,
             syntax: needsSyntax(detectors) ? policy.syntax.parse(file, text) : null,
-            functions: policy.functions,
-            reports: policy.reports,
+            functions: campaignsOf(policy).functions,
+            reports: campaignsOf(policy).reports,
           };
           // One campaign at a time, so a report one of them cannot read costs
           // that campaign's answer for this file and not its neighbours'.

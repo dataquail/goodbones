@@ -3,14 +3,18 @@ import { fileURLToPath } from "node:url";
 
 import { astGrepMatcher } from "@goodbones/ast-grep";
 import {
+  type CampaignPolicy,
   type CampaignRule,
+  CAMPAIGNS_EXTENSION_ID,
   compileCampaignRules,
+  type ReportSource,
+} from "@goodbones/campaigns";
+import {
   EMPTY_BASELINE,
   EMPTY_GRAPH_RULES,
   EMPTY_STRUCTURE,
   type LoadedPolicy,
   makeBaselineFilter,
-  type ReportSource,
   ReportUnavailable,
 } from "@goodbones/core";
 import {
@@ -99,16 +103,24 @@ const policy: LoadedPolicy = {
   graph: EMPTY_GRAPH_RULES,
   adoption: { unrestricted: [], partial: [] },
   structure: EMPTY_STRUCTURE,
-  campaignRules: compiled.success,
-  ledgers: new Map(),
-  legacyLedgers: new Map(),
-  sectorRecords: new Map(),
-  plans: new Map(),
-  ledgerDir: ".architecture-campaigns",
-  functions: new Map(),
+  extensions: new Map<string, unknown>([
+    [
+      CAMPAIGNS_EXTENSION_ID,
+      {
+        campaignRules: compiled.success,
+        ledgers: new Map(),
+        legacyLedgers: new Map(),
+        sectorRecords: new Map(),
+        plans: new Map(),
+        ledgerDir: ".architecture-campaigns",
+        functions: new Map(),
+        reports: refused,
+      } satisfies CampaignPolicy,
+    ],
+  ]),
+  routeFor: () => undefined,
   now: 0,
   syntax: astGrepMatcher(),
-  reports: refused,
   fileSystem: makeFileSystemFake([]),
   languages: [],
   extractor: makeFactExtractorFake({}),

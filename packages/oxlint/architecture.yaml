@@ -6,7 +6,7 @@
 message: "@goodbones/oxlint is the other host: six oxlint rules over the same manifest, evaluated one file at a time in the editor and in CI. It answers to the core, never to the CLI."
 layout: open
 imports:
-  message: "A host composes the package. It reaches the core's barrels, the language pack's and the syntax matcher's, the linter, and its own siblings — never the other host."
+  message: "A host composes the package. It reaches the core's barrels, the language pack's, the syntax matcher's and the campaigns family's, the linter, and its own siblings — never the other host."
   # The floor, then this package's own.
   external: [effect, vitest, oxlint]
   allow:
@@ -16,6 +16,7 @@ imports:
     - "@core/testing.ts"
     - "@ts/index.ts"
     - "@ag/index.ts"
+    - "@camp/index.ts"
     - "@ox/**"
 children:
   # The plugin entry is the one default export: oxlint reads a plugin

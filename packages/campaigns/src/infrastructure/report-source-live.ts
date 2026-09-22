@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { availableParallelism } from "node:os";
 import * as path from "node:path";
 
-import { ReportUnavailable } from "../domain/architecture-error.js";
+import { ReportUnavailable } from "@goodbones/core";
+
 import { type Diagnostic, indexByFile, parseReport, uniqueDiagnostics } from "../domain/report.js";
 import { type ReportSource, reportSourcesOf, type ReportSpec } from "../ports/report-source.js";
 

@@ -4,5 +4,4 @@
 export { makeFactExtractorFake } from "./infrastructure/fact-extractor-fake.js";
 export { makeFileSystemFake } from "./infrastructure/file-system-fake.js";
 export { makeModuleResolverFake } from "./infrastructure/module-resolver-fake.js";
-export { makeReportSourceFake } from "./infrastructure/report-source-fake.js";
 export { makeSyntaxMatcherFake, type StagedMatch } from "./infrastructure/syntax-matcher-fake.js";

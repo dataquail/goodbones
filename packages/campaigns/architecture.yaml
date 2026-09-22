@@ -1,0 +1,131 @@
+# yaml-language-server: $schema=https://dataquail.github.io/goodbones/schema/architecture-node.schema.json
+#
+# The @goodbones/campaigns node of the repository's architecture policy. The
+# root architecture.yaml includes this file at `~/campaigns/`; the globals it
+# shares — the aliases, the `defs` it uses, the graph rules — are written there.
+message: "@goodbones/campaigns is a family the core does not own: a refactor as objectives over sectors through phases. It is laid out as the core is — a pure domain and core, its own two ports, the manifest slice it decodes, the extension a host composes, and the host glue the CLI drives — and it depends on the core and on nothing else in the repository."
+layout: open
+imports:
+  use: package-floor
+  message: "This import is not on this package's allowlist."
+  # The floor, plus the two the family's own tests need: the YAML parser and
+  # the validator, for the composed JSON Schema this package pins.
+  external: [effect, vitest, yaml, ajv]
+  allow:
+    - "node:**"
+    - vitest.shared.ts
+    - "@core/index.ts"
+    - "@core/testing.ts"
+    - "@camp/**"
+children:
+  "src/":
+    layout: open
+    surface:
+      - use: no-default-exports
+      - use: named-reexports-only
+    members:
+      # The same rule the core carries, for the same reason: this is a
+      # library, and a `console.log` in a plugin oxlint loads is noise in
+      # every editor.
+      - message: "`{name}` prints or exits. This package reports through values it returns; the CLI and the plugin decide what a reader sees, and whether the process goes on."
+        subject: calls
+        match: [log, warn, error, info, debug, trace, exit]
+        probe:
+          source: 'console.log("x");'
+          name: log
+    children:
+      "domain/":
+        message: "domain/ is the model: the lowered campaign vocabulary, and the diagnostics another program reported. No I/O, and nothing above it."
+        layout: open
+        children: {}
+        members:
+          - use: no-file-system-calls
+        imports:
+          message: "domain/ is the bottom of the graph. It reaches the core's barrel for the pattern primitives every family shares, itself, and the runtime."
+          allow: ["@core/index.ts", "@camp/domain/**"]
+
+      "ports/":
+        message: "ports/ declares the two things this family must be given that the core's ports do not cover — a predicate function the host imported, and a source of another program's diagnostics."
+        layout: open
+        children: {}
+        members:
+          - message: 'A port member is a verb in camelCase: "{name}" is not. The port is the vocabulary every adapter must speak, and its case is part of the contract.'
+            subject: members
+            declares: [type, interface]
+            allow: "[a-z]*"
+            probe:
+              source: "export type ReportSource = { readonly DiagnosticsOf: (file: string) => boolean };"
+              name: DiagnosticsOf
+        imports:
+          message: "A port is a declaration. It may name the domain types that appear in its signatures, and nothing else."
+          allow: ["@core/index.ts", "@camp/domain/**"]
+
+      "core/":
+        message: "core/ holds the pure evaluators — the detector, sectors, phases, the campaign's state over its files, and the ledger. Given facts, they return violations; they never read a file."
+        layout: open
+        children: {}
+        members:
+          - use: no-file-system-calls
+        imports:
+          message: "core/ evaluates. It reaches the core's barrel, this package's domain and ports, and its own siblings — never a live adapter, which is what lets every rule here be tested against a fake."
+          allow:
+            - "@core/index.ts"
+            - "@core/testing.ts"
+            - "@camp/domain/**"
+            - "@camp/ports/**"
+            - "@camp/core/**"
+            - "@camp/infrastructure/*-fake.ts"
+
+      "manifest/":
+        message: "manifest/ is this family's slice of the manifest: the codec that decodes `campaigns` and `ledger`, and the lowering that resolves their globs with the same primitives the core's own lowering uses."
+        layout: open
+        children: {}
+        imports:
+          message: "Lowering is a transformation of the domain types. It reaches the core's barrel, this package's domain, and its own siblings; it does not evaluate, and it does not resolve."
+          allow: ["@core/index.ts", "@camp/domain/**", "@camp/manifest/**"]
+
+      "load/":
+        message: "load/ is the extension a host composes into `loadPolicy`: decode this family's keys, lower them, compile and probe every rule, and read the ledgers through the file system port."
+        layout: open
+        children: {}
+        members:
+          - use: no-file-system-calls
+        imports:
+          message: "load/ composes this family's pure tiers. It reaches the core's barrel, the domain, the ports, the core and the manifest compiler; a live adapter reaches it only as an argument."
+          allow:
+            - "@core/index.ts"
+            - "@core/testing.ts"
+            - "@camp/ports/**"
+            - "@camp/core/**"
+            - "@camp/manifest/**"
+            - "@camp/load/**"
+
+      "infrastructure/":
+        message: "infrastructure/ holds the fake for this family's report source, and the two things it does on this host: importing the `fn` terms' modules, and running a `report` term's command."
+        layout: open
+        children: {}
+        imports:
+          message: "An adapter implements a port. It reaches the port it satisfies, the domain types in that signature, and its own siblings."
+          allow: ["@core/index.ts", "@camp/domain/**", "@camp/ports/**", "@camp/infrastructure/**"]
+
+      "host/":
+        message: "host/ is the glue a host drives: every campaign evaluated over the files it sees, the ledger verbs, the nudge over a real git diff, and the reports. It runs git and writes files, so it sits above the pure tiers and is reached only by a host."
+        layout: open
+        children: {}
+        imports:
+          message: "The host glue composes everything below it and the core's evaluators, which is how an `endState` is evaluated per sector."
+          allow:
+            - "@core/index.ts"
+            - "@camp/domain/**"
+            - "@camp/core/**"
+            - "@camp/manifest/**"
+            - "@camp/load/**"
+            - "@camp/host/**"
+
+      # The two barrels: the public surface, and the fake.
+      "*.ts":
+        imports:
+          message: "A barrel re-exports the package's surface, so it names every tier."
+          allow: ["@camp/**"]
+
+  "**/": { layout: open, children: {} }

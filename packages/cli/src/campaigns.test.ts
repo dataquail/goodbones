@@ -3,13 +3,13 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { campaignsOf, parseDiff } from "@goodbones/campaigns";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { loadPolicyFromFile as loadPolicy } from "./config-loader.js";
-import { parseDiff } from "./diff.js";
 import {
   campaigns,
   check as checkWith,
@@ -752,7 +752,7 @@ describe("an end state", () => {
   it("expands into the families it lowers to, and each sector's residue against its own root", async () => {
     process.env.ARCHITECTURE_NOW = "2026-10-01T00:00:00Z";
     const policy = await loadPolicy(endRoot);
-    expect(policy.campaignRules[0]?.phases.map((one) => [one.id, one.objectives])).toEqual([
+    expect(campaignsOf(policy).campaignRules[0]?.phases.map((one) => [one.id, one.objectives])).toEqual([
       ["end", ["end-state-imports", "end-state-structure"]],
     ]);
     const { output } = await capture(

@@ -1,4 +1,4 @@
-import type { OnTouch, PhaseRule } from "../domain/architecture-config.js";
+import type { OnTouch, PhaseRule } from "../domain/config.js";
 import type { CompiledCampaign, CompiledObjective } from "./campaigns.js";
 
 // A phase is a named, ordered group of objectives: defined when it names

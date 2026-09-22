@@ -3,21 +3,25 @@ import { fileURLToPath } from "node:url";
 
 import { astGrepMatcher } from "@goodbones/ast-grep";
 import {
+  type CampaignPolicy,
   type CampaignRule,
+  CAMPAIGNS_EXTENSION_ID,
   clearedSector,
   compileCampaignRules,
-  EMPTY_BASELINE,
-  EMPTY_GRAPH_RULES,
   EMPTY_LEDGER,
   EMPTY_SECTOR_RECORD,
-  EMPTY_STRUCTURE,
   type Ledger,
   ledgerKeyOf,
-  type LoadedPolicy,
-  makeBaselineFilter,
   NO_REPORTS,
   reachedRecord,
   type SectorRecord,
+} from "@goodbones/campaigns";
+import {
+  EMPTY_BASELINE,
+  EMPTY_GRAPH_RULES,
+  EMPTY_STRUCTURE,
+  type LoadedPolicy,
+  makeBaselineFilter,
 } from "@goodbones/core";
 import {
   makeFactExtractorFake,
@@ -103,16 +107,24 @@ const policyWith = (
   graph: EMPTY_GRAPH_RULES,
   adoption: { unrestricted: [], partial: [] },
   structure: EMPTY_STRUCTURE,
-  campaignRules: compiled.success,
-  ledgers,
-  legacyLedgers: new Map(),
-  sectorRecords: records,
-  plans: new Map(),
-  ledgerDir: ".architecture-campaigns",
-  functions: new Map(),
+  extensions: new Map<string, unknown>([
+    [
+      CAMPAIGNS_EXTENSION_ID,
+      {
+        campaignRules: compiled.success,
+        ledgers,
+        legacyLedgers: new Map(),
+        sectorRecords: records,
+        plans: new Map(),
+        ledgerDir: ".architecture-campaigns",
+        functions: new Map(),
+        reports: NO_REPORTS,
+      } satisfies CampaignPolicy,
+    ],
+  ]),
+  routeFor: () => undefined,
   now: 0,
   syntax: astGrepMatcher(),
-  reports: NO_REPORTS,
   fileSystem: makeFileSystemFake([]),
   languages: [],
   extractor: makeFactExtractorFake({}),

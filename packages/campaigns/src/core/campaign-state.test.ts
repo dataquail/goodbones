@@ -1,10 +1,9 @@
+import type { SourceFacts } from "@goodbones/core";
+import { makeFileSystemFake, makeModuleResolverFake } from "@goodbones/core/testing";
 import * as Result from "effect/Result";
 import { describe, expect, it } from "vitest";
 
-import type { CampaignRule, ObjectiveRule } from "../domain/architecture-config.js";
-import type { SourceFacts } from "../domain/facts.js";
-import { makeFileSystemFake } from "../infrastructure/file-system-fake.js";
-import { makeModuleResolverFake } from "../infrastructure/module-resolver-fake.js";
+import type { CampaignRule, ObjectiveRule } from "../domain/config.js";
 import { makeReportSourceFake } from "../infrastructure/report-source-fake.js";
 import { evaluateCampaign, hitsInWindow, towardNextOf } from "./campaign-state.js";
 import { type CampaignInput, compileCampaignRule, type CompiledCampaign } from "./campaigns.js";

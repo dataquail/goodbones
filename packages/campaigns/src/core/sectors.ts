@@ -1,4 +1,5 @@
-import type { Violation } from "../domain/violation.js";
+import type { Violation } from "@goodbones/core";
+
 import type { CompiledCampaign, CompiledPerimeter } from "./campaigns.js";
 
 // A sector is the thing that moves through a campaign's phases as one,

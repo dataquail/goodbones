@@ -8,15 +8,23 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { CampaignsManifest } from "../packages/campaigns/build/esm/index.js";
 import {
   manifestJsonSchema,
   manifestNodeJsonSchema,
   snapshotJsonSchema,
 } from "../packages/core/build/esm/index.js";
 
+// The manifest schema an editor fetches is the COMPOSED one: the core's keys
+// and those of every family the `architecture` bin loads. Today that is one
+// family, so the campaigns codec's fields are generated alongside the core's.
+// The node schema is a tree node, which no family extends, so it stays the
+// core's alone.
+const extensions = [CampaignsManifest.fields];
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const schemas = [
-  ["architecture.schema.json", manifestJsonSchema()],
+  ["architecture.schema.json", manifestJsonSchema({ extensions })],
   ["architecture-node.schema.json", manifestNodeJsonSchema()],
   ["conformance.schema.json", snapshotJsonSchema()],
 ];

@@ -1,5 +1,6 @@
-import type { PhaseRule } from "../domain/architecture-config.js";
-import type { Violation } from "../domain/violation.js";
+import type { Violation } from "@goodbones/core";
+
+import type { PhaseRule } from "../domain/config.js";
 import {
   type CampaignHit,
   type CampaignInput,

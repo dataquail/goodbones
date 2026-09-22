@@ -3,10 +3,37 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 
 import {
+  attest,
+  authorOf,
+  baseSideAt,
+  type CampaignEvaluation,
+  campaignFailuresOf,
+  type CampaignReport,
+  campaignReportsOf,
+  campaignsOf,
+  campaignsSelecting,
+  clear,
+  concede,
+  evaluateCampaigns,
+  explainCampaignLines,
+  explainObjective,
+  historyOf,
+  hitsInWindow,
+  ledgeredFilter,
+  note,
+  nudgeOf,
+  readDiff,
+  renderCampaignReports,
+  renderCampaignRows,
+  renderHistory,
+  renderNudge,
+  reportSpecsOf,
+  snapshotCampaignsOf,
+  widenedExtensions,
+} from "@goodbones/campaigns";
+import {
   type Baseline,
   baselineOf,
-  type CampaignEvaluation,
-  campaignsSelecting,
   CONFORMANCE_MEASURES,
   type ConformanceMeasure,
   type CoverageFamily,
@@ -21,7 +48,6 @@ import {
   evaluateSelectedBindings,
   evaluateStructure,
   evaluateSurface,
-  explainObjective,
   exportRulesSelecting,
   findManifestFile,
   fingerprintOf,
@@ -31,7 +57,6 @@ import {
   type Graph,
   hasGraphRules,
   heightOf,
-  hitsInWindow,
   listSourceFiles,
   makeBaselineFilter,
   MANIFEST_FILENAMES,
@@ -39,7 +64,6 @@ import {
   memberRulesSelecting,
   type ObservedEdge,
   readManifestFile,
-  reportSpecsOf,
   requiredSiblingsOf,
   residueOf,
   rulesSelecting,
@@ -56,29 +80,6 @@ import {
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 
-import {
-  attest,
-  authorOf,
-  baseSideAt,
-  campaignFailuresOf,
-  type CampaignReport,
-  campaignReportsOf,
-  clear,
-  concede,
-  evaluateCampaigns,
-  explainCampaignLines,
-  historyOf,
-  ledgeredFilter,
-  note,
-  nudgeOf,
-  readDiff,
-  renderCampaignReports,
-  renderCampaignRows,
-  renderHistory,
-  renderNudge,
-  snapshotCampaignsOf,
-  widenedExtensions,
-} from "./campaigns.js";
 import { type LoadedPolicy, loadPolicyFromFile, manifestPathOf } from "./config-loader.js";
 import { buildGraph } from "./graph.js";
 import { infer } from "./infer.js";
@@ -948,7 +949,7 @@ export const explain = (
     // then each objective's truth table: one line per leaf term and what
     // it answered here, so a detector that "should fire" and does not shows
     // which term is not saying what its author thinks.
-    const selectedCampaigns = campaignsSelecting(policy.campaignRules, relative);
+    const selectedCampaigns = campaignsSelecting(campaignsOf(policy).campaignRules, relative);
     const evaluations =
       selectedCampaigns.length === 0 ? [] : collectFindings(policy, roots).campaigns;
     const campaignLines = selectedCampaigns.flatMap((rule) => {
@@ -961,8 +962,8 @@ export const explain = (
         resolver: policy.resolver,
         fileSystem: policy.fileSystem,
         syntax: policy.syntax.parse(relative, text),
-        functions: policy.functions,
-        reports: policy.reports,
+        functions: campaignsOf(policy).functions,
+        reports: campaignsOf(policy).reports,
       };
       const evaluation = evaluations.find((one) => one.rule.id === rule.id);
       return [
@@ -1352,15 +1353,15 @@ const campaignFor = (
 ): Result.Result<CampaignEvaluation["rule"], string> => {
   const named = flagOf(argv, "--campaign");
   if (named !== undefined) {
-    const found = policy.campaignRules.find((rule) => rule.id === named);
+    const found = campaignsOf(policy).campaignRules.find((rule) => rule.id === named);
     return found === undefined
       ? Result.fail(`no campaign is named "${named}"`)
       : Result.succeed(found);
   }
-  const [only] = policy.campaignRules;
-  if (policy.campaignRules.length === 1 && only !== undefined) return Result.succeed(only);
+  const [only] = campaignsOf(policy).campaignRules;
+  if (campaignsOf(policy).campaignRules.length === 1 && only !== undefined) return Result.succeed(only);
   return Result.fail(
-    `this policy declares ${String(policy.campaignRules.length)} campaigns; say which with --campaign <id>.`,
+    `this policy declares ${String(campaignsOf(policy).campaignRules.length)} campaigns; say which with --campaign <id>.`,
   );
 };
 
@@ -1388,10 +1389,10 @@ export const objectives = (
   Effect.gen(function* () {
     const parsed = objectiveArgsOf(
       argv,
-      policy.campaignRules.map((rule) => rule.id),
+      campaignsOf(policy).campaignRules.map((rule) => rule.id),
     );
     const roots = parsed.roots.length > 0 ? parsed.roots : defaultRoots;
-    if (policy.campaignRules.length === 0) {
+    if (campaignsOf(policy).campaignRules.length === 0) {
       return yield* report(["this policy declares no campaigns."]);
     }
     const evaluations = (): ReadonlyArray<CampaignEvaluation> =>
@@ -1401,8 +1402,8 @@ export const objectives = (
       case "clear": {
         const targets =
           parsed.target === null
-            ? policy.campaignRules
-            : policy.campaignRules.filter((rule) => rule.id === parsed.target?.campaign);
+            ? campaignsOf(policy).campaignRules
+            : campaignsOf(policy).campaignRules.filter((rule) => rule.id === parsed.target?.campaign);
         const by = authorOf(flagOf(argv, "--by")) ?? "unknown";
         const all = evaluations();
         const lines: Array<string> = [];
@@ -1450,7 +1451,7 @@ export const objectives = (
             ),
           );
         }
-        const rule = policy.campaignRules.find((one) => one.id === parsed.target?.campaign);
+        const rule = campaignsOf(policy).campaignRules.find((one) => one.id === parsed.target?.campaign);
         if (rule === undefined)
           return yield* Effect.fail(fail(`no campaign is named "${parsed.target.campaign}"`));
         const objective = objectiveFor(rule, parsed.target.objective);
@@ -1526,10 +1527,10 @@ export const campaigns = (
   Effect.gen(function* () {
     const parsed = campaignArgsOf(
       argv,
-      policy.campaignRules.map((rule) => rule.id),
+      campaignsOf(policy).campaignRules.map((rule) => rule.id),
     );
     const roots = parsed.roots.length > 0 ? parsed.roots : defaultRoots;
-    if (policy.campaignRules.length === 0) {
+    if (campaignsOf(policy).campaignRules.length === 0) {
       return yield* report(["this policy declares no campaigns."]);
     }
     const json = argv.includes("--json");
@@ -1653,8 +1654,8 @@ export const campaigns = (
         const [named] = parsed.args;
         const targets =
           named === undefined
-            ? policy.campaignRules
-            : policy.campaignRules.filter((rule) => rule.id === named);
+            ? campaignsOf(policy).campaignRules
+            : campaignsOf(policy).campaignRules.filter((rule) => rule.id === named);
         const manifestPath = path
           .relative(policy.repoRoot, manifestPathOf(policy.repoRoot, configFilename))
           .replaceAll(path.sep, "/");
@@ -1742,7 +1743,7 @@ export const run = (
       yield* Effect.tryPromise({
         try: () =>
           Promise.all(
-            reportSpecsOf(policy.campaignRules).map((spec) => policy.reports.read?.(spec)),
+            reportSpecsOf(campaignsOf(policy).campaignRules).map((spec) => campaignsOf(policy).reports.read?.(spec)),
           ),
         catch: (cause) => fail(String(cause)),
       });

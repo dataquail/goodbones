@@ -1,0 +1,65 @@
+{
+  "name": "@goodbones/campaigns",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "The campaigns family for @goodbones/core: a refactor tracked as objectives over sectors through phases, with a ledger that only shrinks on its own and a diff-scoped nudge.",
+  "author": "zacharyweidenbach",
+  "keywords": [
+    "architecture",
+    "refactoring",
+    "migration",
+    "campaigns",
+    "lint",
+    "monorepo"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dataquail/goodbones.git",
+    "directory": "packages/campaigns"
+  },
+  "homepage": "https://dataquail.github.io/goodbones",
+  "bugs": {
+    "url": "https://github.com/dataquail/goodbones/issues"
+  },
+  "exports": {
+    ".": {
+      "types": "./build/dts/index.d.ts",
+      "default": "./build/esm/index.js"
+    },
+    "./testing": {
+      "types": "./build/dts/testing.d.ts",
+      "default": "./build/esm/testing.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./build/dts/index.d.ts",
+  "files": [
+    "build/dts",
+    "build/esm",
+    "src",
+    "!src/**/*.test.ts"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "check": "tsc -b tsconfig.json",
+    "clean": "rm -rf build .tsbuildinfo",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@goodbones/core": "workspace:*",
+    "effect": "4.0.0-beta.94"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.4",
+    "ajv": "^8.20.0",
+    "yaml": "^2.9.0"
+  },
+  "nx": {
+    "includedScripts": []
+  }
+}

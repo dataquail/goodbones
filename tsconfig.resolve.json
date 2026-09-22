@@ -20,6 +20,8 @@
       "@goodbones/typescript/*": ["./packages/typescript/src/*"],
       "@goodbones/ast-grep": ["./packages/ast-grep/src/index.ts"],
       "@goodbones/ast-grep/*": ["./packages/ast-grep/src/*"],
+      "@goodbones/campaigns": ["./packages/campaigns/src/index.ts"],
+      "@goodbones/campaigns/*": ["./packages/campaigns/src/*"],
       "@goodbones/cli/*": ["./packages/cli/src/*"],
       "@goodbones/oxlint": ["./packages/oxlint/src/plugin.ts"],
       "@goodbones/oxlint/*": ["./packages/oxlint/src/*"]

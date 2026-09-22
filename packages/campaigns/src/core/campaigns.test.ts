@@ -1,14 +1,16 @@
+import { fingerprintOf, type SourceFacts } from "@goodbones/core";
+import {
+  makeFactExtractorFake,
+  makeFileSystemFake,
+  makeModuleResolverFake,
+  makeSyntaxMatcherFake,
+  type StagedMatch,
+} from "@goodbones/core/testing";
 import * as Result from "effect/Result";
 import { describe, expect, it } from "vitest";
 
-import type { CampaignRule, Detector, ObjectiveRule } from "../domain/architecture-config.js";
-import type { SourceFacts } from "../domain/facts.js";
-import { fingerprintOf } from "../domain/violation.js";
-import { makeFactExtractorFake } from "../infrastructure/fact-extractor-fake.js";
-import { makeFileSystemFake } from "../infrastructure/file-system-fake.js";
-import { makeModuleResolverFake } from "../infrastructure/module-resolver-fake.js";
+import type { CampaignRule, Detector, ObjectiveRule } from "../domain/config.js";
 import { makeReportSourceFake } from "../infrastructure/report-source-fake.js";
-import { makeSyntaxMatcherFake, type StagedMatch } from "../infrastructure/syntax-matcher-fake.js";
 import {
   type CampaignInput,
   type CampaignPredicate,

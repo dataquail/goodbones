@@ -3,22 +3,26 @@ import { fileURLToPath } from "node:url";
 
 import { astGrepMatcher } from "@goodbones/ast-grep";
 import {
+  type CampaignPolicy,
   type CampaignRule,
+  CAMPAIGNS_EXTENSION_ID,
   clearedSector,
   compileCampaignRules,
-  EMPTY_BASELINE,
-  EMPTY_GRAPH_RULES,
   EMPTY_LEDGER,
-  EMPTY_STRUCTURE,
   evaluateObjectives,
-  formatMessage,
   IMPLICIT_SECTOR,
   type Ledger,
   ledgerKeyOf,
-  type LoadedPolicy,
-  makeBaselineFilter,
   NO_REPORTS,
   sectorEntryOf,
+} from "@goodbones/campaigns";
+import {
+  EMPTY_BASELINE,
+  EMPTY_GRAPH_RULES,
+  EMPTY_STRUCTURE,
+  formatMessage,
+  type LoadedPolicy,
+  makeBaselineFilter,
 } from "@goodbones/core";
 import { makeFactExtractorFake, makeFileSystemFake } from "@goodbones/core/testing";
 import { factsOfText } from "@goodbones/typescript";
@@ -127,7 +131,7 @@ const resolver = {
 
 const matcher = astGrepMatcher();
 
-const policyWith = (ledgers: LoadedPolicy["ledgers"]): LoadedPolicy => ({
+const policyWith = (ledgers: CampaignPolicy["ledgers"]): LoadedPolicy => ({
   repoRoot,
   config: { resolve: { scopes: [{ files: "", language: "typescript" }] }, tree: {} },
   importRules: [],
@@ -137,16 +141,24 @@ const policyWith = (ledgers: LoadedPolicy["ledgers"]): LoadedPolicy => ({
   graph: EMPTY_GRAPH_RULES,
   adoption: { unrestricted: [], partial: [] },
   structure: EMPTY_STRUCTURE,
-  campaignRules: compiled.success,
-  ledgers,
-  legacyLedgers: new Map(),
-  sectorRecords: new Map(),
-  plans: new Map(),
-  ledgerDir: ".architecture-campaigns",
-  functions: new Map(),
+  extensions: new Map<string, unknown>([
+    [
+      CAMPAIGNS_EXTENSION_ID,
+      {
+        campaignRules: compiled.success,
+        ledgers,
+        legacyLedgers: new Map(),
+        sectorRecords: new Map(),
+        plans: new Map(),
+        ledgerDir: ".architecture-campaigns",
+        functions: new Map(),
+        reports: NO_REPORTS,
+      } satisfies CampaignPolicy,
+    ],
+  ]),
+  routeFor: () => undefined,
   now: 0,
   syntax: matcher,
-  reports: NO_REPORTS,
   fileSystem: makeFileSystemFake([]),
   languages: [],
   extractor: makeFactExtractorFake({}),

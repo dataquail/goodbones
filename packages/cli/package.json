@@ -45,6 +45,7 @@
   },
   "dependencies": {
     "@goodbones/ast-grep": "workspace:*",
+    "@goodbones/campaigns": "workspace:*",
     "@goodbones/core": "workspace:*",
     "@goodbones/typescript": "workspace:*",
     "effect": "4.0.0-beta.94"

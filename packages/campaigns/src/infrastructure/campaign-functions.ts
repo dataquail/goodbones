@@ -1,7 +1,8 @@
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { ConfigInvalid } from "../domain/architecture-error.js";
+import { ConfigInvalid } from "@goodbones/core";
+
 import type { CampaignPredicate } from "../ports/campaign-predicate.js";
 
 // A campaign's `fn` term names a predicate function as `module#export`,

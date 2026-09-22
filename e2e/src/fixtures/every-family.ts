@@ -34,18 +34,21 @@ export const everyFamilyManifest = (profile: Profile): Readonly<Record<string, u
     },
   ],
   // campaigns: a file still under legacy/, with no ledger to carry it.
-  campaigns: [
-    {
-      id: "legacy-to-modern",
+  campaigns: {
+    "legacy-to-modern": {
       why: "Nothing new is written under legacy/.",
       how: "Move the module out of legacy/.",
       scope: ["src/**"],
-      unit: "file",
-      detect: { path: { file: "^src/legacy/" } },
-      probes: { fires: [{ path: "src/legacy/old.ts" }], ignores: [{ path: "src/new.ts" }] },
       staleAfter: "30d",
+      objectives: {
+        "out-of-legacy": {
+          holdout: "file",
+          match: { path: { file: "^src/legacy/" } },
+          probes: { fires: [{ path: "src/legacy/old.ts" }], ignores: [{ path: "src/new.ts" }] },
+        },
+      },
     },
-  ],
+  },
   tree: {
     "src/": {
       message: "src/ admits pure/, adapters/, ports/ and a view.",
@@ -129,5 +132,5 @@ export const everyFamilyFingerprints = {
   cycle: "graph|no-cycles|lib/a.ts|lib/a.ts ↔ lib/b.ts",
   orphan: "graph|no-orphans|lib/orphan.ts|",
   reach: "graph|pure-reaches-no-adapter|src/pure/calc.ts|src/adapters/db.ts",
-  campaign: "campaign|campaign/legacy-to-modern|src/legacy/old.ts|",
+  campaign: "campaign|campaign/legacy-to-modern/out-of-legacy|src/legacy/old.ts|",
 } as const;

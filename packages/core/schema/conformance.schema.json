@@ -8,7 +8,7 @@
     "version": {
       "type": "number",
       "enum": [
-        1
+        2
       ],
       "description": "The shape of this document."
     },
@@ -450,7 +450,19 @@
           },
           "ledgered": {
             "type": "boolean",
-            "description": "For a campaign hit: carried by the campaign's ledger, so `check` does not fail on it."
+            "description": "For a campaign hit: carried by the objective's ledger, so `check` does not fail on it."
+          },
+          "objective": {
+            "type": "string",
+            "description": "For a campaign hit: the objective that fired."
+          },
+          "sector": {
+            "type": "string",
+            "description": "For a campaign hit: the sector the hit falls in."
+          },
+          "entry": {
+            "type": "string",
+            "description": "For a campaign hit: its ledger entry, relative to the sector's root."
           }
         },
         "required": [
@@ -649,7 +661,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "The campaign's id; its ledger is `<ledger>/<id>.json`."
+            "description": "The campaign's id; its ledgers are under `<ledger>/<id>/`."
           },
           "title": {
             "type": "string",
@@ -659,35 +671,11 @@
             "type": "string",
             "description": "Who is running the campaign, as the manifest names them."
           },
-          "initial": {
-            "type": "number",
-            "allOf": [
-              {
-                "description": "Entries the day the ledger was written."
-              }
-            ]
-          },
-          "allowed": {
-            "type": "number",
-            "allOf": [
-              {
-                "description": "Entries added since by `campaigns allow`, each with a regression record."
-              }
-            ]
-          },
           "count": {
             "type": "number",
             "allOf": [
               {
-                "description": "Entries in the ledger now."
-              }
-            ]
-          },
-          "fixed": {
-            "type": "number",
-            "allOf": [
-              {
-                "description": "Entries removed by `campaigns prune` since the ledger was written."
+                "description": "Holdouts across every objective and sector."
               }
             ]
           },
@@ -695,29 +683,285 @@
             "type": "number",
             "allOf": [
               {
-                "description": "`1 - count / (initial + allowed)`: how much of everything ever ledgered has been paid down."
+                "description": "Cleared over everything ever ledgered, across the campaign's objectives."
               }
             ]
           },
-          "lastProgress": {
-            "type": "string",
-            "description": "When an entry last left the ledger, ISO 8601 — the stall clock's reading."
+          "objectives": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "The objective's id; its ledger is `<ledger>/<campaign>/<objective>.json`."
+                },
+                "phase": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The phase naming the objective, or `null` for one no phase names — in window everywhere."
+                },
+                "initial": {
+                  "type": "number",
+                  "allOf": [
+                    {
+                      "description": "Holdouts recorded as each sector entered the window, summed."
+                    }
+                  ]
+                },
+                "allowed": {
+                  "type": "number",
+                  "allOf": [
+                    {
+                      "description": "Holdouts added since by `objectives concede` or a re-baseline, each with a concession."
+                    }
+                  ]
+                },
+                "count": {
+                  "type": "number",
+                  "allOf": [
+                    {
+                      "description": "Holdouts in the ledger now, every sector summed."
+                    }
+                  ]
+                },
+                "cleared": {
+                  "type": "number",
+                  "allOf": [
+                    {
+                      "description": "Holdouts removed by `objectives clear` because they stopped firing."
+                    }
+                  ]
+                },
+                "closed": {
+                  "type": "number",
+                  "allOf": [
+                    {
+                      "description": "Holdouts still firing when a sector left the window — not progress."
+                    }
+                  ]
+                },
+                "progress": {
+                  "type": "number",
+                  "allOf": [
+                    {
+                      "description": "`1 - count / (initial + allowed - closed)`: how much of everything ever ledgered has been paid down."
+                    }
+                  ]
+                },
+                "lastCleared": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "When a holdout last left the ledger, ISO 8601 — the stall clock's reading; `null` with no ledger."
+                },
+                "concessions": {
+                  "type": "number",
+                  "allOf": [
+                    {
+                      "description": "How many times a count was allowed to go up."
+                    }
+                  ]
+                },
+                "complete": {
+                  "type": "boolean",
+                  "description": "No holdouts remain."
+                },
+                "ledgered": {
+                  "type": "boolean",
+                  "description": "Whether a ledger exists. An objective with none has been declared and not yet cleared."
+                }
+              },
+              "required": [
+                "id",
+                "phase",
+                "initial",
+                "allowed",
+                "count",
+                "cleared",
+                "closed",
+                "progress",
+                "lastCleared",
+                "concessions",
+                "complete",
+                "ledgered"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Every objective, in manifest order."
           },
-          "regressions": {
-            "type": "number",
-            "allOf": [
-              {
-                "description": "How many times the count was allowed to go up."
+          "phases": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "The phase's id."
+                },
+                "defined": {
+                  "type": "boolean",
+                  "description": "Whether the phase names criteria. An open phase has only an intent, and is last."
+                },
+                "sectors": {
+                  "type": "number",
+                  "allOf": [
+                    {
+                      "description": "How many sectors are derived to stand at this phase."
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "defined",
+                "sectors"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The ladder, in order, with how many sectors stand at each phase."
+          },
+          "sectors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "The sector's identity, as its perimeter names it."
+                },
+                "phase": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The phase the sector is derived to stand at, or `null` when it is past the last one."
+                },
+                "reached": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The furthest phase the sector's record says it has reached; `null` before its first `clear`."
+                },
+                "files": {
+                  "type": "number",
+                  "allOf": [
+                    {
+                      "description": "How many files the sector claims."
+                    }
+                  ]
+                },
+                "residue": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "number"
+                  },
+                  "description": "One dimension per objective in window for the sector: its holdouts there, never summed."
+                },
+                "stalled": {
+                  "type": "boolean",
+                  "description": "Holdouts remain for the sector and nothing has been cleared, attested or noted within `staleAfter`."
+                }
+              },
+              "required": [
+                "name",
+                "phase",
+                "reached",
+                "files",
+                "residue",
+                "stalled"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Every sector the perimeter births, by name."
+          },
+          "legacy": {
+            "type": "object",
+            "properties": {
+              "files": {
+                "type": "number",
+                "allOf": [
+                  {
+                    "description": "Files in the scope no sector claims."
+                  }
+                ]
+              },
+              "holdouts": {
+                "type": "number",
+                "allOf": [
+                  {
+                    "description": "Holdouts in the legacy, under the first phase's objectives — where a holdout moved out of a sector lands."
+                  }
+                ]
               }
-            ]
+            },
+            "required": [
+              "files",
+              "holdouts"
+            ],
+            "additionalProperties": false,
+            "description": "The unclaimed remainder of the scope, which stands at the first phase and is not a sink."
+          },
+          "plan": {
+            "type": "object",
+            "properties": {
+              "refined": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Phases refined since the last `clear`: an open phase that gained criteria, or a new one. Free."
+              },
+              "changed": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Defined phases whose definition changed since the last `clear` — what a reviewer reads every time."
+              },
+              "unreceipted": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Changed phases carrying no new concession; `check` fails on them."
+              }
+            },
+            "required": [
+              "refined",
+              "changed",
+              "unreceipted"
+            ],
+            "additionalProperties": false,
+            "description": "What changed in the plan, refinements and changes apart."
           },
           "stalled": {
             "type": "boolean",
-            "description": "Entries remain and `lastProgress` is older than the campaign's `staleAfter`."
+            "description": "Holdouts remain and nothing has been cleared, attested or noted within the campaign's `staleAfter`."
           },
           "complete": {
             "type": "boolean",
-            "description": "No entries remain."
+            "description": "No holdouts remain in any objective."
           },
           "onComplete": {
             "type": "string",
@@ -729,18 +973,18 @@
           },
           "ledgered": {
             "type": "boolean",
-            "description": "Whether a ledger exists. A campaign with none has been declared and not yet initialised."
+            "description": "Whether every objective has a ledger."
           }
         },
         "required": [
           "id",
-          "initial",
-          "allowed",
           "count",
-          "fixed",
           "progress",
-          "lastProgress",
-          "regressions",
+          "objectives",
+          "phases",
+          "sectors",
+          "legacy",
+          "plan",
           "stalled",
           "complete",
           "onComplete",

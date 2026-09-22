@@ -2,20 +2,65 @@ import * as path from "node:path";
 
 import { astGrepMatcher } from "@goodbones/ast-grep";
 import {
-  findManifestFile,
+  campaignsExtension,
+  campaignsOf,
+  discoverSectors,
   loadCampaignFunctions,
+  makeReportSourceLive,
+  reportSpecsOf,
+  type SectorIndex,
+} from "@goodbones/campaigns";
+import {
+  findManifestFile,
+  globToRegExp,
+  listSourceFiles,
+  listWorkspaceProjects,
   type LoadedPolicy,
   loadPolicy,
   makeFileSystemLive,
-  makeReportSourceLive,
   readManifestFile,
-  reportSpecsOf,
   ReportUnavailable,
 } from "@goodbones/core";
 import { typescriptLanguage } from "@goodbones/typescript";
 import * as Result from "effect/Result";
 
 export type { LoadedPolicy } from "@goodbones/core";
+
+// A `marker` or `nx` perimeter needs the other files to say which sector a
+// file is in — the markers, or the workspace's projects — so the plugin
+// reads them once at load, from a walk of the repository that reads no
+// source text but the markers'. The other perimeters answer from the path
+// or the file itself, and need nothing here.
+export const discoverSectorIndexes = (policy: LoadedPolicy): ReadonlyMap<string, SectorIndex> => {
+  const indexes = new Map<string, SectorIndex>();
+  const needing = campaignsOf(policy).campaignRules.filter(
+    (rule) => rule.perimeter?.kind === "marker" || rule.perimeter?.kind === "nx",
+  );
+  if (needing.length === 0) return indexes;
+  const widened = [...new Set(needing.flatMap((rule) => rule.extensions))];
+  const files = listSourceFiles(policy.repoRoot, ["."], policy.languages, widened);
+  const known = new Set(policy.languages.flatMap((one) => one.extensions));
+  const projects = needing.some((rule) => rule.perimeter?.kind === "nx")
+    ? listWorkspaceProjects(policy.repoRoot, ["."])
+    : [];
+  for (const rule of needing) {
+    const scoped = files.filter(
+      (file) =>
+        rule.scope.some((pattern) => pattern.test(file)) &&
+        (known.has(path.extname(file)) || rule.extensions.includes(path.extname(file))),
+    );
+    indexes.set(
+      rule.id,
+      discoverSectors(rule, {
+        files: scoped,
+        readText: (file) => policy.fileSystem.readText(file),
+        globToRegExp,
+        projects,
+      }),
+    );
+  }
+  return indexes;
+};
 
 // The clock the campaigns are judged by; `ARCHITECTURE_NOW` pins it, as it
 // does for the CLI.
@@ -56,11 +101,10 @@ export const loadPolicyFromFile = async (
     locate: read.locate,
     languages: [typescriptLanguage({ syntax: astGrepMatcher() })],
     fileSystem: makeFileSystemLive(repoRoot),
-    functions,
     // A `report` command runs once per process — once per editor session
     // for oxlint's language server, which then sees that report until it
     // restarts. A report the build writes to a file is the predictable form.
-    reports: makeReportSourceLive(repoRoot),
+    extensions: [campaignsExtension({ functions, reports: makeReportSourceLive(repoRoot) })],
     now: hostNow(),
   });
   if (Result.isFailure(loaded)) throw loaded.failure;
@@ -74,11 +118,12 @@ export const loadPolicyFromFile = async (
   // commands run at once. A report that cannot be read is not a load
   // failure — the campaigns rule reports it once, on the first file a
   // campaign naming it selects; one that does not parse is.
+  const campaigns = campaignsOf(policy);
   await Promise.all(
-    reportSpecsOf(policy.campaignRules).map(async (spec) => {
-      if (policy.reports.read !== undefined) return policy.reports.read(spec);
+    reportSpecsOf(campaigns.campaignRules).map(async (spec) => {
+      if (campaigns.reports.read !== undefined) return campaigns.reports.read(spec);
       try {
-        policy.reports.diagnosticsOf(spec, "");
+        campaigns.reports.diagnosticsOf(spec, "");
       } catch (cause) {
         if (!(cause instanceof ReportUnavailable)) throw cause;
       }

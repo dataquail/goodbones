@@ -61,6 +61,7 @@ aliases:
   "@cli": packages/cli/src
   "@ox": packages/oxlint/src
   "@ag": packages/ast-grep/src
+  "@camp": packages/campaigns/src
 
 # Which exported names may cross which edges — the family a path rule cannot
 # express, because every importer of a module resolves to the same file.
@@ -73,7 +74,8 @@ exports:
       - "@ts/extractor.ts"
       - "@ts/resolver.ts"
       - "@ts/index.ts"
-      - "@core/infrastructure/report-source-live.ts"
+      - "@camp/infrastructure/report-source-live.ts"
+      - "@camp/index.ts"
       - "@ag/matcher.ts"
       - "@ag/index.ts"
     symbols:
@@ -90,6 +92,7 @@ exports:
       - "@core/index.ts"
       - "@ts/index.ts"
       - "@ag/index.ts"
+      - "@camp/index.ts"
       - "**/*.test.ts"
     probe:
       source: 'import { makeFileSystemLive } from "./infrastructure/file-system-live.js";'
@@ -153,6 +156,8 @@ graph:
         - "@core/testing.ts"
         - "@ts/index.ts"
         - "@ag/index.ts"
+        - "@camp/index.ts"
+        - "@camp/testing.ts"
         - "@cli/main.ts"
         - "@ox/plugin.ts"
 
@@ -170,10 +175,9 @@ graph:
         - "@core/infrastructure/file-system-live.ts"
         - "@core/infrastructure/walk.ts"
         - "@core/infrastructure/manifest-file.ts"
-        - "@core/infrastructure/campaign-functions.ts"
-        - "@core/infrastructure/report-source-live.ts"
         - "@ts/**"
         - "@ag/**"
+        - "@camp/**"
         - "@cli/**"
         - "@ox/**"
 
@@ -183,7 +187,32 @@ graph:
       message: "The core reaches no other package. A second language is a second pack that depends on the core; the core depends on none of them."
       from: "@core/**"
       fromNot: "**/*.test.ts"
+      to: ["@ts/**", "@ag/**", "@camp/**", "@cli/**", "@ox/**"]
+
+    # The line that proves THIS decoupling held: the core does not know the
+    # campaigns family exists, and the campaigns family knows no language, no
+    # matcher and no host. It is a family over the core, exactly as a second
+    # one would be.
+    - name: campaigns-reaches-only-the-core
+      message: "The campaigns family reaches the core and nothing else in this repository. It is a family the core does not own — composed by a host as a `PolicyExtension` — so a second such family is a second package that depends on the core, and on none of its peers."
+      from: "@camp/**"
+      fromNot: "**/*.test.ts"
       to: ["@ts/**", "@ag/**", "@cli/**", "@ox/**"]
+
+    # The campaigns family's own hexagon: its pure tiers reach no live adapter
+    # of its own, for the reason the core's do not reach the core's.
+    - name: campaigns-pure-tiers-reach-no-adapter
+      message: "The campaigns family's pure tiers — domain, ports, core, manifest — reach no live implementation and no host glue, through any number of hops. That is what makes them testable without a file system, a git repository or another program."
+      from:
+        - "@camp/domain/**"
+        - "@camp/ports/**"
+        - "@camp/core/**"
+        - "@camp/manifest/**"
+      fromNot: "**/*.test.ts"
+      to:
+        - "@camp/infrastructure/campaign-functions.ts"
+        - "@camp/infrastructure/report-source-live.ts"
+        - "@camp/host/**"
 
     # The pack never names the matcher: a host composes the two, so a second
     # engine is a second package the pack need not know about.
@@ -249,6 +278,7 @@ tree:
   "~/core/": { include: packages/core/architecture.yaml }
   "~/typescript/": { include: packages/typescript/architecture.yaml }
   "~/ast-grep/": { include: packages/ast-grep/architecture.yaml }
+  "~/campaigns/": { include: packages/campaigns/architecture.yaml }
   "~/cli/": { include: packages/cli/architecture.yaml }
   "~/oxlint/": { include: packages/oxlint/architecture.yaml }
 
@@ -260,25 +290,33 @@ tree:
 # the loader returns a `Result` — and it is also the family's largest test:
 # both hosts evaluate it against this tree on every lint run.
 campaigns:
-  - id: lowering-reports-not-throws
+  lowering-reports-not-throws:
     title: Lowering reports through Result, not by throwing
     why: "`loadPolicy` returns a `Result`, but a manifest that lowers badly escapes it as a thrown `Error` — so a host that handles the failure value still has an exception to catch, and the message carries no line."
     how: "Return `Result.fail(new ConfigInvalid({ configPath, detail }))` from the lowering, threading the path the manifest was read from, and let `loadPolicy` pass it up. Keep the sentence; move it into `detail`."
     owner: "@dataquail"
-    scope: ["@core/manifest/**"]
-    unit: match
-    detect:
-      all:
-        - path: { file: "\\.ts$", fileNot: "\\.test\\.ts$" }
-        - syntax: { pattern: "throw new Error($$$)" }
-    probes:
-      fires:
-        - path: packages/core/src/manifest/zzprobe.ts
-          source: 'const lower = () => { throw new Error("bad manifest"); };'
-      ignores:
-        - path: packages/core/src/manifest/zzprobe.test.ts
-          source: 'const lower = () => { throw new Error("bad manifest"); };'
-        - path: packages/core/src/manifest/zzprobe.ts
-          source: "const lower = () => Result.fail(new ConfigInvalid({ configPath, detail }));"
+    # Both lowerings: the core's, and the campaigns family's own, which
+    # moved to its own package with the family. The two conceded throws went
+    # with it, so widening the scope is what keeps them counted rather than
+    # letting a package move read as progress.
+    scope: ["@core/manifest/**", "@camp/manifest/**"]
     staleAfter: 90d
     onComplete: keep
+    # The minimal campaign: one objective, no perimeter (the scope is its
+    # one sector), no phases. What the family's first shape was.
+    objectives:
+      throws-in-lowering:
+        holdout: match
+        match:
+          all:
+            - path: { file: "\\.ts$", fileNot: "\\.test\\.ts$" }
+            - syntax: { pattern: "throw new Error($$$)" }
+        probes:
+          fires:
+            - path: packages/core/src/manifest/zzprobe.ts
+              source: 'const lower = () => { throw new Error("bad manifest"); };'
+          ignores:
+            - path: packages/core/src/manifest/zzprobe.test.ts
+              source: 'const lower = () => { throw new Error("bad manifest"); };'
+            - path: packages/core/src/manifest/zzprobe.ts
+              source: "const lower = () => Result.fail(new ConfigInvalid({ configPath, detail }));"

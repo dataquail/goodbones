@@ -107,34 +107,40 @@ export const tightManifest = (profile: Profile): Readonly<Record<string, unknown
 // matcher, and every file yields a match anchored on its declaration.
 export const campaignManifest = (profile: Profile): Readonly<Record<string, unknown>> => ({
   ...tightManifest(profile),
-  campaigns: [
-    {
-      id: "handlers-and-services",
+  campaigns: {
+    "handlers-and-services": {
       why: "Handlers and services move behind the command bus.",
       how: "Register the module with the bus and delete the direct import.",
       scope: ["src/**"],
-      unit: "file",
-      detect: { path: { file: `/(handler|service)\\${profile.extension}$` } },
-      probes: {
-        fires: [{ path: `src/handler${profile.extension}` }],
-        ignores: [{ path: `src/main${profile.extension}` }],
-      },
       staleAfter: "30d",
+      objectives: {
+        "behind-the-bus": {
+          holdout: "file",
+          match: { path: { file: `/(handler|service)\\${profile.extension}$` } },
+          probes: {
+            fires: [{ path: `src/handler${profile.extension}` }],
+            ignores: [{ path: `src/main${profile.extension}` }],
+          },
+        },
+      },
     },
-    {
-      id: "no-literal-ones",
+    "no-literal-ones": {
       why: "A literal one is a placeholder.",
       how: "Give the value a name.",
       scope: ["src/**"],
-      unit: "match",
-      detect: { syntax: { pattern: "const $N = 1" } },
-      probes: {
-        fires: [{ path: `src/a${profile.extension}`, source: "export const value = 1;" }],
-        ignores: [{ path: `src/b${profile.extension}`, source: "export const value = 2;" }],
-      },
       staleAfter: "30d",
+      objectives: {
+        "literal-one": {
+          holdout: "match",
+          match: { syntax: { pattern: "const $N = 1" } },
+          probes: {
+            fires: [{ path: `src/a${profile.extension}`, source: "export const value = 1;" }],
+            ignores: [{ path: `src/b${profile.extension}`, source: "export const value = 2;" }],
+          },
+        },
+      },
     },
-  ],
+  },
 });
 
 // Runs per property, and the seed: overridable so a failure's seed can be

@@ -1,14 +1,16 @@
+import { fingerprintOf, type SourceFacts } from "@goodbones/core";
+import {
+  makeFactExtractorFake,
+  makeFileSystemFake,
+  makeModuleResolverFake,
+  makeSyntaxMatcherFake,
+  type StagedMatch,
+} from "@goodbones/core/testing";
 import * as Result from "effect/Result";
 import { describe, expect, it } from "vitest";
 
-import type { CampaignRule, Detector } from "../domain/architecture-config.js";
-import type { SourceFacts } from "../domain/facts.js";
-import { fingerprintOf } from "../domain/violation.js";
-import { makeFactExtractorFake } from "../infrastructure/fact-extractor-fake.js";
-import { makeFileSystemFake } from "../infrastructure/file-system-fake.js";
-import { makeModuleResolverFake } from "../infrastructure/module-resolver-fake.js";
+import type { CampaignRule, Detector, ObjectiveRule } from "../domain/config.js";
 import { makeReportSourceFake } from "../infrastructure/report-source-fake.js";
-import { makeSyntaxMatcherFake, type StagedMatch } from "../infrastructure/syntax-matcher-fake.js";
 import {
   type CampaignInput,
   type CampaignPredicate,
@@ -16,8 +18,10 @@ import {
   campaignsSelecting,
   compileCampaignRule,
   type CompiledCampaign,
-  evaluateCampaign,
-  explainCampaign,
+  type CompiledObjective,
+  compileObjective,
+  evaluateObjective,
+  explainObjective,
   matchKeyOf,
 } from "./campaigns.js";
 
@@ -28,26 +32,45 @@ const NOTHING: SourceFacts = {
   exportSites: [],
 };
 
+// One objective, compiled on its own: what the evaluator reads a file with.
 const rule = (
   detect: Detector,
-  unit: CampaignRule["unit"] = "file",
+  unit: ObjectiveRule["holdout"] = "file",
+  overrides: Partial<ObjectiveRule> = {},
+): CompiledObjective => {
+  const compiled = compileObjective({
+    name: "campaign/x/o",
+    id: "o",
+    campaign: "x",
+    message: "Migrate it.",
+    why: "Because.",
+    holdout: unit,
+    match: detect,
+    probes: { fires: [], ignores: [] },
+    ...overrides,
+  });
+  if (Result.isFailure(compiled)) throw compiled.failure;
+  return compiled.success;
+};
+
+// The campaign around an objective, as the probe check and the selection
+// take one: the objective's scope is its campaign's.
+const campaignOf = (
+  objectives: ReadonlyArray<CompiledObjective>,
   overrides: Partial<CampaignRule> = {},
 ): CompiledCampaign => {
   const compiled = compileCampaignRule({
     name: "campaign/x",
     id: "x",
-    message: "Migrate it.",
-    why: "Because.",
     scope: "^src/",
-    unit,
-    detect,
-    probes: { fires: [], ignores: [] },
-    staleAfter: 30 * 86_400_000,
+    extensions: [],
+    phases: [],
+    objectives: [],
     onComplete: "keep",
     ...overrides,
   });
   if (Result.isFailure(compiled)) throw compiled.failure;
-  return compiled.success;
+  return { ...compiled.success, objectives };
 };
 
 // One file, staged: its facts, its text, what its syntax yields for any
@@ -74,11 +97,11 @@ const input = (
   };
 };
 
-const subjects = (rule: CompiledCampaign, at: CampaignInput): ReadonlyArray<string | null> =>
-  evaluateCampaign(rule, at).map((hit) => hit.violation.subject);
+const subjects = (rule: CompiledObjective, at: CampaignInput): ReadonlyArray<string | null> =>
+  evaluateObjective(rule, at).map((hit) => hit.violation.subject);
 
-const fires = (rule: CompiledCampaign, at: CampaignInput): boolean =>
-  evaluateCampaign(rule, at).length > 0;
+const fires = (rule: CompiledObjective, at: CampaignInput): boolean =>
+  evaluateObjective(rule, at).length > 0;
 
 describe("every leaf term, true and false", () => {
   it("path: the file's path, with an optional naming convention on a capture", () => {
@@ -227,7 +250,7 @@ describe("every leaf term, true and false", () => {
       { text: "parse", anchor: "parse", line: 3, rule: { kind: "never" } },
       { text: "format", anchor: "format", line: 7, rule: { kind: "never" } },
     ];
-    const tsc = (unit: CampaignRule["unit"], codes?: ReadonlyArray<string>) =>
+    const tsc = (unit: ObjectiveRule["holdout"], codes?: ReadonlyArray<string>) =>
       rule(
         {
           report: {
@@ -480,7 +503,7 @@ describe("fingerprints anchor on declarations, never on positions", () => {
   const hooks = rule({ syntax: { rule: { pattern: "$HOOK($$$)" } } }, "match");
   const at = (matches: ReadonlyArray<StagedMatch>) => input({ matches });
   const fingerprints = (matches: ReadonlyArray<StagedMatch>) =>
-    evaluateCampaign(hooks, at(matches)).map((hit) => fingerprintOf(hit.violation));
+    evaluateObjective(hooks, at(matches)).map((hit) => fingerprintOf(hit.violation));
 
   it("survives a line shift and a rename of an unrelated declaration", () => {
     const before = fingerprints([{ text: "useState()", anchor: "Bar", line: 3 }]);
@@ -491,27 +514,27 @@ describe("fingerprints anchor on declarations, never on positions", () => {
         { text: "other()", anchor: "Renamed", line: 40 },
       ]),
     ).toContain(before[0]);
-    expect(before[0]).toBe(`campaign|campaign/x|src/a.ts|${matchKeyOf("Bar", "useState()")}`);
+    expect(before[0]).toBe(`campaign|campaign/x/o|src/a.ts|${matchKeyOf("Bar", "useState()")}`);
   });
 
   it("changes only when the matched text changes inside the anchor", () => {
     const before = fingerprints([{ text: "useState()", anchor: "Bar" }]);
     const after = fingerprints([{ text: "useState(0)", anchor: "Bar" }]);
     expect(after).not.toEqual(before);
-    expect(after[0]?.startsWith("campaign|campaign/x|src/a.ts|Bar#")).toBe(true);
+    expect(after[0]?.startsWith("campaign|campaign/x/o|src/a.ts|Bar#")).toBe(true);
   });
 
   it("a file campaign's fingerprint names the file alone", () => {
-    const hit = evaluateCampaign(rule({ path: { file: "\\.ts$" } }), input())[0];
+    const hit = evaluateObjective(rule({ path: { file: "\\.ts$" } }), input())[0];
     expect(hit === undefined ? "" : fingerprintOf(hit.violation)).toBe(
-      "campaign|campaign/x|src/a.ts|",
+      "campaign|campaign/x/o|src/a.ts|",
     );
   });
 });
 
 describe("selection, probes and the truth table", () => {
   it("selects by scope", () => {
-    const one = rule({ path: { file: "." } });
+    const one = campaignOf([rule({ path: { file: "." } })]);
     expect(campaignsSelecting([one], "src/a.ts")).toEqual([one]);
     expect(campaignsSelecting([one], "lib/a.ts")).toEqual([]);
   });
@@ -559,10 +582,15 @@ describe("selection, probes and the truth table", () => {
         },
       },
     );
-    const failed = campaignsFailingTheirProbe([react], extractor, () => matcher, new Map());
+    const failed = campaignsFailingTheirProbe(
+      [campaignOf([react])],
+      extractor,
+      () => matcher,
+      new Map(),
+    );
     expect(failed).toEqual([
       expect.objectContaining({
-        name: "campaign/x",
+        name: "campaign/x/o",
         expected: "ignores",
         admittedBy: "content /extends/",
       }),
@@ -571,16 +599,18 @@ describe("selection, probes and the truth table", () => {
     const outside = rule({ path: { file: "." } }, "file", {
       probes: { fires: [{ path: "lib/a.ts" }], ignores: [] },
     });
-    expect(campaignsFailingTheirProbe([outside], extractor, () => null, new Map())).toEqual([
-      expect.objectContaining({ name: "campaign/x", expected: "fires", outOfScope: true }),
+    expect(
+      campaignsFailingTheirProbe([campaignOf([outside])], extractor, () => null, new Map()),
+    ).toEqual([
+      expect.objectContaining({ name: "campaign/x/o", expected: "fires", outOfScope: true }),
     ]);
 
     const silent = rule({ path: { file: "\\.js$" } }, "file", {
       probes: { fires: [{ path: "src/a.ts" }], ignores: [] },
     });
-    expect(campaignsFailingTheirProbe([silent], extractor, () => null, new Map())).toEqual([
-      expect.objectContaining({ name: "campaign/x", expected: "fires" }),
-    ]);
+    expect(
+      campaignsFailingTheirProbe([campaignOf([silent])], extractor, () => null, new Map()),
+    ).toEqual([expect.objectContaining({ name: "campaign/x/o", expected: "fires" })]);
   });
 
   it("a probe answers a report term from the diagnostics it lists, one-based", () => {
@@ -593,18 +623,28 @@ describe("selection, probes and the truth table", () => {
       },
     });
     expect(
-      campaignsFailingTheirProbe([tsc], makeFactExtractorFake({}), () => null, new Map()),
+      campaignsFailingTheirProbe(
+        [campaignOf([tsc])],
+        makeFactExtractorFake({}),
+        () => null,
+        new Map(),
+      ),
     ).toEqual([]);
     const silent = rule({ report: { file: ["tsc.txt"], format: "tsc" } }, "match", {
       probes: { fires: [{ path: "src/a.ts", source: "x" }], ignores: [] },
     });
     expect(
-      campaignsFailingTheirProbe([silent], makeFactExtractorFake({}), () => null, new Map()),
-    ).toEqual([expect.objectContaining({ name: "campaign/x", expected: "fires" })]);
+      campaignsFailingTheirProbe(
+        [campaignOf([silent])],
+        makeFactExtractorFake({}),
+        () => null,
+        new Map(),
+      ),
+    ).toEqual([expect.objectContaining({ name: "campaign/x/o", expected: "fires" })]);
   });
 
   it("explains every leaf term, negations included, with no short-circuit", () => {
-    const table = explainCampaign(
+    const table = explainObjective(
       rule(
         {
           all: [
@@ -625,17 +665,14 @@ describe("selection, probes and the truth table", () => {
   });
 
   it("refuses an uncompilable pattern with the field named", () => {
-    const failed = compileCampaignRule({
-      name: "campaign/x",
-      id: "x",
+    const failed = compileObjective({
+      name: "campaign/x/o",
+      id: "o",
+      campaign: "x",
       message: "m",
-      why: "w",
-      scope: "^src/",
-      unit: "file",
-      detect: { content: { regex: "(" } },
+      holdout: "file",
+      match: { content: { regex: "(" } },
       probes: { fires: [], ignores: [] },
-      staleAfter: 1,
-      onComplete: "keep",
     });
     expect(Result.isFailure(failed) && failed.failure.field).toBe("content.regex");
   });
@@ -644,19 +681,77 @@ describe("selection, probes and the truth table", () => {
   // with no `regex` field, and an undefined pattern is the empty regex — a
   // detector that fires on every file, silently. Refused instead.
   it("refuses a content term that is not { regex }", () => {
-    const failed = compileCampaignRule({
-      name: "campaign/x",
-      id: "x",
+    const failed = compileObjective({
+      name: "campaign/x/o",
+      id: "o",
+      campaign: "x",
       message: "m",
-      why: "w",
-      scope: "^src/",
-      unit: "file",
-      detect: { content: "TODO" as never },
+      holdout: "file",
+      match: { content: "TODO" as never },
       probes: { fires: [], ignores: [] },
-      staleAfter: 1,
-      onComplete: "keep",
     });
     expect(Result.isFailure(failed) && failed.failure.field).toBe("content.regex");
     expect(Result.isFailure(failed) && failed.failure.detail).toContain("{ regex: <string> }");
+  });
+
+  // A perimeter is the sector's identity across every phase. One proven
+  // only on the shape the campaign is leaving would un-birth the sector
+  // the moment the first phase was met, so one fires probe must be a
+  // sector no objective fires on.
+  it("a match perimeter needs a fires probe in its end shape", () => {
+    const matcher = makeSyntaxMatcherFake({
+      "export class Page {}": [{ text: "export class Page {}", captures: {}, anchor: "Page" }],
+      "export function Page() {}": [
+        { text: "export function Page() {}", captures: {}, anchor: "Page" },
+      ],
+    });
+    const oldShape = rule({ syntax: { rule: { pattern: "class $N {}" } } }, "declaration");
+    const perimeter = (fires: ReadonlyArray<{ path: string; source: string }>) =>
+      campaignOf([oldShape], {
+        perimeter: {
+          kind: "match",
+          match: { exports: {} },
+          unit: "declaration",
+          probes: { fires, ignores: [] },
+        },
+      });
+    const extractor = makeFactExtractorFake({
+      "export class Page {}": {
+        exportSites: [
+          { file: "src/a.tsx", name: "Page", kind: "named", declares: "class", reexport: false },
+        ],
+      },
+      "export function Page() {}": {
+        exportSites: [
+          { file: "src/b.tsx", name: "Page", kind: "named", declares: "function", reexport: false },
+        ],
+      },
+    });
+    const classMatcher = makeSyntaxMatcherFake({
+      "export class Page {}": [{ text: "class Page {}", captures: {}, anchor: "Page" }],
+      "export function Page() {}": [],
+    });
+    void matcher;
+    expect(
+      campaignsFailingTheirProbe(
+        [perimeter([{ path: "src/a.tsx", source: "export class Page {}" }])],
+        extractor,
+        () => classMatcher,
+        new Map(),
+      ),
+    ).toEqual([expect.objectContaining({ name: "campaign/x/perimeter", expected: "end-shape" })]);
+    expect(
+      campaignsFailingTheirProbe(
+        [
+          perimeter([
+            { path: "src/a.tsx", source: "export class Page {}" },
+            { path: "src/b.tsx", source: "export function Page() {}" },
+          ]),
+        ],
+        extractor,
+        () => classMatcher,
+        new Map(),
+      ),
+    ).toEqual([]);
   });
 });

@@ -1,5 +1,4 @@
-import type { SourceFacts } from "../domain/facts.js";
-import type { SyntaxTree } from "./syntax-matcher.js";
+import type { SourceFacts, SyntaxTree } from "@goodbones/core";
 
 // The floor of a campaign's detector: a predicate function the repository
 // writes, named from the manifest as `module#export` and handed to the

@@ -5,4 +5,7 @@ export type FileSystem = {
   readonly exists: (repoRelativePath: string) => boolean;
   // The file's text, or `null` when it is absent or unreadable.
   readonly readText: (repoRelativePath: string) => string | null;
+  // The names in a folder — the per-sector records under a campaign's
+  // ledger directory are found this way. Empty when the folder is absent.
+  readonly list: (repoRelativeDir: string) => ReadonlyArray<string>;
 };

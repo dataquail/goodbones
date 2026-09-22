@@ -22,6 +22,10 @@ gets a plain patch bump, which turns `0.1.0-beta.0` into a stable `0.1.0`, tagge
 The First Publish preflight refuses that; name every package in the set —
 `@goodbones/core, @goodbones/typescript, @goodbones/cli, @goodbones/oxlint` — in one run.
 
+**`@goodbones/campaigns` has never been published**, and both hosts depend on it, so it goes through
+First Publish before any host version that depends on it is released — the same gate
+`@goodbones/ast-grep` went through. Name it in the set when that run happens.
+
 The old `oxlint-architecture-rules` name has betas on the registry; deprecate it with a message
 pointing at `@goodbones/oxlint` and `@goodbones/cli` once those exist.
 

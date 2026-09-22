@@ -8,7 +8,6 @@ import {
   EMPTY_STRUCTURE,
   type LoadedPolicy,
   makeBaselineFilter,
-  NO_REPORTS,
 } from "@goodbones/core";
 import {
   makeFactExtractorFake,
@@ -61,13 +60,10 @@ const makePolicy = (): LoadedPolicy => {
     adoption: { unrestricted: [], partial: [] },
     fileSystem: makeFileSystemFake([]),
     languages: [],
-    campaignRules: [],
-    ledgers: new Map(),
-    ledgerDir: ".architecture-campaigns",
-    functions: new Map(),
+    extensions: new Map(),
+    routeFor: () => undefined,
     now: 0,
     syntax: { parse: () => null },
-    reports: NO_REPORTS,
     extractor: makeFactExtractorFake({}),
     resolver: makeModuleResolverFake({
       "@org/database": "packages/database/src/index.ts",

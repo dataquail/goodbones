@@ -6,6 +6,7 @@
     { "path": "packages/core" },
     { "path": "packages/typescript" },
     { "path": "packages/ast-grep" },
+    { "path": "packages/campaigns" },
     { "path": "packages/cli" },
     { "path": "packages/oxlint" },
     { "path": "e2e" }

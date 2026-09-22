@@ -5,7 +5,8 @@
   "references": [
     { "path": "../core/tsconfig.build.json" },
     { "path": "../typescript/tsconfig.build.json" },
-    { "path": "../ast-grep/tsconfig.build.json" }
+    { "path": "../ast-grep/tsconfig.build.json" },
+    { "path": "../campaigns/tsconfig.build.json" }
   ],
   "extends": "../../tsconfig.base.json",
   "include": ["src"],

@@ -15,7 +15,6 @@ import {
 } from "./json-schema.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
-const committed = path.join(root, "packages/core/schema/architecture.schema.json");
 const committedNode = path.join(root, "packages/core/schema/architecture-node.schema.json");
 const committedSnapshot = path.join(root, "packages/core/schema/conformance.schema.json");
 
@@ -35,22 +34,14 @@ const includedNodes = readdirSync(path.join(root, "packages"))
   .filter((file) => existsSync(file));
 
 describe("the manifest JSON Schema", () => {
-  // The committed file is what the docs site publishes and what an editor
-  // fetches. It is generated, and this is what says when it is stale.
-  it("is what packages/core/schema/architecture.schema.json holds", () => {
-    const expected = `${JSON.stringify(manifestJsonSchema(), null, 2)}\n`;
-    expect(readFileSync(committed, "utf8")).toBe(expected);
-  });
-
+  // The committed `architecture.schema.json` is the COMPOSED schema — the
+  // core's keys and those of every family a host loads — so the test that it
+  // is current, and that it validates this repository's own manifest, lives
+  // in @goodbones/campaigns, which can see both codecs. What is here is the
+  // core's half and the mechanics every key shares.
   it("names itself at the URL the docs site publishes", () => {
     expect(manifestJsonSchema().$id).toBe(MANIFEST_SCHEMA_ID);
     expect(MANIFEST_SCHEMA_ID).toMatch(/^https:\/\/dataquail\.github\.io\/goodbones\/schema\//);
-  });
-
-  it("validates this repository's own manifest, defs, use and include included", () => {
-    const validate = validator();
-    const manifest: unknown = parse(readFileSync(path.join(root, "architecture.yaml"), "utf8"));
-    expect(validate(manifest), JSON.stringify(validate.errors, null, 2)).toBe(true);
   });
 
   it("admits an include wherever an object or a list may stand", () => {
@@ -118,119 +109,6 @@ describe("the manifest JSON Schema", () => {
       }),
       JSON.stringify(validate.errors, null, 2),
     ).toBe(true);
-  });
-
-  it("names the recursive node and the recursive detector", () => {
-    const schema = manifestJsonSchema() as { $defs: Record<string, unknown> };
-    expect(Object.keys(schema.$defs).sort()).toEqual([
-      "Detector",
-      "Include",
-      "ManifestNode",
-      "Use",
-    ]);
-  });
-
-  // The campaign from the family's docs page, and a misspelled term key: the
-  // detector is a union of one-key objects, so the wrong key is refused rather
-  // than read as a term that matches nothing.
-  const campaigns = [
-    {
-      id: "react-class-components",
-      title: "Class components to hooks",
-      why: "Class lifecycle methods block concurrent features.",
-      how: "Convert to a function component.",
-      owner: "@dataquail/web-platform",
-      scope: ["apps/web/src/**/*.tsx"],
-      unit: "declaration",
-      detect: {
-        syntax: {
-          pattern: "class $NAME extends $BASE { $$$ }",
-          where: {
-            BASE: {
-              binding: { resolves: { external: "react" }, member: ["Component", "PureComponent"] },
-            },
-          },
-        },
-      },
-      probes: {
-        fires: [
-          {
-            path: "apps/web/src/a.tsx",
-            source: "import { Component } from 'react'; export class Foo extends Component {}",
-            edges: { react: { external: "react" } },
-          },
-        ],
-        ignores: [{ path: "apps/web/src/b.tsx", source: "class Foo extends Base {}" }],
-      },
-      staleAfter: "30d",
-      onComplete: "keep",
-    },
-    {
-      id: "rsc-boundaries",
-      why: "Server components render on the server.",
-      how: "Add the directive or move the hook.",
-      scope: ["app/**/*.tsx"],
-      unit: "file",
-      detect: {
-        all: [
-          { not: { content: { regex: "^[\"']use client[\"']" } } },
-          {
-            any: [
-              { syntax: { pattern: "$HOOK($$$)", where: { HOOK: { regex: "^use[A-Z]" } } } },
-              { imports: { resolves: { external: "framer-motion" } } },
-              { fn: "./campaigns/rsc.mjs#needsClientBoundary" },
-            ],
-          },
-        ],
-      },
-      probes: { fires: [{ path: "app/x.tsx", source: "export default () => { useState(); }" }] },
-      staleAfter: "30d",
-    },
-    {
-      id: "type-errors",
-      why: "The strict tsconfig cannot land while these remain.",
-      how: "Fix the type error; do not add a cast.",
-      scope: ["src/**"],
-      unit: "match",
-      detect: {
-        report: { command: "tsc --noEmit --pretty false", format: "tsc", codesNot: ["TS6133"] },
-      },
-      probes: {
-        fires: [{ path: "src/a.ts", report: [{ line: 1, code: "TS2551", message: "m" }] }],
-      },
-      staleAfter: "30d",
-    },
-  ];
-
-  it("validates the campaign examples, and a ledger path", () => {
-    const validate = validator();
-    const manifest = {
-      resolve: { scopes: [{ files: "", language: "typescript" }] },
-      ledger: ".architecture-campaigns",
-      campaigns,
-      tree: {},
-    };
-    expect(validate(manifest), JSON.stringify(validate.errors, null, 2)).toBe(true);
-  });
-
-  it("rejects a misspelled term key, and a duration in the wrong shape", () => {
-    const validate = validator();
-    const base = { resolve: { scopes: [{ files: "", language: "typescript" }] }, tree: {} };
-    const first = campaigns[0];
-    expect(
-      validate({ ...base, campaigns: [{ ...first, detect: { syntaxx: { pattern: "x" } } }] }),
-    ).toBe(false);
-    expect(
-      validate({ ...base, campaigns: [{ ...first, detect: { content: { regexp: "x" } } }] }),
-    ).toBe(false);
-    expect(validate({ ...base, campaigns: [{ ...first, staleAfter: "30 days" }] })).toBe(false);
-    expect(
-      validate({
-        ...base,
-        campaigns: [{ ...first, detect: { report: { command: "x", format: "junit" } } }],
-      }),
-    ).toBe(false);
-    expect(validate({ ...base, campaigns: [{ ...first, unit: "line" }] })).toBe(false);
   });
 });
 

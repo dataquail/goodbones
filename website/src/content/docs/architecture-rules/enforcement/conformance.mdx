@@ -156,13 +156,37 @@ carries a description in the schema.
       "id": "lowering-reports-not-throws",
       "title": "Lowering reports through Result, not by throwing",
       "owner": "@dataquail",
-      "initial": 17,
-      "allowed": 0,
-      "count": 17,
-      "fixed": 0,
-      "progress": 0,
-      "lastProgress": "2026-09-15T21:56:54.278Z",
-      "regressions": 0,
+      "count": 15,
+      "progress": 0.21,
+      "objectives": [
+        {
+          "id": "throws-in-lowering",
+          "phase": null,
+          "initial": 17,
+          "allowed": 2,
+          "count": 15,
+          "cleared": 4,
+          "closed": 0,
+          "progress": 0.21,
+          "lastCleared": "2026-09-21T14:32:45.111Z",
+          "concessions": 1,
+          "complete": false,
+          "ledgered": true
+        }
+      ],
+      "phases": [],
+      "sectors": [
+        {
+          "name": "scope",
+          "phase": null,
+          "reached": null,
+          "files": 15,
+          "residue": { "throws-in-lowering": 15 },
+          "stalled": false
+        }
+      ],
+      "legacy": { "files": 0, "holdouts": 0 },
+      "plan": { "refined": [], "changed": [], "unreceipted": [] },
       "stalled": false,
       "complete": false,
       "onComplete": "keep",
@@ -193,14 +217,19 @@ measurement those counts summarise:
 - `concentration` — every fragment entry used at some of the nodes granted it and not
   the rest, with `usedAt` and `of`. Not counted as slack.
 - `campaigns` — every [campaign](/goodbones/architecture-rules/manifest/campaigns/) the
-  manifest declares, with its [ledger](/goodbones/architecture-rules/enforcement/ledger/)'s
-  burn-down: `initial`, `allowed`, `count`, `fixed`, `progress`
-  (`1 − count / (initial + allowed)`), `lastProgress`, how many `regressions` were
-  recorded, and whether it is `stalled` (entries left, and `lastProgress` older than its
-  `staleAfter`) or `complete`. A campaign with no ledger yet says `ledgered: false`. The
-  text report leads its campaigns section with the stalled and the complete ones — a
-  migration nobody is working on, and one that is finished and still declared, are the two
-  things a reader of this report most needs told.
+  manifest declares: each `objectives` entry's
+  [ledger](/goodbones/architecture-rules/enforcement/ledger/) burn-down summed over its
+  sectors (`initial`, `allowed`, `count`, `cleared`, `closed`, `progress`, `lastCleared`,
+  how many `concessions`, and the `phase` naming it); the `phases` in order with how many
+  sectors stand at each; every sector with its derived `phase`, its `reached`, its file
+  count and its `residue` — one dimension per objective in window, never summed; the
+  `legacy` remainder's files and holdouts; and the `plan` flags, `refined` (an open phase
+  gained criteria, or a new phase — free) apart from `changed` (a defined phase's definition
+  moved) and `unreceipted` (changed with no concession — what fails `check`). `stalled` and
+  `complete` are the campaign's as a whole. The text report leads its campaigns section
+  with the stalled and the complete ones — a migration nobody is working on, and one that is
+  finished and still declared, are the two things a reader of this report most needs told —
+  and shows the phase distribution beneath each campaign that has phases.
 
 Two things make a snapshot comparable across commits. `manifest.sha256` says whether the
 policy changed between them, so a coverage drop is attributable to the tree or to the

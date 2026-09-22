@@ -1,0 +1,56 @@
+{
+  "version": 2,
+  "campaign": "lowering-reports-not-throws",
+  "objective": "throws-in-lowering",
+  "created": "2026-09-15T21:56:54.278Z",
+  "sectors": {
+    "scope": {
+      "entered": "2026-09-15T21:56:54.278Z",
+      "initial": 17,
+      "cleared": 6,
+      "closed": 0,
+      "lastCleared": "2026-09-22T14:02:41.652Z",
+      "holdouts": [
+        "packages/campaigns/src/manifest/lower.ts#lowerEndState#22f92d21",
+        "packages/campaigns/src/manifest/lower.ts#refuse#654e54c1",
+        "packages/core/src/manifest/compile.ts#probeSites#f46b0a25",
+        "packages/core/src/manifest/compile.ts#strayBasenameFor#ac6e45fc",
+        "packages/core/src/manifest/compile.ts#violatingSampleFor#0b6bb558",
+        "packages/core/src/manifest/compile.ts#violatingSampleFor#a0afd25d",
+        "packages/core/src/manifest/compile.ts#walk#2ab4504c",
+        "packages/core/src/manifest/compile.ts#walk#2f8d25fc",
+        "packages/core/src/manifest/compile.ts#walk#9c86c18e",
+        "packages/core/src/manifest/compile.ts#walk#a23b2a96",
+        "packages/core/src/manifest/compile.ts#walk#c9ab632b",
+        "packages/core/src/manifest/glob.ts#globToRegexSource#dcce3f13",
+        "packages/core/src/manifest/json-schema.ts#manifestJsonSchema#fc1a0eab",
+        "packages/core/src/manifest/json-schema.ts#manifestNodeJsonSchema#3035bbda",
+        "packages/core/src/manifest/json-schema.ts#manifestNodeJsonSchema#6fb85167"
+      ]
+    }
+  },
+  "concessions": [
+    {
+      "sector": "scope",
+      "at": "2026-09-21T14:32:45.428Z",
+      "by": "zweidenbach@gmail.com",
+      "delta": 2,
+      "reason": "the campaigns layer: lowerCampaign refuses through one helper and lowerEndState refuses a tree that does not decode, inside the same lowering the campaign is about",
+      "holdouts": [
+        "packages/core/src/manifest/compile.ts#lowerEndState#22f92d21",
+        "packages/core/src/manifest/compile.ts#refuse#654e54c1"
+      ]
+    },
+    {
+      "sector": "scope",
+      "at": "2026-09-22T14:02:51.073Z",
+      "by": "zweidenbach@gmail.com",
+      "delta": 2,
+      "reason": "the campaigns family moved to @goodbones/campaigns: the same two throws — lowerCampaign's one refuse helper and lowerEndState's undecodable tree — are now in packages/campaigns/src/manifest/lower.ts. The count did not rise; the file did.",
+      "holdouts": [
+        "packages/campaigns/src/manifest/lower.ts#lowerEndState#22f92d21",
+        "packages/campaigns/src/manifest/lower.ts#refuse#654e54c1"
+      ]
+    }
+  ]
+}

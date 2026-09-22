@@ -1,15 +1,39 @@
-import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 
 import {
-  allowed,
+  attest,
+  authorOf,
+  baseSideAt,
+  type CampaignEvaluation,
+  campaignFailuresOf,
+  type CampaignReport,
+  campaignReportsOf,
+  campaignsOf,
+  campaignsSelecting,
+  clear,
+  concede,
+  evaluateCampaigns,
+  explainCampaignLines,
+  explainObjective,
+  historyOf,
+  hitsInWindow,
+  ledgeredFilter,
+  note,
+  nudgeOf,
+  readDiff,
+  renderCampaignReports,
+  renderCampaignRows,
+  renderHistory,
+  renderNudge,
+  reportSpecsOf,
+  snapshotCampaignsOf,
+  widenedExtensions,
+} from "@goodbones/campaigns";
+import {
   type Baseline,
   baselineOf,
-  type CampaignHit,
-  campaignsSelecting,
-  type CompiledCampaign,
   CONFORMANCE_MEASURES,
   type ConformanceMeasure,
   type CoverageFamily,
@@ -18,15 +42,12 @@ import {
   decodeBaseline,
   decodeManifest,
   EMPTY_BASELINE,
-  entryOf,
-  evaluateCampaigns,
   evaluateGraph,
   evaluateMemberSite,
   evaluateResolvedEdge,
   evaluateSelectedBindings,
   evaluateStructure,
   evaluateSurface,
-  explainCampaign,
   exportRulesSelecting,
   findManifestFile,
   fingerprintOf,
@@ -36,32 +57,20 @@ import {
   type Graph,
   hasGraphRules,
   heightOf,
-  isComplete,
-  isStalled,
-  leafTermsOf,
-  type Ledger,
-  ledgerArithmeticHolds,
-  ledgerOf,
   listSourceFiles,
   makeBaselineFilter,
   MANIFEST_FILENAMES,
   MANIFEST_SCHEMA_ID,
   memberRulesSelecting,
   type ObservedEdge,
-  progressOf,
-  pruned,
   readManifestFile,
-  reconcile,
-  reportSpecsOf,
   requiredSiblingsOf,
   residueOf,
   rulesSelecting,
   serializeBaseline,
-  serializeLedger,
   slackOf,
   type Snapshot,
   SNAPSHOT_VERSION,
-  type SnapshotCampaign,
   type SourceFacts,
   staleEntriesOf,
   surfaceRulesSelecting,
@@ -102,10 +111,11 @@ export type UnresolvedEdge = {
 
 export type Findings = {
   readonly violations: ReadonlyArray<Violation>;
-  // Every campaign hit, ledgered or not. Kept apart from the violations: a
-  // hit is debt a campaign is paying down, judged against its ledger rather
-  // than the baseline.
-  readonly campaigns: ReadonlyArray<CampaignHit>;
+  // Every campaign, evaluated over the files it sees: its sectors, every
+  // hit placed in one, each sector's phase. Kept apart from the violations:
+  // a hit is debt a campaign is paying down, judged against its ledger
+  // rather than the baseline.
+  readonly campaigns: ReadonlyArray<CampaignEvaluation>;
   readonly unresolved: ReadonlyArray<UnresolvedEdge>;
   readonly files: number;
   // Every edge resolved from a file under an import rule — what the slack
@@ -127,9 +137,17 @@ export const collectFindings = (
   roots: ReadonlyArray<string>,
   options: CollectOptions = {},
 ): Findings => {
-  const files = listSourceFiles(policy.repoRoot, roots, policy.languages);
+  // A campaign may widen the walk past the packs' extensions; a file only a
+  // campaign asked for is seen by the campaigns and by no other family.
+  const walked = listSourceFiles(
+    policy.repoRoot,
+    roots,
+    policy.languages,
+    widenedExtensions(policy),
+  );
+  const known = new Set(policy.languages.flatMap((one) => one.extensions));
+  const files = walked.filter((file) => known.has(path.extname(file)));
   const violations: Array<Violation> = [];
-  const campaigns: Array<CampaignHit> = [];
   const unresolved: Array<UnresolvedEdge> = [];
   const edges: Array<ObservedEdge> = [];
 
@@ -162,34 +180,12 @@ export const collectFindings = (
     for (const violation of evaluateGraph(policy.graph, graph)) violations.push(violation);
   }
 
+  // The campaigns, over every walked file, through the same caches.
+  const campaigns = evaluateCampaigns(policy, roots, walked, { textOf, factsOf });
+
   for (const file of files) {
     for (const violation of evaluateStructure(policy.structure, policy.fileSystem, file)) {
       violations.push(violation);
-    }
-
-    // A campaign selects by its scope. The file is parsed by the scope's
-    // matcher once, and only when a term of some selected campaign reads the
-    // syntax tree.
-    const selectedCampaigns = campaignsSelecting(policy.campaignRules, file);
-    if (selectedCampaigns.length > 0) {
-      const text = textOf(file);
-      const needsSyntax = selectedCampaigns.some((rule) =>
-        leafTermsOf(rule.detect).some(
-          (leaf) => leaf === "syntax" || leaf === "report" || leaf === "fn",
-        ),
-      );
-      for (const hit of evaluateCampaigns(selectedCampaigns, {
-        file,
-        text,
-        facts: factsOf(file),
-        resolver: policy.resolver,
-        fileSystem: policy.fileSystem,
-        syntax: needsSyntax ? policy.syntax.parse(file, text) : null,
-        functions: policy.functions,
-        reports: policy.reports,
-      })) {
-        campaigns.push(hit);
-      }
     }
 
     const selectedImports = rulesSelecting(policy.importRules, file);
@@ -278,29 +274,14 @@ const describe = (violation: Violation): string =>
 export type ReportedViolation = Violation & {
   readonly fingerprint: string;
   readonly baselined: boolean;
-  // For a campaign hit: carried by the campaign's ledger, so `check` does
+  // For a campaign hit: carried by the objective's ledger, so `check` does
   // not fail on it. The campaign analogue of `baselined`.
   readonly ledgered: boolean;
-};
-
-// One campaign, as `check` sees it: how many hits, which are new, which
-// ledger entries no longer fire, and whether the ledger adds up.
-export type CampaignReport = {
-  readonly id: string;
-  readonly count: number;
-  // Hits the ledger does not carry — unrecorded growth, as entries.
-  readonly new: ReadonlyArray<string>;
-  // Ledger entries no hit produces — fixed, and waiting to be pruned.
-  readonly stale: ReadonlyArray<string>;
-  // Entries whose hash moved under a still-present anchor.
-  readonly drifted: number;
-  // No ledger file: `campaigns init` has not been run.
-  readonly missingLedger: boolean;
-  // `entries.length === initial + Σ delta − fixed`.
-  readonly arithmetic: boolean;
-  readonly complete: boolean;
-  readonly stalled: boolean;
-  readonly onComplete: "keep" | "remove";
+  // For a campaign hit: which objective, in which sector, and the ledger
+  // entry it is keyed by there.
+  readonly objective?: string;
+  readonly sector?: string;
+  readonly entry?: string;
 };
 
 export type CoverageReport = Readonly<
@@ -338,74 +319,6 @@ export type CheckReport = {
   };
   readonly campaigns: ReadonlyArray<CampaignReport>;
 };
-
-// Each campaign's hits against its ledger. A campaign with no ledger has
-// every hit new; one with no hits and no ledger has nothing to say.
-const campaignReportsOf = (
-  policy: LoadedPolicy,
-  hits: ReadonlyArray<CampaignHit>,
-): ReadonlyArray<CampaignReport> =>
-  policy.campaignRules.map((rule) => {
-    const own = hits.filter((hit) => hit.campaign === rule.id).map((hit) => hit.violation);
-    const ledger = policy.ledgers.get(rule.id);
-    if (ledger === undefined) {
-      return {
-        id: rule.id,
-        count: own.length,
-        new: [...new Set(own.map(entryOf))].sort(),
-        stale: [],
-        drifted: 0,
-        missingLedger: true,
-        arithmetic: true,
-        complete: own.length === 0,
-        stalled: false,
-        onComplete: rule.onComplete,
-      };
-    }
-    const state = reconcile(ledger, own, rule.unit);
-    return {
-      id: rule.id,
-      count: own.length,
-      new: [...new Set(state.unrecorded.map(entryOf))].sort(),
-      stale: state.stale,
-      drifted: state.drifted.length,
-      missingLedger: false,
-      arithmetic: ledgerArithmeticHolds(ledger),
-      complete: isComplete(ledger) && own.length === 0,
-      stalled: isStalled(rule, ledger, policy.now),
-      onComplete: rule.onComplete,
-    };
-  });
-
-// Whether a campaign hit is carried by its ledger — exactly, or by anchor.
-const ledgeredFilter = (
-  policy: LoadedPolicy,
-  hits: ReadonlyArray<CampaignHit>,
-): ((hit: CampaignHit) => boolean) => {
-  const carried = new Set<Violation>();
-  for (const rule of policy.campaignRules) {
-    const ledger = policy.ledgers.get(rule.id);
-    if (ledger === undefined) continue;
-    const own = hits.filter((hit) => hit.campaign === rule.id).map((hit) => hit.violation);
-    for (const one of reconcile(ledger, own, rule.unit).ledgered) carried.add(one);
-  }
-  return (hit) => carried.has(hit.violation);
-};
-
-// Why a campaign report is not ok, in the order `check` explains it.
-const campaignFailuresOf = (campaigns: ReadonlyArray<CampaignReport>): ReadonlyArray<string> => [
-  ...campaigns.filter((one) => one.stale.length > 0).map(() => "stale ledger entries"),
-  ...campaigns.filter((one) => !one.arithmetic).map(() => "ledger arithmetic does not hold"),
-  ...campaigns
-    .filter((one) => one.missingLedger && one.count > 0)
-    .map((one) => `campaign ${one.id} has no ledger`),
-  ...campaigns
-    .filter((one) => !one.missingLedger && one.new.length > 0)
-    .map(() => "unrecorded campaign growth"),
-  ...campaigns
-    .filter((one) => one.complete && !one.missingLedger && one.onComplete === "remove")
-    .map((one) => `campaign ${one.id} is complete and declared onComplete: remove`),
-];
 
 const COVERAGE_FAMILIES: ReadonlyArray<CoverageFamily> = [
   "imports",
@@ -482,19 +395,26 @@ const reportOf = (
   const stale = staleEntriesOf(baseline, findings.violations);
   const { isBaselined } = makeBaselineFilter(baseline);
   const isLedgered = ledgeredFilter(policy, findings.campaigns);
-  const violations = [
+  const violations: Array<ReportedViolation> = [
     ...findings.violations.map((violation) => ({
       ...violation,
       fingerprint: fingerprintOf(violation),
       baselined: isBaselined(violation),
       ledgered: false,
     })),
-    ...findings.campaigns.map((hit) => ({
-      ...hit.violation,
-      fingerprint: fingerprintOf(hit.violation),
-      baselined: false,
-      ledgered: isLedgered(hit),
-    })),
+    // The hits that count: those whose objective is in window for the
+    // sector they fall in.
+    ...findings.campaigns.flatMap((evaluation) =>
+      hitsInWindow(evaluation).map((hit) => ({
+        ...hit.violation,
+        fingerprint: fingerprintOf(hit.violation),
+        baselined: false,
+        ledgered: isLedgered(hit),
+        objective: hit.objective,
+        sector: hit.sector,
+        entry: hit.entry,
+      })),
+    ),
   ];
   const campaigns = campaignReportsOf(policy, findings.campaigns);
 
@@ -622,68 +542,26 @@ const describeExcess = (one: Excess): string => {
   return `  ${one.measure}: ${count(one.count, singular, plural)}, ceiling ${String(one.ceiling)}`;
 };
 
-// A campaign hit, with the campaign's `how` as its instruction.
-const describeHit = (violation: ReportedViolation): string =>
-  `  ${violation.file}${violation.subject === null ? "" : `  (${violation.subject})`}\n      ${formatMessage(violation)}`;
-
-const renderCampaigns = (report: CheckReport): ReadonlyArray<string> => {
-  const hits = report.violations.filter((one) => one.kind === "campaign");
-  return report.campaigns.flatMap((campaign): ReadonlyArray<string> => {
-    const rule = `campaign/${campaign.id}`;
-    const fresh = new Set(campaign.new);
-    const own = hits.filter((one) => one.ruleName === rule && fresh.has(entryOf(one)));
-    if (campaign.missingLedger && campaign.count > 0) {
-      return [
-        "",
-        `campaign ${campaign.id}: ${count(campaign.count, "hit")} and no ledger. Record them before they count as growth:`,
-        "",
-        `  architecture campaigns init ${campaign.id}`,
-      ];
-    }
-    const complete = campaign.complete && !campaign.missingLedger;
-    return [
-      ...(campaign.new.length === 0
-        ? []
-        : [
-            "",
-            `campaign ${campaign.id}: ${count(campaign.new.length, "new hit")} the ledger does not carry. Fix them, or record why the count may rise:`,
-            ...own.map(describeHit),
-            "",
-            `  architecture campaigns allow ${campaign.id} --reason "<why>"`,
-          ]),
-      ...(campaign.stale.length === 0
-        ? []
-        : [
-            "",
-            `campaign ${campaign.id}: ${count(campaign.stale.length, "ledger entry", "ledger entries")} no longer fire. The code was fixed; prune them:`,
-            ...campaign.stale.map((entry) => `  ${entry}`),
-            "",
-            `  architecture campaigns prune ${campaign.id}`,
-          ]),
-      ...(campaign.arithmetic
-        ? []
-        : [
-            "",
-            `campaign ${campaign.id}: the ledger does not add up (entries ≠ initial + allowed − fixed). An entry was added by hand; remove it, or record it with \`campaigns allow\`.`,
-          ]),
-      ...(complete && campaign.onComplete === "remove"
+const renderCampaigns = (report: CheckReport): ReadonlyArray<string> =>
+  renderCampaignReports(
+    report.campaigns,
+    report.violations.flatMap((one) =>
+      one.kind === "campaign" &&
+      one.objective !== undefined &&
+      one.sector !== undefined &&
+      one.entry !== undefined
         ? [
-            "",
-            `campaign ${campaign.id} is complete and declares onComplete: remove. Delete it from the manifest, and its ledger.`,
+            {
+              violation: one,
+              objective: one.objective,
+              sector: one.sector,
+              entry: one.entry,
+              ledgered: one.ledgered,
+            },
           ]
-        : []),
-      ...(campaign.stalled
-        ? [
-            "",
-            `notice: campaign ${campaign.id} has stalled — no entry has left its ledger within its staleAfter.`,
-          ]
-        : []),
-      ...(complete && campaign.onComplete === "keep"
-        ? ["", `notice: campaign ${campaign.id} is complete, and stays as a guard.`]
-        : []),
-    ];
-  });
-};
+        : [],
+    ),
+  );
 
 const renderText = (report: CheckReport): ReadonlyArray<string> => {
   const reportable = report.violations.filter((one) => one.kind !== "campaign" && !one.baselined);
@@ -787,40 +665,7 @@ export const snapshotOf = (
     return byHeight !== 0 ? byHeight : left.fingerprint.localeCompare(right.fingerprint);
   });
 
-  const campaigns: ReadonlyArray<SnapshotCampaign> = policy.campaignRules.map((rule) => {
-    const ledger = policy.ledgers.get(rule.id);
-    const own = findings.campaigns.filter((hit) => hit.campaign === rule.id).length;
-    const base: SnapshotCampaign = {
-      id: rule.id,
-      ...(rule.title === null ? {} : { title: rule.title }),
-      ...(rule.owner === null ? {} : { owner: rule.owner }),
-      initial: own,
-      allowed: 0,
-      count: own,
-      fixed: 0,
-      progress: 0,
-      lastProgress: new Date(policy.now).toISOString(),
-      regressions: 0,
-      stalled: false,
-      complete: own === 0,
-      onComplete: rule.onComplete,
-      ledgered: false,
-    };
-    if (ledger === undefined) return base;
-    return {
-      ...base,
-      initial: ledger.initial,
-      allowed: ledger.regressions.reduce((sum, one) => sum + one.delta, 0),
-      count: ledger.entries.length,
-      fixed: ledger.fixed,
-      progress: progressOf(ledger),
-      lastProgress: ledger.lastProgress,
-      regressions: ledger.regressions.length,
-      stalled: isStalled(rule, ledger, policy.now),
-      complete: isComplete(ledger),
-      ledgered: true,
-    };
-  });
+  const campaigns = snapshotCampaignsOf(policy, findings.campaigns);
 
   return {
     version: SNAPSHOT_VERSION,
@@ -842,26 +687,6 @@ export const snapshotOf = (
     adoption: report_.adoption,
     campaigns,
   };
-};
-
-// The campaigns, stalled and complete first, then by progress.
-const renderCampaignRows = (campaigns: ReadonlyArray<SnapshotCampaign>): ReadonlyArray<string> => {
-  const width = Math.max(0, ...campaigns.map((one) => one.id.length));
-  const state = (one: SnapshotCampaign): string =>
-    !one.ledgered ? "no ledger" : one.complete ? "complete" : one.stalled ? "stalled" : "";
-  const ordered = [...campaigns].sort((left, right) => {
-    const rank = (one: SnapshotCampaign): number =>
-      one.stalled ? 0 : one.complete && one.ledgered ? 1 : 2;
-    const byRank = rank(left) - rank(right);
-    return byRank !== 0 ? byRank : left.progress - right.progress;
-  });
-  return ordered.map(
-    (one) =>
-      `  ${one.id.padEnd(width)}  ${percent(one.progress).padStart(4)}  ${String(one.count).padStart(5)} left` +
-      `  ${String(one.fixed)} fixed  ${String(one.allowed)} allowed` +
-      (one.owner === undefined ? "" : `  ${one.owner}`) +
-      (state(one) === "" ? "" : `  ${state(one)}`),
-  );
 };
 
 const renderSnapshot = (snapshot: Snapshot): ReadonlyArray<string> => {
@@ -1058,7 +883,11 @@ export const writeBaseline = (
 
 // The question a tree config makes harder to answer than a flat one: given a
 // file, what governs it? A flat config you grep; a tree you have to walk.
-export const explain = (policy: LoadedPolicy, file: string): Effect.Effect<void, CliFailure> =>
+export const explain = (
+  policy: LoadedPolicy,
+  file: string,
+  roots: ReadonlyArray<string> = ["packages"],
+): Effect.Effect<void, CliFailure> =>
   Effect.gen(function* () {
     const relative = path.relative(policy.repoRoot, path.resolve(policy.repoRoot, file));
     const selected = rulesSelecting(policy.importRules, relative);
@@ -1113,10 +942,16 @@ export const explain = (policy: LoadedPolicy, file: string): Effect.Effect<void,
     const section = (title: string, lines: ReadonlyArray<string>): ReadonlyArray<string> =>
       lines.length === 0 ? [] : ["", title, ...lines];
 
-    // Each campaign selecting the file, with its truth table: one line per
-    // leaf term and what it answered here, so a detector that "should fire"
-    // and does not shows which term is not saying what its author thinks.
-    const selectedCampaigns = campaignsSelecting(policy.campaignRules, relative);
+    // Each campaign selecting the file: the sector the file is in, its
+    // phase and definedness, the objectives in window that fire on it and
+    // the nearest remaining holdouts — which needs the campaign evaluated
+    // over its files, since a sector's phase is derived from all of them —
+    // then each objective's truth table: one line per leaf term and what
+    // it answered here, so a detector that "should fire" and does not shows
+    // which term is not saying what its author thinks.
+    const selectedCampaigns = campaignsSelecting(campaignsOf(policy).campaignRules, relative);
+    const evaluations =
+      selectedCampaigns.length === 0 ? [] : collectFindings(policy, roots).campaigns;
     const campaignLines = selectedCampaigns.flatMap((rule) => {
       const at = path.join(policy.repoRoot, relative);
       const text = existsSync(at) ? readFileSync(at, "utf8") : "";
@@ -1127,16 +962,24 @@ export const explain = (policy: LoadedPolicy, file: string): Effect.Effect<void,
         resolver: policy.resolver,
         fileSystem: policy.fileSystem,
         syntax: policy.syntax.parse(relative, text),
-        functions: policy.functions,
-        reports: policy.reports,
+        functions: campaignsOf(policy).functions,
+        reports: campaignsOf(policy).reports,
       };
-      const hits = evaluateCampaigns([rule], input);
+      const evaluation = evaluations.find((one) => one.rule.id === rule.id);
       return [
-        `    ${rule.name} — ${firstSentence(rule.why)} (${rule.unit}; ${hits.length === 0 ? "no hit" : count(hits.length, "hit")})`,
-        ...explainCampaign(rule, input).map(
-          (line) =>
-            `        ${line.answer ? "✓" : "✗"} ${line.term}${line.count === undefined ? "" : ` (${String(line.count)})`}`,
-        ),
+        ...(evaluation === undefined ? [] : explainCampaignLines(policy, evaluation, relative)),
+        ...rule.objectives.flatMap((objective) => {
+          const table = explainObjective(objective, input);
+          if (table.length === 0) return [];
+          const fired = table.length > 0 && table.every((line) => line.answer);
+          return [
+            `      ${objective.name} — ${firstSentence(objective.why ?? objective.message)} (${objective.holdout}; ${fired ? "fires here" : "no hit"})`,
+            ...table.map(
+              (line) =>
+                `          ${line.answer ? "✓" : "✗"} ${line.term}${line.count === undefined ? "" : ` (${String(line.count)})`}`,
+            ),
+          ];
+        }),
       ];
     });
 
@@ -1278,18 +1121,23 @@ limits:
   unrestricted: 0
   partial: 0
 
-# Migrations the repository is running, each with a detector, a rationale, a
-# guide, an owner and a ledger of every place the pattern still occurs. Fill
-# one in, then \`architecture campaigns init <id>\` to write its ledger.
+# Refactors the repository is running, each an object: objectives (a
+# detector with a ledger under \`.architecture-campaigns/\` of every place the
+# pattern still occurs), over sectors the code births through a perimeter,
+# through phases toward an end. Fill one in, then
+# \`architecture objectives clear <id>\` to write its ledgers.
 # https://dataquail.github.io/goodbones/architecture-rules/manifest/campaigns/
 # campaigns:
-#   - id: js-to-ts
+#   js-to-ts:
 #     why: The strict tsconfig cannot land while any src file is JavaScript.
 #     how: Rename to .ts, add types at the module boundary, leave the body alone.
-#     scope: ["src/**"]
-#     unit: file
-#     detect: { path: { file: "\\.(js|jsx)$" } }
-#     probes: { fires: [{ path: src/legacy/util.js }], ignores: [{ path: src/util.ts }] }
+#     scope: { path: "src/**", extensions: [.js, .jsx] }
+#     perimeter: file
+#     objectives:
+#       is-ts:
+#         holdout: file
+#         match: { path: { file: "\\\\.(js|jsx)$" } }
+#         probes: { fires: [{ path: src/legacy/util.js }], ignores: [{ path: src/util.ts }] }
 #     staleAfter: 14d
 #     onComplete: remove
 
@@ -1381,38 +1229,12 @@ export const migrate = (
     ]);
   });
 
-// The ledgers. `campaigns` alone is the status table; `init` writes a
-// campaign's first ledger from what fires today; `prune` removes what no
-// longer fires; `allow` is the one way an entry is added, and it records why.
-const ledgerPathOf = (policy: LoadedPolicy, id: string): string =>
-  path.resolve(policy.repoRoot, policy.ledgerDir, `${id}.json`);
-
-const writeLedger = (policy: LoadedPolicy, ledger: Ledger): void => {
-  const at = ledgerPathOf(policy, ledger.id);
-  mkdirSync(path.dirname(at), { recursive: true });
-  writeFileSync(at, serializeLedger(ledger));
-};
-
-const campaignNamed = (policy: LoadedPolicy, id: string): CompiledCampaign | null =>
-  policy.campaignRules.find((rule) => rule.id === id) ?? null;
-
-// The author of a regression: `--by`, else git's user.email, else the
-// GIT_AUTHOR_EMAIL the environment carries. Without one the record is refused
-// rather than written blank, since the record is the point.
-const authorOf = (given: string | undefined): string | null => {
-  if (given !== undefined && given !== "") return given;
-  try {
-    const email = execFileSync("git", ["config", "user.email"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-    if (email !== "") return email;
-  } catch {
-    // git absent, or no email configured
-  }
-  const fromEnvironment = process.env.GIT_AUTHOR_EMAIL;
-  return fromEnvironment === undefined || fromEnvironment === "" ? null : fromEnvironment;
-};
+// The campaign commands. `campaigns` alone is the status table; `status
+// --changed` is the nudge; `attest` and `note` write a sector's record;
+// `history` replays the ledgers' git history. The ledgers themselves are
+// written by `objectives clear` (the ledger reconciled with the code
+// wherever that is not a regression) and `objectives concede` (the one way
+// a holdout is added by hand, with a reason).
 
 const flagOf = (argv: ReadonlyArray<string>, flag: string): string | undefined => {
   const at = argv.indexOf(flag);
@@ -1420,188 +1242,443 @@ const flagOf = (argv: ReadonlyArray<string>, flag: string): string | undefined =
   return value === undefined || value.startsWith("--") ? undefined : value;
 };
 
-const CAMPAIGN_SUBCOMMANDS = ["init", "prune", "allow"] as const;
-const CAMPAIGN_VALUE_FLAGS = ["--reason", "--by", "--entries"] as const;
+const CAMPAIGN_SUBCOMMANDS = ["status", "attest", "note", "history", "clear", "concede"] as const;
+const OBJECTIVE_SUBCOMMANDS = ["clear", "concede"] as const;
+const VALUE_FLAGS = [
+  "--reason",
+  "--by",
+  "--holdouts",
+  "--entries",
+  "--sector",
+  "--campaign",
+  "--evidence",
+  "--base",
+  "--since",
+  "--hotfix",
+] as const;
 
-// `campaigns [init <id> | prune [<id>] | allow <id> --reason <text>] [roots…]`:
-// the subcommand and its id come first; whatever positional is left names
-// the roots to walk, as it does for every other command.
-export const campaignArgsOf = (
-  argv: ReadonlyArray<string>,
-  ids: ReadonlyArray<string>,
-): {
-  readonly subcommand: string | undefined;
-  readonly id: string | undefined;
-  readonly roots: ReadonlyArray<string>;
-} => {
+// The verbs the family shipped with, refused by name: each has a new name
+// or no place.
+const RETIRED: Readonly<Record<string, string>> = {
+  init: "`campaigns init` is gone: `objectives clear <campaign>` writes a first ledger, recording each sector's initial.",
+  prune: "`campaigns prune` is now `objectives clear`.",
+  allow: "`campaigns allow` is now `objectives concede`.",
+};
+
+// The positionals after the subcommand, with the value flags and their
+// values stepped over: whatever is left names the roots to walk, as it
+// does for every other command.
+const positionalsOf = (argv: ReadonlyArray<string>): ReadonlyArray<string> => {
   const positional: Array<string> = [];
   for (let at = 0; at < argv.length; at += 1) {
     const one = argv[at] ?? "";
-    if ((CAMPAIGN_VALUE_FLAGS as ReadonlyArray<string>).includes(one)) {
+    if ((VALUE_FLAGS as ReadonlyArray<string>).includes(one)) {
       at += 1;
       continue;
     }
     if (!one.startsWith("--")) positional.push(one);
   }
-  const [first, second, ...rest] = positional;
-  if (first === undefined || !(CAMPAIGN_SUBCOMMANDS as ReadonlyArray<string>).includes(first)) {
-    return { subcommand: undefined, id: undefined, roots: positional };
-  }
-  // `prune` takes an optional id; the next word is one only if a campaign
-  // has that name, else it is a root.
-  const takesId = first !== "prune" || (second !== undefined && ids.includes(second));
-  return takesId
-    ? { subcommand: first, id: second, roots: rest }
-    : { subcommand: first, id: undefined, roots: second === undefined ? [] : [second, ...rest] };
+  return positional;
 };
 
-export const campaigns = (
+// `campaigns [status | attest <sector> <phase> | note <sector> "<text>" |
+// history [<campaign>]] [roots…]`: the subcommand and its arguments come
+// first.
+export const campaignArgsOf = (
+  argv: ReadonlyArray<string>,
+  ids: ReadonlyArray<string>,
+): {
+  readonly subcommand: string | undefined;
+  readonly args: ReadonlyArray<string>;
+  readonly roots: ReadonlyArray<string>;
+} => {
+  const positional = positionalsOf(argv);
+  const [first, ...rest] = positional;
+  if (first === undefined) return { subcommand: undefined, args: [], roots: [] };
+  if (first in RETIRED) return { subcommand: first, args: [], roots: rest };
+  if (!(CAMPAIGN_SUBCOMMANDS as ReadonlyArray<string>).includes(first)) {
+    return { subcommand: undefined, args: [], roots: positional };
+  }
+  switch (first) {
+    case "attest":
+      return { subcommand: first, args: rest.slice(0, 2), roots: rest.slice(2) };
+    case "note":
+      return { subcommand: first, args: rest.slice(0, 2), roots: rest.slice(2) };
+    case "history": {
+      const [second] = rest;
+      return second !== undefined && ids.includes(second)
+        ? { subcommand: first, args: [second], roots: rest.slice(1) }
+        : { subcommand: first, args: [], roots: rest };
+    }
+    case "clear":
+    case "concede": {
+      const [second] = rest;
+      return second !== undefined && ids.includes(second.split("/")[0] ?? "")
+        ? { subcommand: first, args: [second], roots: rest.slice(1) }
+        : { subcommand: first, args: [], roots: rest };
+    }
+    default:
+      return { subcommand: first, args: [], roots: rest };
+  }
+};
+
+// `objectives [clear [<campaign>[/<objective>]] | concede <campaign>[/<objective>]
+// --reason <text>] [roots…]`.
+export const objectiveArgsOf = (
+  argv: ReadonlyArray<string>,
+  ids: ReadonlyArray<string>,
+): {
+  readonly subcommand: string | undefined;
+  readonly target: { campaign: string; objective: string | null } | null;
+  readonly roots: ReadonlyArray<string>;
+} => {
+  const positional = positionalsOf(argv);
+  const [first, second, ...rest] = positional;
+  if (first === undefined || !(OBJECTIVE_SUBCOMMANDS as ReadonlyArray<string>).includes(first)) {
+    return { subcommand: first, target: null, roots: positional.slice(1) };
+  }
+  const [campaign = "", objective] = (second ?? "").split("/");
+  const named = second !== undefined && ids.includes(campaign);
+  return {
+    subcommand: first,
+    target: named ? { campaign, objective: objective ?? null } : null,
+    roots: named ? rest : second === undefined ? [] : [second, ...rest],
+  };
+};
+
+// The one campaign, when there is one, else the one `--campaign` names.
+const campaignFor = (
+  policy: LoadedPolicy,
+  argv: ReadonlyArray<string>,
+): Result.Result<CampaignEvaluation["rule"], string> => {
+  const named = flagOf(argv, "--campaign");
+  if (named !== undefined) {
+    const found = campaignsOf(policy).campaignRules.find((rule) => rule.id === named);
+    return found === undefined
+      ? Result.fail(`no campaign is named "${named}"`)
+      : Result.succeed(found);
+  }
+  const [only] = campaignsOf(policy).campaignRules;
+  if (campaignsOf(policy).campaignRules.length === 1 && only !== undefined) return Result.succeed(only);
+  return Result.fail(
+    `this policy declares ${String(campaignsOf(policy).campaignRules.length)} campaigns; say which with --campaign <id>.`,
+  );
+};
+
+const objectiveFor = (
+  rule: CampaignEvaluation["rule"],
+  objective: string | null,
+): Result.Result<string, string> => {
+  if (objective !== null) {
+    return rule.objectives.some((one) => one.id === objective)
+      ? Result.succeed(objective)
+      : Result.fail(`no objective of ${rule.id} is named "${objective}"`);
+  }
+  const [only] = rule.objectives;
+  if (rule.objectives.length === 1 && only !== undefined) return Result.succeed(only.id);
+  return Result.fail(
+    `campaign ${rule.id} declares ${String(rule.objectives.length)} objectives; say which as ${rule.id}/<objective>.`,
+  );
+};
+
+export const objectives = (
   policy: LoadedPolicy,
   defaultRoots: ReadonlyArray<string>,
   argv: ReadonlyArray<string>,
 ): Effect.Effect<void, CliFailure> =>
   Effect.gen(function* () {
-    const parsed = campaignArgsOf(
+    const parsed = objectiveArgsOf(
       argv,
-      policy.campaignRules.map((rule) => rule.id),
+      campaignsOf(policy).campaignRules.map((rule) => rule.id),
     );
-    const { id, subcommand } = parsed;
     const roots = parsed.roots.length > 0 ? parsed.roots : defaultRoots;
-    if (policy.campaignRules.length === 0) {
+    if (campaignsOf(policy).campaignRules.length === 0) {
       return yield* report(["this policy declares no campaigns."]);
     }
-    const hitsOf = (): ReadonlyArray<CampaignHit> => collectFindings(policy, roots).campaigns;
-    const own = (hits: ReadonlyArray<CampaignHit>, campaign: string): ReadonlyArray<Violation> =>
-      hits.filter((hit) => hit.campaign === campaign).map((hit) => hit.violation);
+    const evaluations = (): ReadonlyArray<CampaignEvaluation> =>
+      collectFindings(policy, roots).campaigns;
 
-    switch (subcommand) {
-      case undefined: {
-        const snapshot = snapshotOf(policy, roots, manifestPathOf(policy.repoRoot));
-        return yield* report([
-          `${count(snapshot.campaigns.length, "campaign")} under ${roots.join(", ")}`,
-          "",
-          ...renderCampaignRows(snapshot.campaigns),
-          "",
-          "  architecture campaigns init <id>                       # write a ledger from what fires today",
-          "  architecture campaigns prune [<id>]                    # drop entries that no longer fire",
-          '  architecture campaigns allow <id> --reason "<why>"     # record why the count may rise',
-        ]);
-      }
-      case "init": {
-        if (id === undefined) return yield* Effect.fail(fail("campaigns init needs a campaign id"));
-        const rule = campaignNamed(policy, id);
-        if (rule === null) return yield* Effect.fail(fail(`no campaign is named "${id}"`));
-        if (policy.ledgers.has(id)) {
-          return yield* Effect.fail(
-            fail(
-              `${path.relative(policy.repoRoot, ledgerPathOf(policy, id))} already exists. \`init\` ` +
-                `writes a campaign's first ledger and does not overwrite one; \`prune\` and \`allow\` ` +
-                `are how it changes.`,
-            ),
-          );
-        }
-        const ledger = ledgerOf(id, own(hitsOf(), id), policy.now);
-        yield* Effect.sync(() => {
-          writeLedger(policy, ledger);
-        });
-        return yield* report([
-          `${count(ledger.entries.length, "hit")} recorded in ${path.relative(policy.repoRoot, ledgerPathOf(policy, id))}.`,
-          "Each one is a place the campaign has yet to reach. Fixing one means pruning its line.",
-        ]);
-      }
-      case "prune": {
+    switch (parsed.subcommand) {
+      case "clear": {
         const targets =
-          id === undefined
-            ? policy.campaignRules
-            : [campaignNamed(policy, id)].filter((one) => one !== null);
-        if (id !== undefined && targets.length === 0) {
-          return yield* Effect.fail(fail(`no campaign is named "${id}"`));
-        }
-        const hits = hitsOf();
+          parsed.target === null
+            ? campaignsOf(policy).campaignRules
+            : campaignsOf(policy).campaignRules.filter((rule) => rule.id === parsed.target?.campaign);
+        const by = authorOf(flagOf(argv, "--by")) ?? "unknown";
+        const all = evaluations();
         const lines: Array<string> = [];
         for (const rule of targets) {
-          const ledger = policy.ledgers.get(rule.id);
-          if (ledger === undefined) {
-            lines.push(`${rule.id}: no ledger to prune (run \`campaigns init ${rule.id}\`).`);
-            continue;
+          const evaluation = all.find((one) => one.rule.id === rule.id);
+          if (evaluation === undefined) continue;
+          const only = parsed.target?.objective ?? null;
+          if (only !== null && !rule.objectives.some((one) => one.id === only)) {
+            return yield* Effect.fail(fail(`no objective of ${rule.id} is named "${only}"`));
           }
-          const next = pruned(ledger, own(hits, rule.id), rule.unit, policy.now);
-          const removed = ledger.entries.length - next.entries.length;
-          const rewritten = next.entries.filter((entry) => !ledger.entries.includes(entry)).length;
-          if (removed === 0 && rewritten === 0) {
-            lines.push(`${rule.id}: nothing to prune.`);
-            continue;
-          }
-          yield* Effect.sync(() => {
-            writeLedger(policy, next);
+          const outcomes = yield* Effect.try({
+            try: () => clear(policy, evaluation, only, by),
+            catch: (cause) => fail(String(cause)),
           });
-          lines.push(
-            `${rule.id}: ${count(removed, "entry", "entries")} pruned` +
-              (rewritten > 0 ? `, ${count(rewritten, "entry", "entries")} rewritten` : "") +
-              `; ${count(next.entries.length, "entry", "entries")} left.`,
-          );
+          for (const outcome of outcomes) {
+            const parts = [
+              ...(outcome.entered.length > 0
+                ? [
+                    `${count(outcome.entered.length, "sector")} entered (${outcome.entered.join(", ")})`,
+                  ]
+                : []),
+              ...(outcome.cleared > 0 ? [`${count(outcome.cleared, "holdout")} cleared`] : []),
+              ...(outcome.rewritten > 0
+                ? [`${count(outcome.rewritten, "holdout")} rewritten`]
+                : []),
+              ...(outcome.closed > 0 ? [`${count(outcome.closed, "holdout")} closed`] : []),
+              ...(outcome.rebaselined.length > 0
+                ? [
+                    `${count(outcome.rebaselined.length, "sector")} re-baselined (${outcome.rebaselined.join(", ")})`,
+                  ]
+                : []),
+            ];
+            lines.push(
+              `${outcome.campaign}/${outcome.objective}: ${parts.length === 0 ? "nothing to clear" : parts.join(", ")}; ${count(outcome.left, "holdout")} left.`,
+            );
+          }
         }
         return yield* report(lines);
       }
-      case "allow": {
-        if (id === undefined)
-          return yield* Effect.fail(fail("campaigns allow needs a campaign id"));
-        const rule = campaignNamed(policy, id);
-        if (rule === null) return yield* Effect.fail(fail(`no campaign is named "${id}"`));
-        const ledger = policy.ledgers.get(id);
-        if (ledger === undefined) {
+      case "concede": {
+        if (parsed.target === null) {
           return yield* Effect.fail(
-            fail(`campaign ${id} has no ledger yet; run \`campaigns init ${id}\` first.`),
+            fail(
+              "objectives concede needs a campaign: `objectives concede <campaign>[/<objective>] --reason <text>`",
+            ),
           );
         }
+        const rule = campaignsOf(policy).campaignRules.find((one) => one.id === parsed.target?.campaign);
+        if (rule === undefined)
+          return yield* Effect.fail(fail(`no campaign is named "${parsed.target.campaign}"`));
+        const objective = objectiveFor(rule, parsed.target.objective);
+        if (Result.isFailure(objective)) return yield* Effect.fail(fail(objective.failure));
         const reason = flagOf(argv, "--reason");
         if (reason === undefined) {
           return yield* Effect.fail(
             fail(
-              "campaigns allow needs --reason <text>: growth is recorded with why, or not at all.",
+              "objectives concede needs --reason <text>: growth is recorded with why, or not at all.",
             ),
           );
         }
         const by = authorOf(flagOf(argv, "--by"));
         if (by === null) {
           return yield* Effect.fail(
-            fail("campaigns allow needs an author: pass --by <email>, or set git's user.email."),
+            fail("objectives concede needs an author: pass --by <email>, or set git's user.email."),
           );
         }
-        const state = reconcile(ledger, own(hitsOf(), id), rule.unit);
-        const unrecorded = [...new Set(state.unrecorded.map(entryOf))].sort();
-        // `--entries` allows a subset and refuses the rest: a pull request
-        // that legitimately adds one hit while another is an accident.
+        const evaluation = evaluations().find((one) => one.rule.id === rule.id);
+        if (evaluation === undefined)
+          return yield* Effect.fail(fail(`campaign ${rule.id} was not evaluated`));
+        // `--holdouts` concedes a subset and refuses the rest: a pull
+        // request that legitimately adds one hit while another is an
+        // accident.
         const chosen =
-          flagOf(argv, "--entries")
+          (flagOf(argv, "--holdouts") ?? flagOf(argv, "--entries"))
             ?.split(",")
-            .map((one) => one.trim()) ?? unrecorded;
-        const unknown = chosen.filter((entry) => !unrecorded.includes(entry));
-        if (unknown.length > 0) {
-          return yield* Effect.fail(
-            fail(`these entries are not unrecorded hits of ${id}: ${unknown.join(", ")}`),
-          );
+            .map((one) => one.trim()) ?? null;
+        const outcome = concede(
+          policy,
+          evaluation,
+          objective.success,
+          chosen,
+          flagOf(argv, "--sector") ?? null,
+          {
+            at: policy.now,
+            by,
+            reason,
+          },
+        );
+        if (Result.isFailure(outcome)) return yield* Effect.fail(fail(outcome.failure));
+        if (outcome.success.conceded.length === 0) {
+          return yield* report([
+            `${rule.id}/${objective.success}: nothing to concede; every hit is in the ledger.`,
+          ]);
         }
-        if (chosen.length === 0) {
-          return yield* report([`${id}: nothing to allow; every hit is in the ledger.`]);
-        }
-        const next = allowed(ledger, chosen, { at: policy.now, by, reason });
-        yield* Effect.sync(() => {
-          writeLedger(policy, next);
-        });
-        const left = unrecorded.filter((entry) => !chosen.includes(entry));
         return yield* report([
-          `${id}: ${count(chosen.length, "entry", "entries")} allowed, recorded as a regression by ${by}.`,
-          ...chosen.map((entry) => `  ${entry}`),
-          ...(left.length === 0
+          `${rule.id}/${objective.success}: ${count(outcome.success.conceded.length, "holdout")} conceded, recorded by ${by}.`,
+          ...outcome.success.conceded.map((one) => `  ${one.sector} · ${one.entry}`),
+          ...(outcome.success.left.length === 0
             ? []
-            : ["", `${count(left.length, "hit")} left unrecorded; check still fails on them.`]),
+            : [
+                "",
+                `${count(outcome.success.left.length, "hit")} left unrecorded; check still fails on them.`,
+              ]),
         ]);
       }
       default:
         return yield* Effect.fail(
           fail(
-            `unknown campaigns subcommand "${subcommand}". Try: campaigns | campaigns init <id> | campaigns prune [<id>] | campaigns allow <id> --reason <text> [--by <email>] [--entries a,b]`,
+            `unknown objectives subcommand "${parsed.subcommand ?? ""}". Try: objectives clear [<campaign>[/<objective>]] | objectives concede <campaign>[/<objective>] --reason <text> [--by <email>] [--sector <name>] [--holdouts a,b]`,
+          ),
+        );
+    }
+  });
+
+export const campaigns = (
+  policy: LoadedPolicy,
+  defaultRoots: ReadonlyArray<string>,
+  argv: ReadonlyArray<string>,
+  configFilename?: string,
+): Effect.Effect<void, CliFailure> =>
+  Effect.gen(function* () {
+    const parsed = campaignArgsOf(
+      argv,
+      campaignsOf(policy).campaignRules.map((rule) => rule.id),
+    );
+    const roots = parsed.roots.length > 0 ? parsed.roots : defaultRoots;
+    if (campaignsOf(policy).campaignRules.length === 0) {
+      return yield* report(["this policy declares no campaigns."]);
+    }
+    const json = argv.includes("--json");
+    const retired = parsed.subcommand === undefined ? undefined : RETIRED[parsed.subcommand];
+    if (retired !== undefined) return yield* Effect.fail(fail(retired));
+
+    switch (parsed.subcommand) {
+      case undefined: {
+        const snapshot = snapshotOf(policy, roots, manifestPathOf(policy.repoRoot, configFilename));
+        return yield* report([
+          `${count(snapshot.campaigns.length, "campaign")} under ${roots.join(", ")}`,
+          "",
+          ...renderCampaignRows(snapshot.campaigns),
+          "",
+          "  architecture campaigns status --changed [--base <ref>] [--json]   # what a diff touches, and what to do",
+          "  architecture objectives clear [<campaign>[/<objective>]]        # reconcile the ledgers with the code",
+          '  architecture objectives concede <campaign>[/<objective>] --reason "<why>"   # record why a count may rise',
+          '  architecture campaigns attest <sector> <phase> --reason "<why>" [--evidence <url>]',
+          '  architecture campaigns note <sector> "<text>"',
+          "  architecture campaigns history [<campaign>] [--since <ref>]",
+        ]);
+      }
+      case "status": {
+        if (!argv.includes("--changed")) {
+          return yield* Effect.fail(
+            fail("campaigns status takes --changed: the nudge is scoped to a diff."),
+          );
+        }
+        const base = flagOf(argv, "--base") ?? null;
+        const diff = yield* Effect.try({
+          try: () => readDiff(policy.repoRoot, base),
+          catch: (cause) => fail(`could not read the diff: ${String(cause)}`),
+        });
+        const current = collectFindings(policy, roots).campaigns;
+        const baseSide =
+          base === null
+            ? null
+            : yield* Effect.tryPromise({
+                try: () =>
+                  baseSideAt(policy, base, roots, (repoRoot) =>
+                    loadPolicyFromFile(repoRoot, configFilename),
+                  ),
+                catch: (cause) =>
+                  fail(`could not evaluate the base tree at ${base}: ${String(cause)}`),
+              });
+        const hotfix = flagOf(argv, "--hotfix") ?? null;
+        const nudge = nudgeOf(
+          policy,
+          current,
+          diff,
+          baseSide,
+          hotfix,
+          hotfix === null ? null : authorOf(flagOf(argv, "--by")),
+        );
+        yield* report(json ? [JSON.stringify(nudge, null, 2)] : renderNudge(nudge, policy.now));
+        if (!nudge.ok)
+          return yield* Effect.fail(fail("the diff sends a sector back under its onTouch"));
+        return;
+      }
+      case "attest": {
+        const [sector, phase] = parsed.args;
+        if (sector === undefined || phase === undefined) {
+          return yield* Effect.fail(
+            fail(
+              'campaigns attest needs a sector and a phase: `campaigns attest <sector> <phase> --reason "<why>"`',
+            ),
+          );
+        }
+        const reason = flagOf(argv, "--reason");
+        if (reason === undefined)
+          return yield* Effect.fail(fail("campaigns attest needs --reason <text>."));
+        const by = authorOf(flagOf(argv, "--by"));
+        if (by === null)
+          return yield* Effect.fail(
+            fail("campaigns attest needs an author: pass --by <email>, or set git's user.email."),
+          );
+        const rule = campaignFor(policy, argv);
+        if (Result.isFailure(rule)) return yield* Effect.fail(fail(rule.failure));
+        const evaluation = collectFindings(policy, roots).campaigns.find(
+          (one) => one.rule.id === rule.success.id,
+        );
+        if (evaluation === undefined)
+          return yield* Effect.fail(fail(`campaign ${rule.success.id} was not evaluated`));
+        const written = attest(policy, evaluation, sector, phase, {
+          reason,
+          evidence: flagOf(argv, "--evidence"),
+          by,
+        });
+        if (Result.isFailure(written)) return yield* Effect.fail(fail(written.failure));
+        return yield* report([
+          `${rule.success.id}: sector ${sector} attested at ${phase} by ${by}, in ${written.success}.`,
+          "Run `objectives clear` to move it on.",
+        ]);
+      }
+      case "note": {
+        const [sector, text] = parsed.args;
+        if (sector === undefined || text === undefined) {
+          return yield* Effect.fail(
+            fail('campaigns note needs a sector and a text: `campaigns note <sector> "<text>"`'),
+          );
+        }
+        const by = authorOf(flagOf(argv, "--by"));
+        if (by === null)
+          return yield* Effect.fail(
+            fail("campaigns note needs an author: pass --by <email>, or set git's user.email."),
+          );
+        const rule = campaignFor(policy, argv);
+        if (Result.isFailure(rule)) return yield* Effect.fail(fail(rule.failure));
+        const evaluation = collectFindings(policy, roots).campaigns.find(
+          (one) => one.rule.id === rule.success.id,
+        );
+        if (evaluation === undefined)
+          return yield* Effect.fail(fail(`campaign ${rule.success.id} was not evaluated`));
+        const written = note(policy, evaluation, sector, text, by);
+        if (Result.isFailure(written)) return yield* Effect.fail(fail(written.failure));
+        return yield* report([
+          `${rule.success.id}: note left on ${sector}, in ${written.success}.`,
+        ]);
+      }
+      case "history": {
+        const [named] = parsed.args;
+        const targets =
+          named === undefined
+            ? campaignsOf(policy).campaignRules
+            : campaignsOf(policy).campaignRules.filter((rule) => rule.id === named);
+        const manifestPath = path
+          .relative(policy.repoRoot, manifestPathOf(policy.repoRoot, configFilename))
+          .replaceAll(path.sep, "/");
+        const lines: Array<string> = [];
+        for (const rule of targets) {
+          const rows = historyOf(policy, rule, flagOf(argv, "--since") ?? null, [manifestPath]);
+          if (json) {
+            lines.push(JSON.stringify({ campaign: rule.id, rows }, null, 2));
+            continue;
+          }
+          if (lines.length > 0) lines.push("");
+          for (const line of renderHistory(rule, rows)) lines.push(line);
+        }
+        return yield* report(lines);
+      }
+      case "clear":
+      case "concede":
+        // The ledger verbs answer under `objectives`; accepted here too.
+        return yield* objectives(policy, defaultRoots, argv);
+      default:
+        return yield* Effect.fail(
+          fail(
+            `unknown campaigns subcommand "${parsed.subcommand}". Try: campaigns | campaigns status --changed | campaigns attest <sector> <phase> --reason <text> | campaigns note <sector> "<text>" | campaigns history [<campaign>]`,
           ),
         );
     }
@@ -1613,6 +1690,7 @@ const READS_REPORTS: ReadonlySet<string> = new Set([
   "conformance",
   "baseline",
   "campaigns",
+  "objectives",
   "explain",
 ]);
 
@@ -1665,7 +1743,7 @@ export const run = (
       yield* Effect.tryPromise({
         try: () =>
           Promise.all(
-            reportSpecsOf(policy.campaignRules).map((spec) => policy.reports.read?.(spec)),
+            reportSpecsOf(campaignsOf(policy).campaignRules).map((spec) => campaignsOf(policy).reports.read?.(spec)),
           ),
         catch: (cause) => fail(String(cause)),
       });
@@ -1682,7 +1760,9 @@ export const run = (
 
     switch (command) {
       case "campaigns":
-        return yield* campaigns(policy, ["packages"], rest);
+        return yield* campaigns(policy, ["packages"], rest, configFilename);
+      case "objectives":
+        return yield* objectives(policy, ["packages"], rest);
       case "check":
         return yield* check(policy, roots, {
           format: json ? "json" : "text",
@@ -1696,9 +1776,9 @@ export const run = (
       case "baseline":
         return yield* writeBaseline(policy, roots);
       case "explain": {
-        const [file] = rest;
+        const [file, ...explainRoots] = positional;
         if (file === undefined) return yield* Effect.fail(fail("explain needs a file path"));
-        return yield* explain(policy, file);
+        return yield* explain(policy, file, explainRoots.length > 0 ? explainRoots : ["packages"]);
       }
       case "coverage":
         return yield* coverage(policy, roots);
@@ -1710,7 +1790,7 @@ export const run = (
       default:
         return yield* Effect.fail(
           fail(
-            `unknown command "${command}". Try: check [--json] | conformance [--json] [--against <manifest>] | baseline | campaigns [init <id> | prune [<id>] | allow <id> --reason <text>] | coverage | explain <file> | facts <file> [--json] | init | infer | migrate`,
+            `unknown command "${command}". Try: check [--json] | conformance [--json] [--against <manifest>] | baseline | campaigns [status --changed | attest | note | history] | objectives [clear | concede] | coverage | explain <file> | facts <file> [--json] | init | infer | migrate`,
           ),
         );
     }

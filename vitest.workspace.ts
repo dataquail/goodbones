@@ -6,6 +6,7 @@ export default defineWorkspace([
   "packages/core",
   "packages/typescript",
   "packages/ast-grep",
+  "packages/campaigns",
   "packages/cli",
   "packages/oxlint",
 ]);

@@ -1,98 +1,413 @@
 ---
 title: Campaigns
-description: Tracking a migration as an object in the manifest — a detector, a rationale, a guide, an owner, a definition of done, and a ledger that only shrinks on its own.
+description: A multi-step refactor as an object in the manifest — objectives with ledgers that only shrink, over sectors the code births, through phases toward an end — and a nudge that tells whoever touches a sector what would move it on.
 ---
 
 Most debt paydown is an incremental migration: every class component to hooks, every page
-under `pages/` to `app/`, every direct use of a vendor SDK behind one facade, every
-`snake_case` file name to `kebab-case`. The work is too big for one change, so it is cut
-into tickets, and the tickets become the only record of how far it has got. Nothing static
-enforces that the count goes down; nothing tells someone editing a file that the file is
-inside a migration; nothing notices when a migration has quietly stopped.
+under `pages/` to `app/`, every bounded context out of the mud and behind a port. The work is
+too big for one change, so it is cut into tickets, and the tickets become the only record of
+how far it has got. Nothing static enforces that a count goes down; nothing tells someone
+editing a file that the file is inside a migration, or which step it is at; nothing notices
+when a migration has quietly stopped.
 
-`campaigns` makes the migration an object in the repository. Where a rule says what may
-never happen, a campaign names what the code is moving **away from**, ledgers every place
-it still occurs, and refuses to let the count go up unrecorded.
+`campaigns` makes the refactor an object in the repository:
+
+> A **campaign** over a **scope** pursues **objectives** across **sectors**, each recognized by
+> its **perimeter**, through **phases** — defined or open — toward an **end**, as the
+> **legacy** shrinks.
+
+An **objective** is a detector with a [ledger](/goodbones/architecture-rules/enforcement/ledger/)
+that only shrinks on its own: a pattern the code is moving away from, every place it still
+occurs recorded, growth refused unless it comes with a reason. A **sector** is the piece of
+code that moves through the campaign as one — a bounded context, a component folder, a single
+file — and the code declares it, through the campaign's **perimeter**; the manifest never
+lists one. A **phase** is a named, ordered group of objectives: a sector stands at the first
+phase whose objectives still have holdouts in it, and the last phase is the end. And the thing
+the rest exists to serve is [the nudge](/goodbones/architecture-rules/enforcement/nudge/):
+`architecture campaigns status --changed` tells a person, or an agent working on their behalf,
+which campaign the files they touched belong to, what phase that sector is at, and what small
+concrete thing in the touched files would move it toward the next.
+
+The minimal campaign is one objective, no perimeter, no phases — what this repository runs on
+itself:
 
 ```yaml
 campaigns:
-  - id: react-class-components
-    title: Class components to hooks
-    why: Class lifecycle methods block concurrent features and the new testing setup.
-    how: |
-      Convert to a function component. componentDidMount becomes useEffect with [],
-      state becomes useState or useReducer. See docs/migrations/hooks.md.
-    owner: "@dataquail/web-platform"
-    scope: ["apps/web/src/**"]
-    unit: declaration
-    detect:
-      syntax:
-        pattern: "class $NAME extends $BASE { $$$ }"
-        where:
-          BASE: { binding: { resolves: { external: react }, member: [Component, PureComponent] } }
-    probes:
-      fires:
-        - path: apps/web/src/a.tsx
-          source: "import { Component } from 'react'; export class Foo extends Component {}"
-          edges: { react: { external: react } }
-      ignores:
-        - { path: apps/web/src/b.tsx, source: "class Foo extends Base {}" }
-    staleAfter: 30d
-    onComplete: keep
+  lowering-reports-not-throws:
+    why: "`loadPolicy` returns a `Result`, but a manifest that lowers badly escapes it as a thrown `Error`."
+    how: "Return `Result.fail(new ConfigInvalid({ configPath, detail }))` and let `loadPolicy` pass it up."
+    owner: "@dataquail"
+    scope: ["packages/core/src/manifest/**"]
+    staleAfter: 90d
+    objectives:
+      throws-in-lowering:
+        holdout: match
+        match:
+          all:
+            - path: { file: "\\.ts$", fileNot: "\\.test\\.ts$" }
+            - syntax: { pattern: "throw new Error($$$)" }
+        probes:
+          fires:
+            - path: packages/core/src/manifest/zzprobe.ts
+              source: 'const lower = () => { throw new Error("bad manifest"); };'
+          ignores:
+            - path: packages/core/src/manifest/zzprobe.ts
+              source: "const lower = () => Result.fail(new ConfigInvalid({ configPath, detail }));"
 ```
 
-| Field        | Meaning                                                                                                      |
-| ------------ | ------------------------------------------------------------------------------------------------------------ |
-| `id`         | kebab-case; the ledger's file name and the rule name's tail (`campaign/<id>`)                                |
-| `why`        | the rationale, printed by `explain` and `conformance`                                                        |
-| `how`        | what a reader at a hit does about it — the message every hit carries                                         |
-| `owner`      | who is running it; printed in the status table                                                               |
-| `scope`      | which files it selects: alias-aware globs, as [`graph`](/goodbones/architecture-rules/manifest/graph/) takes |
-| `unit`       | what a hit is — `file`, `declaration` or `match` — see [The unit](#the-unit)                                 |
-| `detect`     | the detector: `all`, `any`, `not` over the [terms](#terms)                                                   |
-| `probes`     | sources it must fire on and stay silent on — see [Probes](#probes)                                           |
-| `staleAfter` | `14d`, `12h`: how long without progress before the report calls it stalled                                   |
-| `onComplete` | `keep` (the default — stays as a guard against recurrence) or `remove` (`check` fails until it is deleted)   |
+The full shape — the design's ball-of-mud-to-DDD campaign — is a perimeter that births a
+sector per bounded context, a ladder of phases each recognized by criteria, a transitional
+shape the end forbids, a step no analysis sees, and an open phase where the plan runs out:
 
-A campaign is a rule, a [baseline](/goodbones/architecture-rules/enforcement/baseline/) and a
-[conformance](/goodbones/architecture-rules/enforcement/conformance/) measure with one thing
-the other families lack: a way to name a pattern the import graph cannot see. Its findings
-are of kind `campaign`, and they are judged against the campaign's
-[ledger](/goodbones/architecture-rules/enforcement/ledger/), never against the baseline.
+```yaml
+campaigns:
+  billing-ddd:
+    scope: src/**
+    legacy: src/services/** # what no sector has claimed; stands at `domain`
+    perimeter:
+      marker: "**/context.ts" # names the bounded context, may list the globs it owns
+    onTouch: ratchet # growth in a touched sector is refused; the default for a defined phase
 
-## The unit
+    phases:
+      - id: domain
+        intent: a domain module with unit tests, no I/O
+        objectives: [no-io-in-domain, domain-has-unit-tests]
+      - id: repository
+        intent: a repository behind a port, one migration, an integration test
+        objectives: [no-raw-queries-outside-repository, has-migration, has-integration-test]
+      - id: dual-write
+        intent: the feature flag writes to both tables; nothing reads the new one yet
+        objectives: [has-flag, has-both-writes] # windowed: gone by `cutover`
+      - id: backfilled
+        intent: legacy rows copied into the new table and verified
+        attested: true # no detector sees a backfill; `campaigns attest` leaves this phase
+      - id: cutover
+        intent: the flag and the legacy write path are removed
+        objectives: [no-flag, no-legacy-write]
+      - id: aggregates # open, and therefore last: no objectives yet
+        intent: >
+          Model refunds and disputes inside the billing aggregate, or split them out —
+          undecided until two contexts have reached `cutover`.
 
-A campaign declares what a hit **is**, and that decides both what its ledger entries look
-like and what a term from another level means.
+    objectives:
+      no-io-in-domain:
+        holdout: declaration
+        match:
+          {
+            all:
+              [
+                { path: { file: "/domain/" } },
+                { members: { subject: calls, name: "readFileSync" } },
+              ],
+          }
+        probes: { fires: [{ path: src/billing/domain/a.ts, source: "readFileSync('x')" }] }
+      domain-has-unit-tests: # per file: each domain file owes a sibling test
+        holdout: file
+        match:
+          {
+            all:
+              [{ path: { file: "/domain/.*\\.ts$" } }, { not: { requires: ["{base}.test.ts"] } }],
+          }
+        probes: { fires: [{ path: src/billing/domain/a.ts }] }
+      no-raw-queries-outside-repository:
+        holdout: match
+        match:
+          {
+            all:
+              [{ not: { path: { file: "/repository/" } } }, { syntax: { pattern: "knex($$$)" } }],
+          }
+        probes: { fires: [{ path: src/billing/a.ts, source: "knex('x')" }] }
+      has-migration: # a presence: the sector is the holdout until one file in it matches
+        holdout: sector
+        sector: { has: { path: { file: "/migrations/.*\\.ts$" } } }
+      has-integration-test:
+        holdout: sector
+        sector: { has: { path: { file: "/repository/.*\\.integration\\.test\\.ts$" } } }
+      has-flag: # a transitional shape: must be there in `dual-write`, must be gone by `cutover`
+        holdout: sector
+        until: cutover
+        sector: { has: { content: { regex: "flags\\.billingDualWrite" } } }
+        probes: { fires: [{ path: src/billing/a.ts, source: "flags.billingDualWrite" }] }
+      has-both-writes:
+        {
+          holdout: sector,
+          until: cutover,
+          sector: { has: { content: { regex: "writeBoth" } } },
+          probes: { fires: [{ path: src/billing/a.ts, source: "writeBoth()" }] },
+        }
+      no-flag:
+        {
+          holdout: file,
+          match: { content: { regex: "flags\\.billingDualWrite" } },
+          probes: { fires: [{ path: src/billing/a.ts, source: "flags.billingDualWrite" }] },
+        }
+      no-legacy-write:
+        {
+          holdout: match,
+          match: { syntax: { pattern: "legacyBilling.write($$$)" } },
+          probes: { fires: [{ path: src/billing/a.ts, source: "legacyBilling.write(x)" }] },
+        }
+```
 
-| Unit          | A hit is…                       | Entry              | Fingerprint subject                                            |
-| ------------- | ------------------------------- | ------------------ | -------------------------------------------------------------- |
-| `file`        | a whole file                    | `file`             | _(none)_                                                       |
-| `declaration` | a named declaration in the file | `file#Name`        | the declaration's name                                         |
-| `match`       | one matched expression          | `file#Anchor#hash` | the enclosing declaration and a short hash of the matched text |
+| Field        | Meaning                                                                                                                                                                              |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `why`        | the rationale, printed by `explain` and `conformance`                                                                                                                                |
+| `how`        | what a reader at a holdout does about it — the message every hit carries, unless the objective states its own                                                                        |
+| `owner`      | who is running it; printed in the status table                                                                                                                                       |
+| `scope`      | which files it sees: alias-aware globs, as [`graph`](/goodbones/architecture-rules/manifest/graph/) takes; or `{ path, extensions }` to widen the walk — see [The scope](#the-scope) |
+| `legacy`     | which unclaimed files count as legacy; omit for all of them — see [Sectors](#sectors)                                                                                                |
+| `perimeter`  | how a sector is recognized — see [Sectors](#sectors)                                                                                                                                 |
+| `onTouch`    | what a touched sector owes: `advise`, `ratchet` or `paydown` — see [The nudge](/goodbones/architecture-rules/enforcement/nudge/)                                                     |
+| `phases`     | the ladder, in order — see [Phases](#phases)                                                                                                                                         |
+| `endState`   | sugar for the last phase: a sector-relative node tree — see [The end state](#the-end-state)                                                                                          |
+| `objectives` | the detectors, keyed by id — see [Objectives](#objectives)                                                                                                                           |
+| `staleAfter` | `14d`, `12h`: how long without progress before the report calls it stalled; omit for never                                                                                           |
+| `onComplete` | `keep` (the default — stays as a guard against recurrence) or `remove` (`check` fails until it is deleted)                                                                           |
 
-Fingerprints anchor on declarations, never on positions, so an entry survives a reformat
-as a baseline entry does. A `match` entry's hash changes when the matched text changes; an
-edit elsewhere inside the same declaration leaves the anchor in place, and `check` treats
-the entry as the same one — `campaigns prune` rewrites the hash without counting it as
-progress. A match at the top level of a file has no anchor and is keyed by its hash alone.
+Everything above `objectives` is optional. A campaign's findings are of kind `campaign`, their
+rule name is `campaign/<campaign>/<objective>`, and they are judged against the objective's
+ledger, never against the baseline.
+
+## Objectives
+
+An objective is a detector, a granularity, probes, and a ledger that only shrinks on its own.
+It belongs to one campaign and is named by at most one phase; an objective no phase names is
+in window in every phase, from the legacy to the end — the campaign's standing measures.
+
+| Field     | Meaning                                                                                                               |
+| --------- | --------------------------------------------------------------------------------------------------------------------- |
+| `holdout` | what one ledger entry is — `file`, `declaration`, `match` or `sector` — see [The holdout](#the-holdout)               |
+| `match`   | a per-file detector: `all`, `any`, `not` over the [terms](#terms); evaluated by both hosts                            |
+| `sector`  | a term over the sector's files, instead of `match`: `has`, `oneRoot` or `oneHost` — see [Sector terms](#sector-terms) |
+| `until`   | the phase at which the objective stops counting, exclusive — see [Windows](#windows)                                  |
+| `how`     | this objective's own message, over the campaign's                                                                     |
+| `probes`  | sources it must fire on and stay silent on — see [Probes](#probes); required with `match`                             |
+
+Exactly one of `match` and `sector`. Sharing one detector across campaigns goes through the
+manifest's `defs`/`use`; there is no top-level pool of objectives.
+
+## The holdout
+
+An objective declares what a holdout **is**, and that decides both what its ledger entries
+look like and what a term from another level means.
+
+| Holdout       | A holdout is…                   | Entry              | Fingerprint subject                                                    |
+| ------------- | ------------------------------- | ------------------ | ---------------------------------------------------------------------- |
+| `file`        | a whole file                    | `file`             | _(none)_                                                               |
+| `declaration` | a named declaration in the file | `file#Name`        | the declaration's name                                                 |
+| `match`       | one matched expression          | `file#Anchor#hash` | the enclosing declaration and a short hash of the matched text         |
+| `sector`      | the sector itself               | `~`                | _(none)_ — for a `sector` term: one while it fails, zero once it holds |
+
+Entries are written relative to the sector's root — the marker's folder, the matched glob, the
+file's own folder, or the repository for the implicit sector and the legacy — so a lift from
+`hapi/src/billing/` to `nest/src/billing/` moves nothing in the ledger. Fingerprints anchor
+on declarations, never on positions, so an entry survives a reformat as a baseline entry does.
+A `match` entry's hash changes when the matched text changes; an edit elsewhere inside the
+same declaration leaves the anchor in place, and `check` treats the entry as the same one —
+`objectives clear` rewrites the hash without counting it as progress. A match at the top level
+of a file has no anchor and is keyed by its hash alone.
 
 Every term answers at one level. `path`, `imports`, `requires`, `content` and a `fn` that
 returns a boolean are statements about the **file**; `exports` and `members` are about a
-**declaration**; `syntax`, `report` and a `fn` that returns a list are about a **match**. The unit
-decides what a term from another level means:
+**declaration**; `syntax`, `report` and a `fn` that returns a list are about a **match**. The
+holdout decides what a term from another level means:
 
-- In a **`file`** campaign every term is existential — _the file contains one_ — and `not`
-  is _contains none_. The campaign yields at most one hit per file.
-- In a **`declaration`** or **`match`** campaign, the candidates are what the declaration-
+- In a **`file`** objective every term is existential — _the file contains one_ — and `not`
+  is _contains none_. The objective yields at most one hit per file.
+- In a **`declaration`** or **`match`** objective, the candidates are what the declaration-
   and match-level terms produce. A file-level term is a **filter** over all of them: true
   admits every candidate, false admits none. A declaration-level term in a `match`
-  campaign speaks to the match's anchor; a match-level term in a `declaration` campaign
+  objective speaks to the match's anchor; a match-level term in a `declaration` objective
   sources the declaration each match sits in.
 - `not` is the complement **within those candidates**. `all: [syntax A, not syntax B]` is
   the declarations A matches that B does not. `not syntax B` alone is nothing at all —
   there is no universe of "every other declaration" to draw from — and a probe will say
   so at load.
+
+## Sectors
+
+A sector is never listed in the manifest. It is born by the perimeter, which has five forms,
+because the pieces that move through a refactor as one come in four sizes and one of them may
+already be named by a project system:
+
+| Perimeter           | Sectors                                                                                                                                                                                                                                                                                                                                                            | Identity                       |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------ |
+| `{ marker }`        | one per file matching the glob — `**/context.ts`, `**/port.ts` — which may export a `sector` object naming it and listing the globs it `owns`: `export const sector = { name: "billing", owns: ["src/controllers/billing*", "src/services/billing/**"] }`. Without one, the folder holding the marker is the sector, named after the folder. Read, never executed. | the name                       |
+| `{ glob }`          | one per match: `src/components/*/`                                                                                                                                                                                                                                                                                                                                 | the matched path               |
+| `{ match, probes }` | one per detector match — every exported page, every exported component — at the `holdout` named (`declaration` by default). The perimeter must recognize a sector in every phase, not only the shape the campaign is leaving, so at least one of its `fires` probes must be a sector in its end shape: one no objective fires on. Refused at load otherwise.       | `file#declaration`             |
+| `file`              | one per file, for a refactor where a file is the thing that moves                                                                                                                                                                                                                                                                                                  | the path without its extension |
+| `nx`                | the workspace's projects, read from their `project.json` files                                                                                                                                                                                                                                                                                                     | the project's name             |
+
+The `owns` list exists because a legacy tree is usually laid out by technical concern —
+`controllers/`, `services/`, `repositories/` — so the piece that must move together is spread
+over several folders, and a sector that could only be born by co-locating first would demand
+the hardest step before the first measurement. A name declared by two markers is one sector
+with both roots. A `match` perimeter matching "class component" would un-birth the sector the
+moment the class was gone, which is the moment the first phase was met: the perimeter for a
+pages-to-app-router campaign is "an exported component, in either shape", and the first
+phase's objective is the old shape. `file` identity drops the extension so `a.js → a.ts` is one
+sector before and after — the one transition that campaign exists for.
+
+**The scope is one implicit sector.** A campaign with no perimeter still has a sector, named
+`scope`, rooted at the repository — so phases, windows and the per-sector ledger apply to a
+sector-less campaign without a second code path, and a library-swap campaign, whose phases
+are campaign-wide, is written with none.
+
+**Legacy is the remainder, and stands at the first phase.** Everything in the scope no sector
+claims is the sector `legacy`. The first phase's objectives are in window for it, so a holdout
+moved from a sector into the legacy is unrecorded growth there, not a disappearance; the legacy
+is not a sink. `legacy: <globs>` narrows which unclaimed files count; an unclaimed file outside
+them is in no sector at all. A file in two sectors — nested perimeters — fails `check`, as a
+folder under `src/` that no node governs fails today. Deleting a marker returns its folder to
+the legacy; the nudge names it on the diff that does it.
+
+### The scope
+
+`scope` is the globs the campaign sees. Written as `{ path, extensions }` it also widens the
+walk: `{ path: src/**, extensions: [.js, .jsx] }` lets a JS-to-TS campaign see the JavaScript
+half a TypeScript pack does not visit. A file the pack cannot parse contributes no facts, so an
+objective over such files is path-only, or `report`- or `fn`-backed. Only the campaign that
+widened the walk sees those files; no other family does, in either host.
+
+## Phases
+
+A phase is a named, ordered group of objectives. It is **defined** when it names at least one
+objective (or is `attested`, or carries an `endState`) and **open** when it carries only an
+`intent` — and then it is last. Phases are not nested and carry no policy of their own; a
+phase's criteria are its objectives. The loader refuses an open phase that is not last, an
+objective named by two phases, and a phase naming an objective the campaign does not declare.
+
+| Field         | Meaning                                                                                                                               |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`          | kebab-case                                                                                                                            |
+| `intent`      | prose: what the phase is for. Required on an open phase; welcome on a defined one. What the nudge says when there are no criteria yet |
+| `objectives`  | the ids this phase is recognized by                                                                                                   |
+| `attested`    | `true` for a step no detector sees — a backfill, a flag flip — left by `campaigns attest`                                             |
+| `onTouch`     | this phase's word over the campaign's                                                                                                 |
+| `endState`    | a sector-relative node tree expanding into this phase's structural objectives — see [The end state](#the-end-state)                   |
+| `concessions` | `[{ reason, at, by? }]`: the receipt a change to a defined phase needs — see [Changing a defined phase](#changing-a-defined-phase)    |
+
+**A sector's phase is derived, never declared**: the first phase, in order, with residue for
+that sector — an objective the phase names with a holdout in the sector, an attested phase not
+yet attested for it, or the open phase, which always has residue. A sector past the last phase
+of a ladder that ends defined is done. This can move _down_ when a plan edit adds an objective
+to an earlier phase, which is correct behaviour under a fluid plan. There is no commitment file
+and no `advance` verb; the stall clock is what says nobody is paying.
+
+**Reached.** What derivation cannot say is where a sector _has been_, and windows need that.
+So `objectives clear` records, in the sector's own file, the furthest phase it has ever been
+derived at — derived by the tool, written on the run, checked by `check`, never edited by hand.
+
+**Why every phase has teeth.** The obvious way to game "legacy is shrinking" is relocation:
+move a 2,000-line service into a folder with a `context.ts`. Because the first phase has real
+objectives, that folder is a sector at phase one with a hundred holdouts, the phase distribution
+shows a sector that just appeared at the bottom, and the legacy line shrinks by the same
+amount — both are reported, and the report never collapses them into one number.
+
+### Windows
+
+An objective counts for a sector from the phase that names it until the phase its `until`
+names, exclusive; the default is to the end. That is how a phase recognizes a shape the end
+forbids: `has-flag` is a holdout while the flag is missing during `dual-write`, and stops
+counting at `cutover`, where `no-flag` starts. When a sector enters an objective's window, its
+occurrences are recorded as that sector's `initial` by `objectives clear` — growth that is the
+plan working, not a regression. When a sector leaves a window, `clear` records its remaining
+holdouts as `closed`, not cleared, so a window shutting is never counted as progress and never
+moves the stall clock. And a window whose `until` is at or before the sector's `reached` is
+shut for that sector for good: when a later plan edit sends the sector back down the ladder,
+the transitional shapes it has already been through are not demanded again. The loader
+refuses an `until` naming a phase that does not exist, or one at or before the naming phase.
+
+Expected growth is a window; unexpected growth is a concession. A parallel-change step raises a
+count on purpose — the shim that calls the old API, the flag that writes twice. Under a ledger
+that only shrinks, every such step is a regression demanding a reason, which is noise; the fix
+is to say where the growth belongs. When the growth is a _place_ rather than a class — one shim
+file — narrowing the detector is the right tool, not a phase.
+
+### Attested phases
+
+A phase with `attested: true` has no detector; it is left by
+`architecture campaigns attest <sector> <phase> --reason "<why>" [--evidence <url>]`, which
+writes a dated entry in the sector's file. The tool cannot see a backfill or a flag flip; it
+can insist that someone said so, on the record. An attestation is accepted only while the
+sector's derived phase is that phase, so it cannot be recorded ahead and passed through on
+arrival.
+
+### Open phases
+
+An open phase collects: the intent is what the nudge says, and
+`architecture campaigns note <sector> "…"` appends a dated remark for the next person or
+agent, recorded under the phase it was left at. Refining an open phase into a defined one —
+adding its first objective, with a probe — is free, and the ledger records the sector initials
+on the next `clear`; notes left under the phase before it was refined leave the nudge and stay
+in the file. The conformance report flags this as **plan refined**, apart from **plan
+changed**, so the one a reviewer must read every time stays readable.
+
+### Changing a defined phase
+
+Any change to a defined phase's objectives, an objective's detector, or its position fails
+`check` unless the phase carries a new `concessions` entry naming a reason, dated. The tool
+does not judge whether the new criteria are weaker — that is not decidable in general and
+wrong on renames — so this is code review with a receipt. One receipt is the whole price: the
+concession authorizes the next `objectives clear` to re-baseline the sectors already in that
+phase's window, recording `{ from, to, reason }` in each ledger, so a widened detector does not
+also demand a concession per new hit. What `check` compares against is the plan
+`objectives clear` last wrote, in `.architecture-campaigns/<campaign>/plan.json`.
+
+## Sector terms
+
+Three terms are quantified over the sector's files rather than answered by one, and an
+objective holding one has `holdout: sector`: its holdout is the sector itself, one while the
+term fails and zero once it holds.
+
+| Term              | Holds when…                                                                                                                                                                                                                                  |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `has: <detector>` | at least one file in the sector satisfies the detector — a presence: a migration, an integration test, a flag. What a per-file detector cannot say, because a holdout is a thing that must go to zero and a presence a thing that must exist |
+| `oneRoot: true`   | every file of the sector sits under the root its perimeter was found at — co-located, which is what an `endState` needs                                                                                                                      |
+| `oneHost: <glob>` | every file of the sector matches the host — lifted whole                                                                                                                                                                                     |
+
+They need the sector's file list and nothing else, so the CLI reports them; the plugin, which
+sees one file, never reports one and reads its effect on the sector's phase through the ledger.
+
+## The end state
+
+For a campaign whose end is a layering — an onion, CQRS, the strangler's new host — writing
+structural objectives by hand is tedious and error-prone. `endState` is one ordinary node tree
+whose root `~/` is the sector rather than the repository, written on a phase (or on the
+campaign, where it belongs to the last phase; a campaign with no phases gets one, `end`). It
+expands into one objective per family it lowers to — `end-state-imports`, `end-state-members`,
+`end-state-surface`, `end-state-structure`, `end-state-exports` — each with `holdout:
+declaration`, keyed `file#subject` from the sector's root. It is compiled and probed once at an
+abstract root, so a tree whose rules cannot fire is refused at load like any other, and lowered
+once per sector with the sector's root as root when the CLI evaluates it.
+
+```yaml
+endState:
+  ~/:
+    surface: [{ message: "no default exports", kinds: [default] }]
+    children:
+      "domain/":
+        {
+          layout: open,
+          children: {},
+          imports: { allow: ["~/domain/**"] },
+          members: [{ use: no-file-system-calls }],
+        }
+      "ports/": { layout: open, children: {}, imports: { allow: ["~/domain/**"] } }
+      "adapters/":
+        {
+          layout: open,
+          children: {},
+          imports: { allow: ["~/ports/**", { sector: "*", via: "~/ports/" }] },
+        }
+```
+
+The one allow entry the sector-relative tree adds is `{ sector, via }` — another sector (`*`
+for any), through its port: for each other sector it expands to that sector's `via` folder. An
+end state needs a sector with one root; a campaign whose perimeter is a `marker` (which may
+list globs) is refused one at load, and `oneRoot` as an earlier phase's objective is how it
+gets there. The plugin never evaluates an end state; its residue reaches a file only as the
+phase it puts the sector at.
 
 ## Terms
 
@@ -119,28 +434,30 @@ positively — _the name has this shape_ — so a rename campaign detects the ol
 ast-grep uses inside a rule.
 
 ```yaml
-- id: rsc-boundaries
+rsc-boundaries:
   why: A component that uses client-only APIs must say so, or the server render fails at runtime.
   how: Add the `use client` directive at the top of the file, or move the hook into a client component.
   scope: ["app/**"]
-  unit: file
-  detect:
-    all:
-      - not: { content: { regex: '^["'']use client["'']' } }
-      - any:
-          - syntax: { pattern: "$HOOK($$$)", where: { HOOK: { regex: "^use[A-Z]" } } }
-          - imports: { resolves: { external: framer-motion } }
-          - fn: ./campaigns/rsc.mjs#needsClientBoundary
-  probes:
-    fires: [{ path: app/x.tsx, source: "export default () => { useState(); }" }]
   staleAfter: 30d
+  objectives:
+    client-boundary:
+      holdout: file
+      match:
+        all:
+          - not: { content: { regex: '^["'']use client["'']' } }
+          - any:
+              - syntax: { pattern: "$HOOK($$$)", where: { HOOK: { regex: "^use[A-Z]" } } }
+              - imports: { resolves: { external: framer-motion } }
+              - fn: ./campaigns/rsc.mjs#needsClientBoundary
+      probes:
+        fires: [{ path: app/x.tsx, source: "export default () => { useState(); }" }]
 ```
 
 Terms are evaluated cheapest first — the path, then the facts the parser already produced
 (`imports`, `exports`, `members`), then the file system (`requires`), the text
-(`content`), the syntax tree (`syntax`, parsed once per file and shared by every campaign),
+(`content`), the syntax tree (`syntax`, parsed once per file and shared by every objective),
 and last a predicate function. An `all` stops at the first file-level term that fails, so a
-`path` term in front of a `syntax` term is what keeps the parse off files the campaign
+`path` term in front of a `syntax` term is what keeps the parse off files the objective
 was never about.
 
 ## The syntax term
@@ -175,6 +492,41 @@ searches the immediate children or ancestors unless it says `stopBy: end`. `patt
 engine-neutral by construction; a later matcher over a different tree would ship a
 documented kind mapping rather than a compatibility surprise.
 
+## Where this family lives
+
+`campaigns` is the one family `@goodbones/core` does not own. It ships as
+[`@goodbones/campaigns`](https://www.npmjs.com/package/@goodbones/campaigns), a package that
+depends on the core and on nothing else, and both hosts pull it in for you — there is nothing to
+install and nothing to configure.
+
+The split is visible in exactly one place, and only if you are embedding the loader yourself
+rather than using the CLI or the plugin. A host composes the family as an extension:
+
+```ts
+import { campaignsExtension, campaignsOf } from "@goodbones/campaigns";
+import { loadPolicy } from "@goodbones/core";
+
+const policy = loadPolicy({
+  // …
+  extensions: [campaignsExtension({ functions, reports })],
+});
+
+const { campaignRules, ledgers } = campaignsOf(policy);
+```
+
+An extension claims its own top-level manifest keys — here `campaigns` and `ledger` — and decodes
+them with its own codec. The core splits those keys off before decoding the rest, so a manifest
+key that belongs to no loaded family is still refused as a misspelling, and the errors a campaign's
+own codec reports still name the line and the `use` they came through. A policy loaded without the
+extension simply has no campaigns; `architecture check` on a manifest that declares none is not an
+error either way.
+
+Why it is separate: the six architecture families answer "what may never happen", and this one
+answers "what is the code moving away from, and how far has it got". The second question needs a
+ledger, a git diff, a clock and another program's diagnostics, none of which the first needs. Every
+dependency runs one way — nothing in the core imports this family — so keeping them in one package
+only meant a policy that states architecture alone paid for machinery it never ran.
+
 The matcher is `@goodbones/ast-grep`, which both hosts compose into the TypeScript pack.
 The plugin parses `sourceCode.text` with the same matcher the CLI uses, so this family's
 parity contract is _one engine_ rather than a corpus. A campaign whose `scope` covers a
@@ -188,33 +540,35 @@ makes each diagnostic a match, so a campaign can ratchet down what another tool 
 with the granularity a count-per-file baseline throws away.
 
 ```yaml
-- id: type-errors
+type-errors:
   why: The strict tsconfig cannot land while these remain.
   how: Fix the type error at its source; do not add a cast or a `!`.
   owner: "@team/platform"
   scope: ["src/**"]
-  unit: match
-  detect:
-    report:
-      command: "npx tsc --noEmit --pretty false"
-      format: tsc
-      codesNot: [TS6133]
-  probes:
-    fires:
-      [
-        {
-          path: src/a.ts,
-          report: [{ line: 1, code: TS2551, message: "Property 'x' does not exist" }],
-        },
-      ]
-    ignores:
-      [
-        {
-          path: src/b.ts,
-          report: [{ line: 1, code: TS6133, message: "'x' is declared but never used" }],
-        },
-      ]
   staleAfter: 30d
+  objectives:
+    tsc:
+      holdout: match
+      match:
+        report:
+          command: "npx tsc --noEmit --pretty false"
+          format: tsc
+          codesNot: [TS6133]
+      probes:
+        fires:
+          [
+            {
+              path: src/a.ts,
+              report: [{ line: 1, code: TS2551, message: "Property 'x' does not exist" }],
+            },
+          ]
+        ignores:
+          [
+            {
+              path: src/b.ts,
+              report: [{ line: 1, code: TS6133, message: "'x' is declared but never used" }],
+            },
+          ]
 ```
 
 | Field      | Meaning                                                                                                                                        |
@@ -240,7 +594,7 @@ A tool that checks one project at a time — `tsc --project`, a language service
 tsconfig — is run once per project, and `command` takes the list:
 
 ```yaml
-detect:
+match:
   report:
     command:
       - "npx effect-tsgo diagnostics --project packages/server/tsconfig.src.json --format text --severity message"
@@ -293,17 +647,18 @@ export const needsClientBoundary = ({ file, text, facts, syntax }) =>
 It is given the file's path, its text, its facts (`specifiers`, `bindings`, `memberSites`,
 `exportSites`) and its syntax tree (`null` without a matcher), and answers either a boolean —
 a statement about the file — or a list of `{ subject, range? }`: declaration names in a
-`declaration` campaign, ledger keys of its own choosing in a `match` one. `CampaignPredicate`
+`declaration` objective, ledger keys of its own choosing in a `match` one. `CampaignPredicate`
 is exported from `@goodbones/core` so the module typechecks on its own. The function runs
 last, after every other term, and only when the cheaper ones have not already decided.
 
 ## Probes
 
-Every campaign carries probes, and a campaign that fails one refuses to load — the same
+Every `match` objective carries probes, and one that fails a probe refuses to load — the same
 vacuity check every rule makes, with a second half. `probes.fires` (at least one) are
-sources the campaign must report; `probes.ignores` are sources it must stay silent on, and
+sources the objective must report; `probes.ignores` are sources it must stay silent on, and
 when one of those fires the error names the first leaf term that admitted it — which,
-for a detector that is composed, is the term to tighten.
+for a detector that is composed, is the term to tighten. A `has` term's detector and a `match`
+perimeter's are proven the same way.
 
 A probe is a `path` — the file it stands for, which must be inside the campaign's own
 `scope` — and, for a detector that reads the file, a `source`: a snippet parsed by the
@@ -328,7 +683,17 @@ probes:
 ## What it does not do
 
 A campaign joins no coverage row: its reach is its `scope`, so the coverage numbers and the
-residue are unchanged by adding one. It fixes nothing — a campaign says what and why;
-codemods say how. And it walks what the language pack walks: the TypeScript pack visits
-`.ts`, `.tsx`, `.mts` and `.cts`, so a campaign over `.js` files has nothing to see until
-the pack does.
+residue are unchanged by adding one. It transforms no code — a campaign says what, why and
+which phase; codemods say how. It traces no runtime behaviour, runs no tests, and lands
+nothing across repositories. And, unless its scope widens the walk, it walks what the
+language pack walks: the TypeScript pack visits `.ts`, `.tsx`, `.mts` and `.cts`.
+
+## From the family's first shape
+
+The family shipped as a list of campaigns each carrying one `detect`. That shape is refused
+by name: a campaign is now a map keyed by its id, what a campaign used to be is one of its
+`objectives`, `unit` is `holdout` and `detect` is `match`; `title`, `why`, `how`, `owner`,
+`staleAfter` and `onComplete` sit on the campaign. A ledger in the first layout,
+`.architecture-campaigns/<id>.json`, is read as the one objective's under the implicit sector
+and rewritten in the new layout by the next `objectives clear`. `campaigns init`, `prune` and
+`allow` are `objectives clear` (which also writes a first ledger) and `objectives concede`.

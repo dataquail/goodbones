@@ -3,17 +3,26 @@ import { fileURLToPath } from "node:url";
 
 import { astGrepMatcher } from "@goodbones/ast-grep";
 import {
+  type CampaignPolicy,
   type CampaignRule,
+  CAMPAIGNS_EXTENSION_ID,
+  clearedSector,
   compileCampaignRules,
+  EMPTY_LEDGER,
+  evaluateObjectives,
+  IMPLICIT_SECTOR,
+  type Ledger,
+  ledgerKeyOf,
+  NO_REPORTS,
+  sectorEntryOf,
+} from "@goodbones/campaigns";
+import {
   EMPTY_BASELINE,
   EMPTY_GRAPH_RULES,
   EMPTY_STRUCTURE,
-  evaluateCampaigns,
   formatMessage,
-  ledgerOf,
   type LoadedPolicy,
   makeBaselineFilter,
-  NO_REPORTS,
 } from "@goodbones/core";
 import { makeFactExtractorFake, makeFileSystemFake } from "@goodbones/core/testing";
 import { factsOfText } from "@goodbones/typescript";
@@ -29,7 +38,7 @@ RuleTester.it = it;
 // The campaigns family's parity contract is "one engine": the plugin parses
 // `sourceCode.text` with the same matcher the CLI uses, and reads the facts
 // through the same reader. So the same fixture, run through the rule and
-// through `evaluateCampaigns` directly, must report the same hits — and a
+// through `evaluateObjectives` directly, must report the same hits — and a
 // ledgered hit must be silent in both.
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -48,53 +57,56 @@ throw new Error("top level");
 `,
 };
 
+// Three campaigns of the minimal shape: one objective each, the scope as
+// the one sector.
+const objective = (
+  campaign: string,
+  id: string,
+  message: string,
+  holdout: "file" | "declaration" | "match",
+  match: CampaignRule["objectives"][number]["match"],
+): CampaignRule => ({
+  name: `campaign/${campaign}`,
+  id: campaign,
+  scope: "^parity/",
+  extensions: [],
+  phases: [],
+  objectives: [
+    {
+      name: `campaign/${campaign}/${id}`,
+      id,
+      campaign,
+      message,
+      holdout,
+      ...(match === undefined ? {} : { match }),
+      probes: { fires: [], ignores: [] },
+    },
+  ],
+  onComplete: "keep",
+});
+
 const rules: ReadonlyArray<CampaignRule> = [
-  {
-    name: "campaign/react-class-components",
-    id: "react-class-components",
-    message: "Convert to a function component.",
-    why: "Class lifecycle methods block concurrent features.",
-    scope: "^parity/",
-    unit: "declaration",
-    detect: {
+  objective(
+    "react-class-components",
+    "class-shape",
+    "Convert to a function component.",
+    "declaration",
+    {
       syntax: {
         rule: { pattern: "class $NAME extends $BASE { $$$ }" },
         where: { BASE: { binding: { resolves: { external: "react" }, member: ["Component"] } } },
       },
     },
-    probes: { fires: [], ignores: [] },
-    staleAfter: 1,
-    onComplete: "keep",
-  },
-  {
-    name: "campaign/no-throw",
-    id: "no-throw",
-    message: "Return a Result.",
-    why: "Errors are values.",
-    scope: "^parity/",
-    unit: "match",
-    detect: { syntax: { rule: { pattern: "throw new Error($$$)" } } },
-    probes: { fires: [], ignores: [] },
-    staleAfter: 1,
-    onComplete: "keep",
-  },
-  {
-    name: "campaign/hooks-in-views",
-    id: "hooks-in-views",
-    message: "Move state out of the view.",
-    why: "Views render.",
-    scope: "^parity/",
-    unit: "file",
-    detect: {
-      all: [
-        { imports: { resolves: { external: "react" } } },
-        { members: { subject: "calls", name: "^use[A-Z]" } },
-      ],
-    },
-    probes: { fires: [], ignores: [] },
-    staleAfter: 1,
-    onComplete: "keep",
-  },
+  ),
+  objective("no-throw", "throws", "Return a Result.", "match", {
+    syntax: { rule: { pattern: "throw new Error($$$)" } },
+  }),
+  objective("hooks-in-views", "hooks", "Move state out of the view.", "file", {
+    all: [
+      { imports: { resolves: { external: "react" } } },
+      { members: { subject: "calls", name: "^use[A-Z]" } },
+    ],
+  }),
 ];
 
 const compiled = compileCampaignRules(rules);
@@ -119,7 +131,7 @@ const resolver = {
 
 const matcher = astGrepMatcher();
 
-const policyWith = (ledgers: LoadedPolicy["ledgers"]): LoadedPolicy => ({
+const policyWith = (ledgers: CampaignPolicy["ledgers"]): LoadedPolicy => ({
   repoRoot,
   config: { resolve: { scopes: [{ files: "", language: "typescript" }] }, tree: {} },
   importRules: [],
@@ -129,13 +141,24 @@ const policyWith = (ledgers: LoadedPolicy["ledgers"]): LoadedPolicy => ({
   graph: EMPTY_GRAPH_RULES,
   adoption: { unrestricted: [], partial: [] },
   structure: EMPTY_STRUCTURE,
-  campaignRules: compiled.success,
-  ledgers,
-  ledgerDir: ".architecture-campaigns",
-  functions: new Map(),
+  extensions: new Map<string, unknown>([
+    [
+      CAMPAIGNS_EXTENSION_ID,
+      {
+        campaignRules: compiled.success,
+        ledgers,
+        legacyLedgers: new Map(),
+        sectorRecords: new Map(),
+        plans: new Map(),
+        ledgerDir: ".architecture-campaigns",
+        functions: new Map(),
+        reports: NO_REPORTS,
+      } satisfies CampaignPolicy,
+    ],
+  ]),
+  routeFor: () => undefined,
   now: 0,
   syntax: matcher,
-  reports: NO_REPORTS,
   fileSystem: makeFileSystemFake([]),
   languages: [],
   extractor: makeFactExtractorFake({}),
@@ -146,24 +169,27 @@ const policyWith = (ledgers: LoadedPolicy["ledgers"]): LoadedPolicy => ({
 });
 
 // The CLI's answer: the same fixture through the evaluator directly.
-const hits = evaluateCampaigns(compiled.success, {
-  file: FIXTURE.file,
-  text: FIXTURE.code,
-  facts: factsOfText(FIXTURE.file, FIXTURE.code),
-  resolver,
-  fileSystem: makeFileSystemFake([]),
-  syntax: matcher.parse(FIXTURE.file, FIXTURE.code),
-  functions: new Map(),
-  reports: NO_REPORTS,
-});
+const hits = evaluateObjectives(
+  compiled.success.flatMap((rule) => rule.objectives),
+  {
+    file: FIXTURE.file,
+    text: FIXTURE.code,
+    facts: factsOfText(FIXTURE.file, FIXTURE.code),
+    resolver,
+    fileSystem: makeFileSystemFake([]),
+    syntax: matcher.parse(FIXTURE.file, FIXTURE.code),
+    functions: new Map(),
+    reports: NO_REPORTS,
+  },
+);
 
 describe("the evaluator's own answer", () => {
   it("is what the fixture was written to yield", () => {
     expect(hits.map((hit) => `${hit.violation.ruleName}|${hit.violation.subject ?? ""}`)).toEqual([
-      "campaign/react-class-components|Old",
-      expect.stringMatching(/^campaign\/no-throw\|#[0-9a-f]{8}$/),
-      expect.stringMatching(/^campaign\/no-throw\|helper#[0-9a-f]{8}$/),
-      "campaign/hooks-in-views|",
+      "campaign/react-class-components/class-shape|Old",
+      expect.stringMatching(/^campaign\/no-throw\/throws\|#[0-9a-f]{8}$/),
+      expect.stringMatching(/^campaign\/no-throw\/throws\|helper#[0-9a-f]{8}$/),
+      "campaign/hooks-in-views/hooks|",
     ]);
   });
 });
@@ -194,15 +220,28 @@ new RuleTester({ cwd: repoRoot }).run(
 
 // With every hit in its ledger, both hosts are silent; with the class
 // component's entry missing, both report exactly that one.
-const ledgered = new Map(
-  rules.map((rule) => [
-    rule.id,
-    ledgerOf(
-      rule.id,
-      hits.filter((hit) => hit.campaign === rule.id).map((hit) => hit.violation),
+const ledgerFor = (rule: CampaignRule, entries: ReadonlyArray<string>): [string, Ledger] => {
+  const [one] = rule.objectives;
+  if (one === undefined) throw new Error("no objective");
+  return [
+    ledgerKeyOf(rule.id, one.id),
+    clearedSector(
+      EMPTY_LEDGER(rule.id, one.id, 0),
+      IMPLICIT_SECTOR,
+      entries,
+      one.holdout === "sector" ? "file" : one.holdout,
       0,
+      "inside",
     ),
-  ]),
+  ];
+};
+const ledgered = new Map(
+  rules.map((rule) =>
+    ledgerFor(
+      rule,
+      hits.filter((hit) => hit.campaign === rule.id).map((hit) => sectorEntryOf(hit.violation, "")),
+    ),
+  ),
 );
 new RuleTester({ cwd: repoRoot }).run(
   "campaigns parity: ledgered",
@@ -214,7 +253,9 @@ new RuleTester({ cwd: repoRoot }).run(
 );
 
 const partial = new Map(ledgered);
-partial.set("react-class-components", ledgerOf("react-class-components", [], 0));
+const [reactRule] = rules;
+if (reactRule === undefined) throw new Error("no rule");
+partial.set(...ledgerFor(reactRule, []));
 new RuleTester({ cwd: repoRoot }).run(
   "campaigns parity: one unledgered",
   makeCampaignsRule(policyWith(partial)),
@@ -224,7 +265,12 @@ new RuleTester({ cwd: repoRoot }).run(
       {
         code: FIXTURE.code,
         filename,
-        errors: [{ message: "[campaign/react-class-components] Convert to a function component." }],
+        errors: [
+          {
+            message:
+              "[campaign/react-class-components/class-shape] Convert to a function component.",
+          },
+        ],
       },
     ],
   },

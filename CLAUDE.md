@@ -5,27 +5,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 An Nx + pnpm monorepo publishing architecture-policy tooling: a policy written as one manifest of
-the repository (`architecture.yaml`), enforced by an oxlint plugin and a CLI. Five packages,
+the repository (`architecture.yaml`), enforced by an oxlint plugin and a CLI. Six packages,
 all under `packages/`:
 
 - **`@goodbones/core`** (`packages/core`) — the manifest schema, the evaluators for the five
   per-file families (`imports`, `exports`, `members`, `surface`, `structure`), the `graph` family
-  (cycles, orphans, transitive reach) and the `campaigns` family (a migration as a detector and a
-  ledger), the `limits` ratchets, the ports a language pack implements, a fake per port under
-  `@goodbones/core/testing`, and `loadPolicy`. It names no language.
+  (cycles, orphans, transitive reach), the `limits` ratchets, the ports a language pack implements,
+  a fake per port under `@goodbones/core/testing`, and `loadPolicy`. It names no language, and it
+  does not know the `campaigns` family exists.
+- **`@goodbones/campaigns`** (`packages/campaigns`) — the `campaigns` family, which the core does
+  not own: a refactor as objectives with ledgers, over sectors, through phases. It is laid out as
+  the core is — `domain/`, its own two `ports/` (`CampaignPredicate`, `ReportSource`), the pure
+  `core/` evaluators, the `manifest/` slice it decodes and lowers, the `load/` extension a host
+  composes, `infrastructure/`, and the `host/` glue the CLI drives. It depends on the core and on
+  nothing else in the repository.
 - **`@goodbones/typescript`** (`packages/typescript`) — the TypeScript language pack: facts read
   through oxc-parser, specifiers resolved through `unrs-resolver`, behind the core's
   `Language` port.
 - **`@goodbones/cli`** (`packages/cli`) — the `architecture` bin: `check`, `conformance`, `baseline`,
-  `campaigns`, `coverage`, `explain`, `facts`, `init`, `infer`, `migrate`. Being the one host that sees every file at
-  once, it is where the graph family is evaluated, and where the conformance snapshot (residue, slack,
-  cycle count, leaf-first violations; schema in `packages/core/schema/conformance.schema.json`) is built.
+  `campaigns`, `objectives`, `coverage`, `explain`, `facts`, `init`, `infer`, `migrate`. Being the one
+  host that sees every file at once, it is where the graph family is evaluated, where a campaign's
+  sectors are discovered and its sector-level objectives answered, where the nudge
+  (`campaigns status --changed`) is computed, and where the conformance snapshot (residue, slack,
+  cycle count, leaf-first violations, per-sector phases; schema in
+  `packages/core/schema/conformance.schema.json`) is built.
 - **`@goodbones/ast-grep`** (`packages/ast-grep`) — the syntax matcher: the core's `SyntaxMatcher`
   port over `@ast-grep/napi`, for the `campaigns` family's `syntax` term. A host composes it into
   the TypeScript pack (`typescriptLanguage({ syntax: astGrepMatcher() })`); the pack never names it.
 - **`@goodbones/oxlint`** (`packages/oxlint`) — the plugin: six oxlint rules over the same manifest.
 
-Both hosts depend on the core and the pack and never on each other. `website/` is an Astro + Starlight
+Both hosts depend on the core, the pack and the campaigns family, and never on each other. `website/` is an Astro + Starlight
 docs site deployed to GitHub Pages at <https://dataquail.github.io/goodbones>.
 
 **The repository enforces its own architecture with the packages it publishes.**
@@ -42,23 +51,39 @@ numbers the day they were written and conformance ceilings (residue, vacant, sla
 concentration) at theirs, and one `campaigns` entry with a real ledger — so a family whose
 extraction quietly narrows breaks this lint run, not a user's.
 
-**The campaigns family tracks a migration as an object.** A campaign (`campaigns:` in the manifest)
-is a detector — `all`/`any`/`not` over `path`, `imports`, `exports`, `members`, `requires`, `content`,
+**The campaigns family tracks a refactor as an object.** A campaign (`campaigns.<id>` in the
+manifest; the design is `docs/scratch/DESIGN-campaigns.md`) owns `objectives`, each a detector —
+`match`: `all`/`any`/`not` over `path`, `imports`, `exports`, `members`, `requires`, `content`,
 `syntax` (an ast-grep rule), `report` (another program's diagnostics — `tsc`, `eslint`/`oxlint` JSON,
 or a `regex` — run once per process through `infrastructure/report-source-live.ts` and anchored on
-declarations through `SyntaxTree.anchorAt`) and `fn` (`module#export`) terms — with a unit (`file`, `declaration`,
-`match`), probes it must fire on and stay silent on, and a ledger under `.architecture-campaigns/`
-(`<id>.json`) of every place the pattern still occurs. The ledger only shrinks on its own:
-`architecture campaigns prune` removes, `campaigns allow --reason` is the one way an entry is added
-and it records a regression, and `check` verifies `entries.length === initial + Σ delta − fixed`. A
-fixed entry is stale and fails `check` like a stale baseline entry. The plugin evaluates this family
-by parsing `sourceCode.text` with the same ast-grep matcher the CLI uses — the only family the
-plugin parses with anything but oxlint's tree — so its parity contract is "one engine", pinned by
-`packages/oxlint/src/campaigns-parity.test.ts`. This repository runs one campaign on itself
-(`lowering-reports-not-throws`, over `packages/core/src/manifest/**`); its ledger is committed, and
-changing the count means pruning or allowing, in the open. `ARCHITECTURE_NOW` pins the clock the
-stall check reads. The TypeScript pack walks `.ts`-family files only, so a campaign over `.js` files
-has nothing to see until the pack's extensions widen — a separate decision.
+declarations through `SyntaxTree.anchorAt`) and `fn` (`module#export`) terms; or `sector`: `has`,
+`oneRoot`, `oneHost` over a sector's files — with a `holdout` (`file`, `declaration`, `match`,
+`sector`), probes, and a ledger under `.architecture-campaigns/<campaign>/<objective>.json` of every
+place the pattern still occurs, per sector, keyed relative to the sector's root. A **sector** is born
+by the campaign's `perimeter` (`marker`, `glob`, `match`, `file`, `nx`; the scope itself when there is
+none, named `scope`; the unclaimed remainder is `legacy`, pinned at the first phase) —
+`core/sectors.ts`. **Phases** are ordered groups of objectives, defined or open (intent only, and
+then last); a sector's phase is derived (first phase with residue — `core/phases.ts`), `until` opens
+a window, `attested: true` is left by `campaigns attest`, and the per-sector record
+(`sectors/<sector>.json`: `reached`, attestations, notes) plus `plan.json` are written by
+`objectives clear`. The ledger only shrinks on its own: `objectives clear` reconciles (stale leave,
+drift rewritten, entering sectors recorded with their initial, passed windows closed, a receipted
+phase change re-baselined), `objectives concede --reason` is the one way a holdout is added, and
+`check` verifies per sector `holdouts.length === initial + Σ delta − cleared − closed`; a defined
+phase changed without a `concessions` entry fails `check`. **The nudge**, `campaigns status
+--changed [--base <ref>] [--json] [--hotfix]` (`cli/src/campaigns.ts`, `cli/src/diff.ts`), is the
+family's deliverable: per touched sector, the phase and what would move it on, `ask`/`verdict`
+enumerated, non-zero under `ratchet`/`paydown`. The plugin reads membership off the perimeter and
+the phase off the ledgers (a sector no `clear` has placed stands at the first phase) and parses
+`sourceCode.text` with the same ast-grep matcher the CLI uses — the only family the plugin parses
+with anything but oxlint's tree — so its parity contract is "one engine", pinned by
+`packages/oxlint/src/campaigns-parity.test.ts` and `campaigns-phases.test.ts`. An `endState` is a
+sector-relative node tree lowered per sector (`lowerEndState`), CLI-only. This repository runs one
+campaign on itself (`lowering-reports-not-throws`, the minimal shape); its ledger is committed, and
+changing the count means clearing or conceding, in the open. `ARCHITECTURE_NOW` pins the clock the
+stall check reads. A campaign's `scope.extensions` widens the walk (`.js` for a JS→TS campaign);
+only that campaign sees the widened files. A `.mjs` manifest is cached by the module loader for
+the life of the process, so a test that edits the plan writes JSON.
 
 ## Commands
 
@@ -143,19 +168,40 @@ Changing `paths` in one file and not the other is how rules silently stop resolv
 new folder under a `src/` that no node governs trips the taxonomy-root catch-all rather than being
 quietly unpoliced; a new package under `packages/` is a new `~/<name>/` node with its own import
 allowlist (written in `packages/<name>/architecture.yaml` and included from the root, like the
-four that exist), plus a `paths` pair in `tsconfig.base.json` and `tsconfig.resolve.json`, an entry in
-`vitest.workspace.ts`, and a reference in the root `tsconfig.json` and `tsconfig.build.json`. Before
+five that exist), plus a `paths` pair in `tsconfig.base.json` and `tsconfig.resolve.json`, an entry in
+`vitest.workspace.ts`, an alias in `vitest.shared.ts`, a reference in the root `tsconfig.json` and
+`tsconfig.build.json`, a `references` entry in each dependent's `tsconfig.src.json` *and*
+`tsconfig.build.json`, an alias in the root manifest, an entry in the `no-dead-modules` graph rule
+for each of its barrels, and — if a host installs it — `PACKAGES` in `e2e/src/install.ts`. Before
 trusting a rule you just wrote, plant the violation it exists to catch and watch `pnpm lint` fail — the
 probe check proves a rule _can_ fire, not that it fires on what you meant.
+
+**A family the core does not own arrives as a `PolicyExtension`, and `campaigns` is the one.**
+`loadPolicy({ …, extensions: [campaignsExtension({ functions, reports })] })` is how a host composes
+it; `campaignsOf(policy)` reads its state back off `LoadedPolicy.extensions`, which the core carries
+opaquely. An extension declares the top-level manifest keys it claims (`campaigns` and `ledger`),
+and `decodeManifest` splits those off the expanded manifest before decoding what is left — so the
+core's codec, which still refuses an excess property, never learns a word of the family's
+vocabulary, and a key *no* extension claims is the misspelling it always was. The extension decodes
+its slice through the `describe` the core hands it, so its errors carry the same line, path and
+`use` trail a tree node's do, and it returns its own probe failures to be merged into the one
+"these rules do not report their own probe" refusal. `decode` and `load` are declared as *methods*
+rather than function properties on purpose: the loader holds every extension at one erased type
+once their specs are decoded, and method signatures are what make that assignable. Adding a second
+such family means a second package, not an edit to the core.
 
 **The manifest is a data file, and `packages/core/schema/architecture.schema.json` is generated from
 its codec.** `readManifestFile` reads `architecture.yaml`/`.yml`/`.json` through the `yaml` parser
 (YAML 1.2 core schema, merge keys on, unknown tags refused) and `.mjs` through `import()`; both
 hosts discover the file by name in that order and refuse a repository holding two. `defs`/`use`
 are expanded on the raw value before decoding (`manifest/expand.ts`), so they work in every form.
-The JSON Schemas (the manifest's, and `architecture-node.schema.json` for an included file) are
-emitted by `pnpm run schema:manifest` and `manifest/json-schema.test.ts` fails when a committed
-file is behind the codec — so a change to the manifest schema is followed by regenerating them,
+The JSON Schemas are emitted by `pnpm run schema:manifest`. `architecture.schema.json` is the
+*composed* one — the core's keys generated together with those of every family the bin loads, which
+today is `campaigns` — so the test that pins it lives in `packages/campaigns/src/manifest/
+json-schema.test.ts`, the one place that can see both codecs; the core's own
+`manifest/json-schema.test.ts` covers its half and the mechanics every key shares.
+`architecture-node.schema.json` is one node of the tree, which no family extends, so it stays the
+core's alone. Either test fails when a committed file is behind the codec — so a change to the manifest schema is followed by regenerating them,
 and the docs site copies both to `/schema/` at build. Decode errors name a line through the
 locator the YAML reader hands `loadPolicy`; a module manifest gets the path only.
 
@@ -246,8 +292,8 @@ TS2451, and the compiler owns it.
 - `src/domain/` — the manifest schema, the error types, the `Violation` and its line-independent
   fingerprint. No I/O.
 - `src/core/` — the pure evaluators (`imports`, `exports`, `members`, `surface`, `structure`, `graph`,
-  `campaigns`, `coverage`, `baseline`, `ledger`, `patterns`). Given facts, they return violations;
-  they never read a file.
+  `campaigns`, `sectors`, `phases`, `campaign-state`, `coverage`, `baseline`, `ledger`, `patterns`).
+  Given facts, they return violations; they never read a file.
 - `src/manifest/` — compiling the manifest tree down to flat, resolved rules (`lowerManifest`).
 - `src/load/` — `loadPolicy`: decode, lower, compile and probe a manifest the host has already
   read, with the language packs and the `FileSystem` the host hands in. Language-neutral; the
@@ -259,7 +305,16 @@ TS2451, and the compiler owns it.
   walker, reading the manifest file, importing the `fn` terms' modules (`campaign-functions.ts`),
   and running a `report` term's command (`report-source-live.ts`).
 
-The other three packages sit around it:
+`@goodbones/campaigns` repeats that shape for a family the core does not own — `domain/`,
+`ports/`, `core/`, `manifest/`, `load/`, `infrastructure/`, and a `host/` tier above them for the
+glue that runs git and writes ledgers. Two graph rules in the root policy pin it:
+`campaigns-reaches-only-the-core` (it reaches the core and no peer, so a second such family is a
+second package) and `campaigns-pure-tiers-reach-no-adapter`. Two couplings are kept on purpose:
+`Violation.kind` still carries `"campaign"`, and `domain/snapshot.ts` still declares the
+conformance report's campaign fields — a published report format is a shared contract even when
+the implementation that fills it lives elsewhere.
+
+The other four packages sit around it:
 
 - `@goodbones/typescript` implements the ports for one language and assembles them into
   `typescriptLanguage()`. Its extractor is what the CLI reads every file through and what the

@@ -2,14 +2,7 @@ import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as SchemaIssue from "effect/SchemaIssue";
 
-import {
-  CampaignUnit,
-  DeclarationKind,
-  ImportProbeTarget,
-  ProbeDiagnostic,
-  ReportFormat,
-  ResolveConfig,
-} from "../domain/architecture-config.js";
+import { DeclarationKind, ResolveConfig } from "../domain/architecture-config.js";
 import { ConfigInvalid } from "../domain/architecture-error.js";
 import {
   type ManifestLocator,
@@ -17,6 +10,7 @@ import {
   renderManifestPath,
 } from "../domain/manifest-location.js";
 import { expandManifest, originOf, type Substitution } from "./expand.js";
+import type { ManifestExtension } from "./extension.js";
 
 // A manifest is a tree of nodes keyed by path pattern, where everything the
 // architecture says about a part of the tree is written at that part of the tree.
@@ -112,7 +106,7 @@ const Members = Schema.Struct({
 // is about; exactly one demand says what is required of them, and none means
 // `forbid` — a selected site is the violation. Stated on a folder it covers
 // the subtree, like `members`.
-const SurfaceConvention = Schema.Union([
+export const SurfaceConvention = Schema.Union([
   Schema.Literals(["kebab-case", "camelCase", "PascalCase", "snake_case"]),
   Schema.Struct({ regex: Schema.String }),
 ]);
@@ -281,201 +275,27 @@ const Limits = Schema.Struct({
   conformance: Schema.optionalKey(ConformanceCeilings),
 });
 
-// A campaign: a migration the repository is running, tracked as an object —
-// a detector, a rationale, a guide, an owner, a definition of done, and a
-// ledger of every place the pattern still occurs. Where a rule says what may
-// never happen, a campaign names what the code is moving away from.
-//
-// The detector is a predicate algebra: `all`, `any` and `not` over leaf
-// terms, the same three words ast-grep uses. Leaf terms reuse the other
-// families' vocabularies where one exists.
 
-// A regular expression over the whole repo-relative path, matched as the
-// `structure` naming rules are: with `subject` and `convention`, the capture
-// group named holds the name being judged, and the term holds when the name
-// has the convention's shape.
-const PathTerm = Schema.Struct({
-  file: Globs,
-  fileNot: Schema.optionalKey(Globs),
-  subject: Schema.optionalKey(Schema.Finite),
-  convention: Schema.optionalKey(SurfaceConvention),
+const decodeTree = Schema.decodeUnknownResult(Schema.Record(Schema.String, ManifestNodeSchema), {
+  errors: "all",
+  onExcessProperty: "error",
 });
 
-// Holds when some import of the file resolves to the target — a path glob,
-// `{ external: <package> }` or `{ builtin: <module> }` — and, with `symbols`,
-// pulls one of those names across it.
-const ImportsTerm = Schema.Struct({
-  resolves: ImportProbeTarget,
-  symbols: Schema.optionalKey(Schema.Array(Schema.String)),
-});
+// A tree of nodes, as an `endState` is once rebased: decoded like the
+// manifest's own, every issue listed.
+export const decodeManifestTree = (
+  raw: unknown,
+): Result.Result<Readonly<Record<string, ManifestNode>>, string> => {
+  const decoded = decodeTree(raw);
+  return Result.isFailure(decoded)
+    ? Result.fail(
+        flatten(decoded.failure.issue)
+          .issues.map((issue) => `${renderManifestPath(pathOf(issue))}: ${issue.message}`)
+          .join("\n"),
+      )
+    : Result.succeed(decoded.success);
+};
 
-// Holds for an export site the selectors admit — the `surface` selectors.
-const ExportsTerm = Schema.Struct({
-  name: Schema.optionalKey(Globs),
-  kinds: Schema.optionalKey(Schema.Array(Schema.Literals(["named", "default", "namespace"]))),
-  declares: Schema.optionalKey(Schema.Array(DeclarationKind)),
-  reexport: Schema.optionalKey(Schema.Boolean),
-});
-
-// Holds for a member site the selectors admit — the `members` selectors.
-const MembersTerm = Schema.Struct({
-  subject: Schema.Literals(["members", "calls"]),
-  name: Schema.optionalKey(Globs),
-  in: Schema.optionalKey(Globs),
-  declares: Schema.optionalKey(Schema.Array(DeclarationKind)),
-});
-
-// A regular expression over the file's text, multiline.
-const ContentTerm = Schema.Struct({ regex: Schema.String });
-
-// How a metavariable is narrowed: by the text it captured, or by what the
-// identifier at its root is bound to — the module it resolves to and the
-// name it was imported as (`member`), which is how `class $N extends $BASE`
-// says "a React component" rather than "any class with a base".
-const CaptureNarrowing = Schema.Struct({
-  regex: Schema.optionalKey(Schema.String),
-  binding: Schema.optionalKey(
-    Schema.Struct({
-      resolves: ImportProbeTarget,
-      member: Schema.optionalKey(Schema.Array(Schema.String)),
-    }),
-  ),
-});
-
-// An ast-grep rule object — `pattern`, `kind`, `regex`, `has`, `inside`,
-// `precedes`, `follows`, `nthChild`, `all`, `any`, `not` — with `where`
-// beside it. The rule is the engine's to validate; the manifest only knows
-// which keys are a rule's and which is the narrowing. `kind` names are the
-// engine's node kinds, which today are tree-sitter's.
-const SyntaxTerm = Schema.Struct({
-  pattern: Schema.optionalKey(Schema.Unknown),
-  kind: Schema.optionalKey(Schema.Unknown),
-  regex: Schema.optionalKey(Schema.Unknown),
-  nthChild: Schema.optionalKey(Schema.Unknown),
-  inside: Schema.optionalKey(Schema.Unknown),
-  has: Schema.optionalKey(Schema.Unknown),
-  precedes: Schema.optionalKey(Schema.Unknown),
-  follows: Schema.optionalKey(Schema.Unknown),
-  all: Schema.optionalKey(Schema.Unknown),
-  any: Schema.optionalKey(Schema.Unknown),
-  not: Schema.optionalKey(Schema.Unknown),
-  where: Schema.optionalKey(Schema.Record(Schema.String, CaptureNarrowing)),
-});
-
-// One program to run or file to read, or several: a tool that takes one
-// project at a time is run once per project, and the outputs are read as
-// one report — a diagnostic two of them print is one diagnostic.
-const ReportSources = Schema.Union([
-  Schema.String,
-  Schema.Array(Schema.String).check(Schema.isMinLength(1)),
-]);
-
-// A finding of another program, read from the output of `command` (run
-// from the repository root, once per `check`) or from `file` (written by
-// an earlier step) in one of the known formats — `tsc`, `eslint --format
-// json`, `oxlint --format json` — or by a `regex` with named groups. Holds
-// for each diagnostic on the file whose code the term speaks to.
-const ReportTerm = Schema.Struct({
-  command: Schema.optionalKey(ReportSources),
-  file: Schema.optionalKey(ReportSources),
-  format: ReportFormat,
-  pattern: Schema.optionalKey(Schema.String),
-  codes: Schema.optionalKey(Schema.Array(Schema.String)),
-  codesNot: Schema.optionalKey(Schema.Array(Schema.String)),
-}).check(
-  // Refused at decode, where the issue names a line, rather than in the
-  // lowering: a term that names both sources or neither, and a `regex`
-  // term with nothing to match lines against.
-  Schema.makeFilter((term) => {
-    const issues: Array<Schema.FilterIssue> = [];
-    if ((term.command === undefined) === (term.file === undefined)) {
-      issues.push(
-        "a report term names exactly one of `command` (a program to run) and `file` (a report already written)",
-      );
-    }
-    if (term.format === "regex" && term.pattern === undefined) {
-      issues.push({
-        path: ["pattern"],
-        issue: "a `regex` report term needs a `pattern` with named groups `file` and `line`",
-      });
-    }
-    return issues;
-  }),
-);
-
-export type DetectorSpec =
-  | { readonly all: ReadonlyArray<DetectorSpec> }
-  | { readonly any: ReadonlyArray<DetectorSpec> }
-  | { readonly not: DetectorSpec }
-  | { readonly path: typeof PathTerm.Type }
-  | { readonly imports: typeof ImportsTerm.Type }
-  | { readonly exports: typeof ExportsTerm.Type }
-  | { readonly members: typeof MembersTerm.Type }
-  // The `structure` parity strings: holds when every named sibling exists.
-  | { readonly requires: ReadonlyArray<string> }
-  | { readonly content: typeof ContentTerm.Type }
-  | { readonly syntax: typeof SyntaxTerm.Type }
-  | { readonly report: typeof ReportTerm.Type }
-  // `module#export`: a predicate function the host imports before loading.
-  | { readonly fn: string };
-
-// Each object carries exactly one term key, so a misspelled one is a decode
-// error that names the line rather than a term quietly dropped.
-const DetectorRef = Schema.suspend((): Schema.Codec<DetectorSpec> => DetectorSpec);
-
-const DetectorSpec = Schema.Union([
-  Schema.Struct({ all: Schema.Array(DetectorRef) }),
-  Schema.Struct({ any: Schema.Array(DetectorRef) }),
-  Schema.Struct({ not: DetectorRef }),
-  Schema.Struct({ path: PathTerm }),
-  Schema.Struct({ imports: ImportsTerm }),
-  Schema.Struct({ exports: ExportsTerm }),
-  Schema.Struct({ members: MembersTerm }),
-  Schema.Struct({ requires: Schema.Array(Schema.String) }),
-  Schema.Struct({ content: ContentTerm }),
-  Schema.Struct({ syntax: SyntaxTerm }),
-  Schema.Struct({ report: ReportTerm }),
-  Schema.Struct({ fn: Schema.String }),
-]);
-
-// A source the campaign is proven against at load. `path` alone proves a
-// path-shaped detector; `source` is parsed, `edges` answers the `imports`
-// term and a binding narrowing in place of the live resolver, `files`
-// answers `requires` in place of the file system, and `report` answers a
-// `report` term in place of running anything — one-based positions, as a
-// tool prints them.
-const CampaignProbe = Schema.Struct({
-  path: Schema.String,
-  source: Schema.optionalKey(Schema.String),
-  edges: Schema.optionalKey(Schema.Record(Schema.String, ImportProbeTarget)),
-  files: Schema.optionalKey(Schema.Array(Schema.String)),
-  report: Schema.optionalKey(Schema.Array(ProbeDiagnostic)),
-});
-
-// `30d`, `12h`: how long a campaign may go without progress before the
-// conformance report calls it stalled.
-const Duration = Schema.String.check(Schema.isPattern(/^\d+[dh]$/));
-
-const Campaign = Schema.Struct({
-  // The ledger file's name, and the rule name's tail: `campaign/<id>`.
-  id: Schema.String.check(Schema.isPattern(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)),
-  title: Schema.optionalKey(Schema.String),
-  why: Schema.String,
-  // What a reader at a hit does about it — the message every hit carries.
-  how: Schema.String,
-  owner: Schema.optionalKey(Schema.String),
-  // Which files the campaign selects. Alias-aware globs, as the graph rules
-  // take; a campaign's reach is its scope, so it joins no coverage row.
-  scope: Globs,
-  unit: CampaignUnit,
-  detect: DetectorSpec,
-  probes: Schema.Struct({
-    fires: Schema.Array(CampaignProbe),
-    ignores: Schema.optionalKey(Schema.Array(CampaignProbe)),
-  }),
-  staleAfter: Duration,
-  onComplete: Schema.optionalKey(Schema.Literals(["keep", "remove"])),
-});
 
 export const Manifest = Schema.Struct({
   // How an import specifier becomes a file. Every pattern below is matched
@@ -491,10 +311,6 @@ export const Manifest = Schema.Struct({
   exports: Schema.optionalKey(Schema.Array(ExportRestriction)),
   graph: Schema.optionalKey(Graph),
   limits: Schema.optionalKey(Limits),
-  campaigns: Schema.optionalKey(Schema.Array(Campaign)),
-  // Where each campaign's ledger is written: `<ledger>/<id>.json`, relative
-  // to the manifest. Defaults to `.architecture-campaigns`.
-  ledger: Schema.optionalKey(Schema.String),
   // Shorthands expanded in every glob, so a pattern reads the way the repo's own
   // imports do rather than repeating `packages/server/src` on every line.
   aliases: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
@@ -510,17 +326,8 @@ export type GraphSpec = typeof Graph.Type;
 export type LimitsSpec = typeof Limits.Type;
 export type NamingSpec = typeof Naming.Type;
 export type ExportRestriction = typeof ExportRestriction.Type;
-export type CampaignSpec = typeof Campaign.Type;
-export type CampaignProbeSpec = typeof CampaignProbe.Type;
-export type SyntaxTermSpec = typeof SyntaxTerm.Type;
 
-export const DEFAULT_LEDGER_DIR = ".architecture-campaigns";
 
-// `30d` → milliseconds. The schema has already refused any other shape.
-export const durationMs = (duration: string): number => {
-  const amount = Number(duration.slice(0, -1));
-  return amount * (duration.endsWith("h") ? 3_600_000 : 86_400_000);
-};
 
 export const globsOf = (globs: string | ReadonlyArray<string>): ReadonlyArray<string> =>
   typeof globs === "string" ? [globs] : globs;
@@ -534,6 +341,10 @@ const flatten = SchemaIssue.makeFormatterStandardSchemaV1();
 
 export type DecodedManifest = {
   readonly manifest: Manifest;
+  // What each family the core does not own decoded out of the keys it claims,
+  // keyed by the extension's id. The core carries these and never looks
+  // inside them.
+  readonly extensions: ReadonlyMap<string, unknown>;
   // Things the manifest said in a form that still loads but is on its way out.
   // The host prints them; nothing else acts on them.
   readonly notices: ReadonlyArray<string>;
@@ -639,10 +450,15 @@ const normalizeLegacyMembers = (
   return { input: { ...input, tree }, notices };
 };
 
+
 export type DecodeManifestOptions = {
   // Turns a path in the file into a line and column. The YAML reader supplies
   // one; a JavaScript module has no positions to give and passes nothing.
   readonly locate?: ManifestLocator | undefined;
+  // Families the core does not own. Each claims top-level keys, which are
+  // split off before the core decodes what is left and handed to that
+  // family's own codec.
+  readonly extensions?: ReadonlyArray<ManifestExtension> | undefined;
 };
 
 const fileLabelOf = (configPath: string): string => configPath.split(/[\\/]/).at(-1) ?? configPath;
@@ -714,7 +530,35 @@ export const decodeManifest = (
   }
   const { substitutions, value } = expanded.success;
 
-  const resolve = normalizeLegacyResolve(value);
+  const extensions = options.extensions ?? [];
+  const describe = (path: ManifestPath, detail: string): string =>
+    describeIssue(configPath, options.locate, substitutions, path, detail);
+
+  // The keys a family the core does not own claims are split off here. What
+  // is left is decoded by the core's codec with excess properties refused, so
+  // a key nobody claims is still the misspelling it always was.
+  const claimed = new Map<string, string>();
+  for (const extension of extensions) {
+    for (const key of extension.manifestKeys) {
+      const already = claimed.get(key);
+      if (already !== undefined) {
+        return Result.fail(
+          new ConfigInvalid({
+            configPath,
+            detail:
+              `two loaded families both claim the manifest key \`${key}\` ` +
+              `("${already}" and "${extension.id}"). Load one of them.`,
+          }),
+        );
+      }
+      claimed.set(key, extension.id);
+    }
+  }
+  const core = isRecord(value)
+    ? Object.fromEntries(Object.entries(value).filter(([key]) => !claimed.has(key)))
+    : value;
+
+  const resolve = normalizeLegacyResolve(core);
   const members = normalizeLegacyMembers(resolve.input);
   const decoded = decode(members.input);
   if (Result.isFailure(decoded)) {
@@ -728,8 +572,32 @@ export const decodeManifest = (
       }),
     );
   }
+
+  // Each family decodes its own slice, and renders its issues the way the
+  // core renders its own. One family's failure is reported on its own: the
+  // core's decode already succeeded, so there is nothing to collect it with.
+  const decodedExtensions = new Map<string, unknown>();
+  for (const extension of extensions) {
+    const slice = isRecord(value)
+      ? Object.fromEntries(
+          extension.manifestKeys.flatMap((key) => (key in value ? [[key, value[key]]] : [])),
+        )
+      : {};
+    const result = extension.decode(slice, describe);
+    if (Result.isFailure(result)) {
+      return Result.fail(
+        new ConfigInvalid({
+          configPath,
+          detail: `the manifest does not decode:\n${result.failure.join("\n")}`,
+        }),
+      );
+    }
+    decodedExtensions.set(extension.id, result.success);
+  }
+
   return Result.succeed({
     manifest: decoded.success,
+    extensions: decodedExtensions,
     notices: [...resolve.notices, ...members.notices],
     substitutions,
   });

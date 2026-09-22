@@ -12,21 +12,26 @@ import { createRepo, type Repo } from "../repo.js";
 
 const manifest = (repo: Repo): Readonly<Record<string, unknown>> => ({
   resolve: { scopes: [repo.profile.scope], unresolved: "off" },
-  campaigns: [
-    {
-      id: "type-errors",
+  campaigns: {
+    "type-errors": {
       why: "The strict tsconfig cannot land while these remain.",
       how: "Fix the type error; do not add a cast.",
       scope: ["src/**"],
-      unit: "match",
-      detect: { report: { command: "node report.mjs", format: "tsc", codesNot: ["TS6133"] } },
-      probes: {
-        fires: [{ path: "src/a.ts", report: [{ line: 1, code: "TS2551", message: "m" }] }],
-        ignores: [{ path: "src/b.ts", report: [{ line: 1, code: "TS6133", message: "m" }] }],
-      },
       staleAfter: "30d",
+      objectives: {
+        tsc: {
+          holdout: "match",
+          match: {
+            report: { command: "node report.mjs", format: "tsc", codesNot: ["TS6133"] },
+          },
+          probes: {
+            fires: [{ path: "src/a.ts", report: [{ line: 1, code: "TS2551", message: "m" }] }],
+            ignores: [{ path: "src/b.ts", report: [{ line: 1, code: "TS6133", message: "m" }] }],
+          },
+        },
+      },
     },
-  ],
+  },
   tree: { "src/": { layout: "open", children: {} } },
 });
 
@@ -60,7 +65,7 @@ describe("a report term", () => {
     const hits = before.json.violations.filter((one) => one.kind === "campaign");
     expect(hits.map((one) => one.fingerprint)).toEqual([
       expect.stringMatching(
-        /^campaign\|campaign\/type-errors\|src\/a\.ts\|parse#TS2551#[0-9a-f]{8}$/,
+        /^campaign\|campaign\/type-errors\/tsc\|src\/a\.ts\|parse#TS2551#[0-9a-f]{8}$/,
       ),
     ]);
 
@@ -71,8 +76,8 @@ describe("a report term", () => {
       JSON.stringify(linted.diagnostics, null, 2) + linted.stderr,
     ).toEqual(["architecture/campaigns src/a.ts"]);
 
-    const init = cli(repo, ["campaigns", "init", "type-errors", "src"]);
-    expect(init.code, init.stderr).toBe(0);
+    const cleared = cli(repo, ["objectives", "clear", "type-errors", "src"]);
+    expect(cleared.code, cleared.stderr).toBe(0);
     const after = check(repo, ["src"]);
     expect(after.code, after.stderr).toBe(0);
     const again = oxlint(repo, ["src"]);
@@ -106,20 +111,23 @@ describe("a report term", () => {
     });
     several.writeManifest({
       ...manifest(several),
-      campaigns: [
-        {
-          id: "type-errors",
+      campaigns: {
+        "type-errors": {
           why: "w",
           how: "h",
           scope: ["src/**"],
-          unit: "match",
-          detect: { report: { command: ["node one.mjs", "node two.mjs"], format: "tsc" } },
-          probes: {
-            fires: [{ path: "src/a.ts", report: [{ line: 1, code: "TS2551", message: "m" }] }],
-          },
           staleAfter: "30d",
+          objectives: {
+            tsc: {
+              holdout: "match",
+              match: { report: { command: ["node one.mjs", "node two.mjs"], format: "tsc" } },
+              probes: {
+                fires: [{ path: "src/a.ts", report: [{ line: 1, code: "TS2551", message: "m" }] }],
+              },
+            },
+          },
         },
-      ],
+      },
     });
     try {
       const result = check(several, ["src"]);
@@ -127,10 +135,10 @@ describe("a report term", () => {
       const hits = result.json.violations.filter((one) => one.kind === "campaign");
       expect(hits.map((one) => one.fingerprint).sort()).toEqual([
         expect.stringMatching(
-          /^campaign\|campaign\/type-errors\|src\/a\.ts\|parse#TS2551#[0-9a-f]{8}$/,
+          /^campaign\|campaign\/type-errors\/tsc\|src\/a\.ts\|parse#TS2551#[0-9a-f]{8}$/,
         ),
         expect.stringMatching(
-          /^campaign\|campaign\/type-errors\|src\/b\.ts\|other#TS2551#[0-9a-f]{8}$/,
+          /^campaign\|campaign\/type-errors\/tsc\|src\/b\.ts\|other#TS2551#[0-9a-f]{8}$/,
         ),
       ]);
 
@@ -149,20 +157,23 @@ describe("a report term", () => {
     const broken = createRepo({ files: { "src/a.ts": "export const a = 1;\n" } });
     broken.writeManifest({
       ...manifest(broken),
-      campaigns: [
-        {
-          id: "type-errors",
+      campaigns: {
+        "type-errors": {
           why: "w",
           how: "h",
           scope: ["src/**"],
-          unit: "match",
-          detect: { report: { file: "missing-report.txt", format: "tsc" } },
-          probes: {
-            fires: [{ path: "src/a.ts", report: [{ line: 1, code: "TS1", message: "m" }] }],
-          },
           staleAfter: "30d",
+          objectives: {
+            tsc: {
+              holdout: "match",
+              match: { report: { file: "missing-report.txt", format: "tsc" } },
+              probes: {
+                fires: [{ path: "src/a.ts", report: [{ line: 1, code: "TS1", message: "m" }] }],
+              },
+            },
+          },
         },
-      ],
+      },
     });
     try {
       const result = cli(broken, ["check", "--json", "src"]);

@@ -2,6 +2,11 @@ name: Publish
 
 on:
   workflow_dispatch:
+    inputs:
+      first_release:
+        description: "Publish a package that is not on the registry yet. For one job only: a version that was tagged but never reached npm. A genuine first publish goes through the First Publish workflow."
+        type: boolean
+        default: false
   release:
     types:
       - created
@@ -64,3 +69,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           # We need to set provenance to true in order to generate provenance statement
           NPM_CONFIG_PROVENANCE: true
+          # Absent this, publish.sh SKIPS a package with no registry version
+          # rather than quietly first-publishing it. A release-triggered run
+          # never sets it; only a human dispatch can, and only on purpose.
+          ALLOW_FIRST_PUBLISH: ${{ inputs.first_release || false }}

@@ -145,10 +145,26 @@ jobs:
       # tarball. Private packages are out for the same reason `nx release`
       # would exclude them by default: `release.projects` is set explicitly
       # here, which turns that default off.
+      #
+      # Leaving an unpublished package out of `--projects` is NOT enough, and
+      # believing it was is what broke @goodbones/campaigns. `updateDependents:
+      # "auto"` versions every workspace package that depends on something in
+      # the release, whether or not it was named — so a package that is merely
+      # skipped here still gets versioned, tagged and GitHub-released. A
+      # never-published package on `0.1.0-beta.0` takes a plain patch bump to a
+      # stable `0.1.0`, with no preid and no publish, and First Publish then
+      # refuses it because a release tag exists. The version number is burned
+      # and the fix is an unpublish.
+      #
+      # So this is a gate, not a filter: while any package under `packages/` is
+      # missing from the registry, no release runs at all. The window is exactly
+      # "a new package has landed on main and First Publish has not run yet",
+      # and the way through it is to run First Publish, not to merge more.
       - name: Find the packages the registry already knows
         id: releasable
         run: |
           releasable=""
+          unpublished=""
           for manifest in packages/*/package.json; do
             [ -f "$manifest" ] || continue
             name=$(node -p "JSON.parse(require('fs').readFileSync('$manifest','utf8')).name")
@@ -159,9 +175,25 @@ jobs:
               echo "  - $name is on the registry; releasable"
               releasable="${releasable:+$releasable,}$name"
             else
-              echo "  - $name has never been published; skipped (use the First Publish workflow)"
+              echo "  - $name has never been published"
+              unpublished="${unpublished:+$unpublished, }$name"
             fi
           done
+
+          if [ -n "$unpublished" ]; then
+            {
+              echo "::error::Refusing to release: $unpublished has never been published."
+              echo ""
+              echo "  \`updateDependents: auto\` would version and tag it anyway, as a stable"
+              echo "  version with no preid and no publish — and once that tag exists the First"
+              echo "  Publish workflow refuses the package and the version number is burned."
+              echo ""
+              echo "  Run the **First Publish** workflow for: $unpublished"
+              echo "  Then re-run this job. Nothing was versioned, tagged or published."
+            } >&2
+            exit 1
+          fi
+
           echo "projects=${releasable}" >> "$GITHUB_OUTPUT"
           [ -n "$releasable" ] || echo "Nothing to release."
 

@@ -1,6 +1,6 @@
 {
   "name": "@goodbones/ast-grep",
-  "version": "0.1.2",
+  "version": "1.0.0",
   "type": "module",
   "license": "MIT",
   "description": "The ast-grep syntax matcher for @goodbones/core: a campaign's `syntax` term, evaluated through @ast-grep/napi behind the core's SyntaxMatcher port.",

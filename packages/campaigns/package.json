@@ -1,6 +1,6 @@
 {
   "name": "@goodbones/campaigns",
-  "version": "0.1.0",
+  "version": "0.1.0-beta.0",
   "type": "module",
   "license": "MIT",
   "description": "The campaigns family for @goodbones/core: a refactor tracked as objectives over sectors through phases, with a ledger that only shrinks on its own and a diff-scoped nudge.",

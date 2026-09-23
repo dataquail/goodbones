@@ -1,10 +1,11 @@
 # Release Process
 
 Packages in this repository are versioned and published **independently**: a change confined to
-`@goodbones/typescript` bumps and releases only that package — and, because `updateDependents` is
-`auto`, the packages that depend on it (`@goodbones/cli`, `@goodbones/oxlint`) get a dependency bump
-of their own. Workspace dependencies are written as `workspace:*` and rewritten to the released
-version on publish.
+`@goodbones/typescript` bumps and releases only that package. `updateDependents` is `never`, so the
+packages that depend on it (`@goodbones/cli`, `@goodbones/oxlint`) are _not_ dragged along — they
+are released when they carry their own commits. Workspace dependencies are written as `workspace:*`
+and rewritten to the released version on publish, so a host that has not been re-released keeps
+working against the dependency versions it shipped with.
 
 ## Packages that have not been published yet
 
@@ -16,24 +17,38 @@ before someone has run the **First Publish** workflow below and read its dry run
 `fallbackCurrentVersionResolver: "disk"` would otherwise let the first `feat:` commit release a brand-new
 package with no one looking.)
 
-**Publish a dependency together with its unreleased dependents.** `updateDependents: auto` means
-versioning `@goodbones/core` also versions `typescript`, `cli` and `oxlint`; an unreleased dependent
-gets a plain patch bump, which turns `0.1.0-beta.0` into a stable `0.1.0`, tagged and never published.
-The First Publish preflight refuses that; name every package in the set —
-`@goodbones/core, @goodbones/typescript, @goodbones/cli, @goodbones/oxlint` — in one run.
+**`updateDependents` is `never`, and that is load-bearing.** nx hardcodes the bump it gives a
+dependent:
+
+```js
+// nx/src/command-line/release/version/release-group-processor.js
+await this.bumpVersionForProject(dependent, "patch", "DEPENDENCY_WAS_BUMPED", {});
+```
+
+and `semver.inc("0.1.0-beta.11", "patch")` is `"0.1.0"`. So under `auto`, _any_ package on a
+prerelease that is versioned only because a dependency moved silently leaves the prerelease track
+and takes a stable number. That is what cost `@goodbones/campaigns` its `0.1.0`: it sat on
+`0.1.0-beta.0`, was bumped as a dependent of the core, and landed on a stable `0.1.0` that nothing
+then published. nx exposes no way to change that specifier, so dependents are not versioned at all.
+
+The consequence to keep in mind: releasing `@goodbones/core` no longer publishes a `cli` or `oxlint`
+that depends on the new version. Give them their own conventional commit when they should go out
+together. The First Publish preflight still refuses a run that would leave an unreleased dependent
+behind, so a first publish of a set names the whole set.
 
 **A new package must be First Published in the same breath as landing on `main`.** This is the
 sharpest edge in this setup, and it cost `@goodbones/campaigns` its `0.1.0`.
 
-`updateDependents: "auto"` versions every workspace package that depends on something in a release
-— _whether or not it was named in `--projects`_. So a package that has landed on `main` but has
-never been published does not sit quietly waiting for First Publish. The next push to `main`
-versions it, and a package on `0.1.0-beta.0` takes a plain patch bump to a stable **`0.1.0`**, with
-no preid, a git tag, and no publish. First Publish then refuses it — correctly, since cutting a
-second version on top would be worse — and the only ways out are to publish the tag that exists or
+When `updateDependents` was `auto`, it versioned every workspace package that depended on something
+in a release — _whether or not it was named in `--projects`_. So a package that had landed on `main`
+but had never been published did not sit quietly waiting for First Publish: the next push to `main`
+versioned it, and a package on `0.1.0-beta.0` took a plain patch bump to a stable **`0.1.0`**, with
+no preid, a git tag, and no publish. First Publish then refused it — correctly, since cutting a
+second version on top would be worse — and the only ways out were to publish the tag that existed or
 to unpublish and burn the number.
 
-Two mechanical guards now close that window:
+Setting `updateDependents` to `never` removes that mechanism. Two further guards close the window
+for good, and are worth keeping even so:
 
 1. **The release job refuses to run while any package under `packages/` is missing from the
    registry.** Not "skips it" — refuses, before anything is versioned or tagged. Skipping was the

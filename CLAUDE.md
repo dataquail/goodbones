@@ -170,7 +170,7 @@ quietly unpoliced; a new package under `packages/` is a new `~/<name>/` node wit
 allowlist (written in `packages/<name>/architecture.yaml` and included from the root, like the
 five that exist), plus a `paths` pair in `tsconfig.base.json` and `tsconfig.resolve.json`, an entry in
 `vitest.workspace.ts`, an alias in `vitest.shared.ts`, a reference in the root `tsconfig.json` and
-`tsconfig.build.json`, a `references` entry in each dependent's `tsconfig.src.json` *and*
+`tsconfig.build.json`, a `references` entry in each dependent's `tsconfig.src.json` _and_
 `tsconfig.build.json`, an alias in the root manifest, an entry in the `no-dead-modules` graph rule
 for each of its barrels, and — if a host installs it — `PACKAGES` in `e2e/src/install.ts`. Before
 trusting a rule you just wrote, plant the violation it exists to catch and watch `pnpm lint` fail — the
@@ -182,10 +182,10 @@ it; `campaignsOf(policy)` reads its state back off `LoadedPolicy.extensions`, wh
 opaquely. An extension declares the top-level manifest keys it claims (`campaigns` and `ledger`),
 and `decodeManifest` splits those off the expanded manifest before decoding what is left — so the
 core's codec, which still refuses an excess property, never learns a word of the family's
-vocabulary, and a key *no* extension claims is the misspelling it always was. The extension decodes
+vocabulary, and a key _no_ extension claims is the misspelling it always was. The extension decodes
 its slice through the `describe` the core hands it, so its errors carry the same line, path and
 `use` trail a tree node's do, and it returns its own probe failures to be merged into the one
-"these rules do not report their own probe" refusal. `decode` and `load` are declared as *methods*
+"these rules do not report their own probe" refusal. `decode` and `load` are declared as _methods_
 rather than function properties on purpose: the loader holds every extension at one erased type
 once their specs are decoded, and method signatures are what make that assignable. Adding a second
 such family means a second package, not an edit to the core.
@@ -196,7 +196,7 @@ its codec.** `readManifestFile` reads `architecture.yaml`/`.yml`/`.json` through
 hosts discover the file by name in that order and refuse a repository holding two. `defs`/`use`
 are expanded on the raw value before decoding (`manifest/expand.ts`), so they work in every form.
 The JSON Schemas are emitted by `pnpm run schema:manifest`. `architecture.schema.json` is the
-*composed* one — the core's keys generated together with those of every family the bin loads, which
+_composed_ one — the core's keys generated together with those of every family the bin loads, which
 today is `campaigns` — so the test that pins it lives in `packages/campaigns/src/manifest/
 json-schema.test.ts`, the one place that can see both codecs; the core's own
 `manifest/json-schema.test.ts` covers its half and the mechanics every key shares.
@@ -347,14 +347,23 @@ Two properties are load-bearing and pinned by tests:
 
 `nx release` with `projectsRelationship: "independent"`. Push to `main` → version + tag + GitHub
 release; creating that release triggers the npm publish from `packages/<name>` (not a `dist/`
-subdirectory — the manifest's `files` is what narrows the tarball). `updateDependents: auto` bumps
-`cli` and `oxlint` when `core` or `typescript` changes. See `RELEASE.md`.
+subdirectory — the manifest's `files` is what narrows the tarball). `updateDependents` is `never`:
+a package is released when something in it changed, never as a side effect of a dependency moving.
+See `RELEASE.md`.
 
 **`main` releases only packages the registry already knows.** The release job asks npm about each
 package and passes the existing ones to `nx release --projects`; a never-published package goes through
-First Publish, deliberately. And `updateDependents: auto` versions a package's dependents with it — an
-unreleased dependent gets a stable patch bump and a tag with no publish — so a first publish names the
-whole set (`core`, `typescript`, `cli`, `oxlint`) in one run; the preflight refuses otherwise.
+First Publish, deliberately — and the release job now _refuses_ to run at all while any package under
+`packages/` is missing from the registry, because filtering it out of `--projects` was never enough.
+A first publish still names the whole set (`core`, `typescript`, `cli`, `oxlint`) in one run; the
+preflight refuses otherwise.
+
+**`updateDependents` is `never`, and changing it back will burn a version number.** nx hardcodes
+`patch` for a dependent's bump, and `semver.inc("0.1.0-beta.11", "patch")` is `"0.1.0"` — so under
+`auto` any package on a prerelease that is versioned only because a dependency moved silently leaves
+beta and takes a stable number. That is how `@goodbones/campaigns@0.1.0` was published by accident.
+The cost of `never` is that releasing `core` no longer publishes a `cli` and `oxlint` that depend on
+it; give them their own conventional commit when they should go out together.
 
 **A package that has never been released does not go through that path.** It has no git tag and no
 registry version to derive from, so it is bootstrapped by the **First Publish** workflow

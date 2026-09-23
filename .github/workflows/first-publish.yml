@@ -91,6 +91,8 @@ jobs:
           PREID: ${{ inputs.preid }}
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # This workflow is the one place a first publish is the point.
+          ALLOW_FIRST_PUBLISH: true
           # Only meaningful in a trusted CI environment, which is the reason a
           # first publish is worth doing here rather than from a laptop: the
           # `provenance=true` in .npmrc fails outright anywhere else.

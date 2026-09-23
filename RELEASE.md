@@ -22,9 +22,38 @@ gets a plain patch bump, which turns `0.1.0-beta.0` into a stable `0.1.0`, tagge
 The First Publish preflight refuses that; name every package in the set —
 `@goodbones/core, @goodbones/typescript, @goodbones/cli, @goodbones/oxlint` — in one run.
 
-**`@goodbones/campaigns` has never been published**, and both hosts depend on it, so it goes through
-First Publish before any host version that depends on it is released — the same gate
-`@goodbones/ast-grep` went through. Name it in the set when that run happens.
+**A new package must be First Published in the same breath as landing on `main`.** This is the
+sharpest edge in this setup, and it cost `@goodbones/campaigns` its `0.1.0`.
+
+`updateDependents: "auto"` versions every workspace package that depends on something in a release
+— _whether or not it was named in `--projects`_. So a package that has landed on `main` but has
+never been published does not sit quietly waiting for First Publish. The next push to `main`
+versions it, and a package on `0.1.0-beta.0` takes a plain patch bump to a stable **`0.1.0`**, with
+no preid, a git tag, and no publish. First Publish then refuses it — correctly, since cutting a
+second version on top would be worse — and the only ways out are to publish the tag that exists or
+to unpublish and burn the number.
+
+Two mechanical guards now close that window:
+
+1. **The release job refuses to run while any package under `packages/` is missing from the
+   registry.** Not "skips it" — refuses, before anything is versioned or tagged. Skipping was the
+   old behaviour and it is exactly what failed: the package was left out of `--projects` and
+   `updateDependents` versioned it anyway. The job names the package and points at First Publish.
+2. **`scripts/publish.sh` skips a package with no registry version** rather than quietly
+   first-publishing it, because the `files` and `exports` of a first publish ship permanently.
+   `ALLOW_FIRST_PUBLISH=true` is the deliberate opt-in: First Publish sets it, and the **Publish**
+   workflow exposes it as the `first_release` dispatch input for one job — publishing a version
+   that was tagged but never reached npm.
+
+So the sequence for a new package is: merge it to `main`; the release job fails by design and
+nothing is tagged; run **First Publish** for it; releases resume. Do not merge anything else in
+between — every push retries the gate.
+
+**Recovering a version that was tagged but never published.** Create the GitHub release for the tag
+that exists (`gh release create '<pkg>@<version>' --repo dataquail/goodbones --verify-tag …`), which
+triggers **Publish** scoped to that one package, or dispatch **Publish** with `first_release`
+checked. Do not run First Publish — it refuses a package that already carries a release tag, and it
+is right to.
 
 The old `oxlint-architecture-rules` name has betas on the registry; deprecate it with a message
 pointing at `@goodbones/oxlint` and `@goodbones/cli` once those exist.

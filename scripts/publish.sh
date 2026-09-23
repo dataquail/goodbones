@@ -41,12 +41,37 @@ fi
 # can just ask the registry ourselves, tell nx up front that this is a first
 # release and let it skip the lookup entirely.
 #
+# But a first publish is not something this script decides on its own any more.
+# Doing it silently is how a package reaches the registry at whatever version a
+# release happened to tag it with, without anyone reading the tarball — and the
+# `files`/`exports` of a first publish ship permanently. So an absent registry
+# version is a REFUSAL here unless the caller said it meant it:
+#
+#   ALLOW_FIRST_PUBLISH=true  — set by scripts/first-publish.sh, and by the
+#                               Publish workflow's `first_release` dispatch
+#                               input, which exists for one job: publishing a
+#                               version that was tagged but never reached npm.
+#
 # Only meaningful when this run is scoped to one package; a bare dispatch that
 # publishes everything is not a first release of anything.
+ALLOW_FIRST_PUBLISH="${ALLOW_FIRST_PUBLISH:-false}"
 FIRST_RELEASE_ARGS=()
 if [ -n "${PACKAGE_NAME:-}" ] && ! npm view "$PACKAGE_NAME" version >/dev/null 2>&1; then
-  echo "${PACKAGE_NAME} is not on the registry yet — publishing it for the first time."
-  FIRST_RELEASE_ARGS=(--first-release)
+  if [ "$ALLOW_FIRST_PUBLISH" = "true" ]; then
+    echo "${PACKAGE_NAME} is not on the registry yet — publishing it for the first time,"
+    echo "because ALLOW_FIRST_PUBLISH=true was set deliberately."
+    FIRST_RELEASE_ARGS=(--first-release)
+  else
+    echo "⏭️  ${PACKAGE_NAME} has never been published — skipping."
+    echo
+    echo "   A first publish goes through the **First Publish** workflow, which"
+    echo "   dry-runs by default and prints the tarball contents. If this release"
+    echo "   was tagged but never reached npm, re-dispatch **Publish** with"
+    echo "   \`first_release\` checked to publish the tag that already exists."
+    echo
+    echo "   Nothing was published."
+    exit 0
+  fi
 fi
 
 # npm applies `latest` to whatever it publishes unless `--tag` says otherwise —

@@ -26,10 +26,38 @@ export type Diff = {
   readonly added: ReadonlyArray<string>;
 };
 
+// git exports GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE and friends into the
+// environment of every hook it runs, and those WIN OVER `cwd`. Everything here
+// is told which repository to read — `repoRoot` — so inheriting them would make
+// the nudge silently read whichever repository invoked the hook rather than the
+// one it was pointed at. That is not theoretical: `campaigns status --changed`
+// is designed to run from a pre-commit hook.
+//
+// Stripped, so `cwd` governs. In the ordinary case — a hook on the same
+// repository the tool was pointed at — this changes nothing.
+const AMBIENT_GIT = [
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_INDEX_FILE",
+  "GIT_COMMON_DIR",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_NAMESPACE",
+  "GIT_PREFIX",
+  "GIT_CEILING_DIRECTORIES",
+  "GIT_QUARANTINE_PATH",
+];
+
+export const gitEnv = (): NodeJS.ProcessEnv =>
+  Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !AMBIENT_GIT.includes(key)),
+  );
+
 const git = (repoRoot: string, args: ReadonlyArray<string>): string =>
   execFileSync("git", args, {
     cwd: repoRoot,
     encoding: "utf8",
+    env: gitEnv(),
     stdio: ["ignore", "pipe", "ignore"],
     maxBuffer: 256 * 1024 * 1024,
   });
@@ -149,6 +177,7 @@ export const materializeTree = (
     ["-c", `git archive ${JSON.stringify(ref)} | tar -x -C ${JSON.stringify(root)}`],
     {
       cwd: repoRoot,
+      env: gitEnv(),
       stdio: ["ignore", "ignore", "ignore"],
     },
   );

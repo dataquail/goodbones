@@ -88,6 +88,7 @@ import {
   commitsTouching,
   type Diff,
   distanceToHunks,
+  gitEnv,
   materializeTree,
   readDiff,
   textAt,
@@ -834,6 +835,7 @@ export const authorOf = (given: string | undefined): string | null => {
   if (given !== undefined && given !== "") return given;
   try {
     const email = execFileSync("git", ["config", "user.email"], {
+      env: gitEnv(),
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     }).trim();

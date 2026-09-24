@@ -101,6 +101,51 @@ campaign billing-ddd: 1 new hit the ledger does not carry. Fix them, or record w
 legitimately adds one hit while another is an accident; `--sector <name>` narrows to one
 sector. `campaigns clear` and `campaigns concede` are accepted as the same verbs.
 
+## Scalar objectives
+
+A [scalar objective](/goodbones/architecture-rules/manifest/campaigns/#scalar-objectives)'s
+ledger is the same file with a second schema, told apart by `kind`:
+
+```json
+{
+  "version": 2,
+  "kind": "measure",
+  "campaign": "js-to-ts",
+  "objective": "any-density",
+  "created": "2026-09-24T00:00:00.000Z",
+  "direction": "down",
+  "sectors": {
+    "billing": {
+      "entered": "2026-09-24T00:00:00.000Z",
+      "initial": 14.2,
+      "recorded": 9.8,
+      "improved": 4.4,
+      "closed": null,
+      "lastImproved": "2026-10-02T00:00:00.000Z"
+    }
+  },
+  "concessions": [
+    { "sector": "billing", "at": "…", "by": "…", "from": 9.8, "to": 11, "reason": "…" }
+  ]
+}
+```
+
+`recorded` is what `check` holds the sector to, within the objective's `tolerance`. `clear`
+moves it when the value has improved past the tolerance, adding the difference to
+`improved` and moving `lastImproved`, the stall clock's reading; `concede` moves it when the
+value has risen past the tolerance, appending `{ from, to }` with a reason. `closed` is the
+value a sector left the window with, and nothing after it counts. The arithmetic, in the
+direction that is worse, is
+
+```
+recorded = initial + Σ (to − from) − improved
+```
+
+so a record edited by hand fails the build as a hand-added holdout does. Values are measured
+to six decimals, so a ratio reads the same on every run. A ledger of either kind where the
+manifest declares the other is refused by name, and so is a scalar's ledger whose
+`direction` the manifest has since reversed: that is a new objective.
+
 ## The sector's record
 
 What derivation cannot say about a sector lives in its own file,

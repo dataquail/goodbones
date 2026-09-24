@@ -118,6 +118,14 @@ growth, and a ratchet, which _refuses_ it:
   touch teaches people and agents to put new code outside the sector; a new file landing in
   the legacy inside the scope gets its own line — _this belongs in a sector_.
 
+A [scalar objective](/goodbones/architecture-rules/manifest/campaigns/#scalar-objectives)
+goes back by its tolerance, not by any rise: a touched sector whose number is worse than the
+record — or the base tree's number, in the exact mode — by more than the tolerance fails
+`ratchet`, and the hotfix escape concedes it the same way. `paydown` asks for fewer holdouts,
+and a scalar has none to touch, so under `paydown` a scalar is held as under `ratchet` and
+never demanded to improve. Each scalar in window is listed under `measures`, with its value
+before and after, its target and tolerance, and whether it went `back`.
+
 The direction of a diff is by dominance: **forward** means no dimension is worse and at least
 one is better, **back** the reverse, and anything else is **mixed** and reported as such, never
 resolved by a sum.
@@ -169,6 +177,7 @@ resolved by a sum.
       },
       "added": [],
       "removed": ["no-raw-queries-outside-repository: InvoiceService.ts#refund#4b02a9e1"],
+      "measures": [],
       "belongsInSector": []
     }
   ],

@@ -320,3 +320,23 @@ campaigns:
               source: 'const lower = () => { throw new Error("bad manifest"); };'
             - path: packages/core/src/manifest/zzprobe.ts
               source: "const lower = () => Result.fail(new ConfigInvalid({ configPath, detail }));"
+
+  # The scalar form: a number per sector held to what `objectives clear` last
+  # recorded, where the campaign above holds a list of places. The host glue
+  # is one module that every verb, the nudge, the reports and the snapshot
+  # grew into; its non-blank lines go down as it is split by verb, and a rise
+  # needs `objectives concede --reason` in the open. Standing, not phased: a
+  # campaign with no phases has its objectives in window everywhere.
+  host-campaigns-shrinks:
+    title: The campaigns host glue is split by verb
+    why: "`host/campaigns.ts` holds evaluation, the ledger verbs, the nudge, the reports, history and explain in one module past two thousand lines, so every change to one verb is a review of all of them."
+    how: "Move a verb — its type, its function and its rendering — into its own module under `host/`, re-exported from the barrel. Then `objectives clear host-campaigns-shrinks` records the smaller number."
+    owner: "@dataquail"
+    scope: ["@camp/host/campaigns.ts"]
+    staleAfter: 180d
+    onComplete: keep
+    objectives:
+      host-lines:
+        measure: { lines: true }
+        direction: down
+        target: 1000

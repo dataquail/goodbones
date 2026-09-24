@@ -776,11 +776,68 @@
                 },
                 "complete": {
                   "type": "boolean",
-                  "description": "No holdouts remain."
+                  "description": "No holdouts remain; for a scalar objective, every sector is at its target."
                 },
                 "ledgered": {
                   "type": "boolean",
                   "description": "Whether a ledger exists. An objective with none has been declared and not yet cleared."
+                },
+                "measure": {
+                  "type": "object",
+                  "properties": {
+                    "direction": {
+                      "type": "string",
+                      "enum": [
+                        "down",
+                        "up"
+                      ],
+                      "description": "Which way is better."
+                    },
+                    "value": {
+                      "type": "number",
+                      "allOf": [
+                        {
+                          "description": "The number measured now, every sector in window summed."
+                        }
+                      ]
+                    },
+                    "recorded": {
+                      "type": "number",
+                      "allOf": [
+                        {
+                          "description": "The number the ledger holds the sectors to, summed: the best `objectives clear` has written, plus conceded rises."
+                        }
+                      ]
+                    },
+                    "target": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "The value at which the objective is met, or `null` for a standing measure that only ratchets."
+                    },
+                    "tolerance": {
+                      "type": "number",
+                      "allOf": [
+                        {
+                          "description": "How far either side of the record still counts as at it."
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "direction",
+                    "value",
+                    "recorded",
+                    "target",
+                    "tolerance"
+                  ],
+                  "additionalProperties": false,
+                  "description": "For a scalar objective: the number, where the holdout counts above are all 0."
                 }
               },
               "required": [
@@ -876,7 +933,7 @@
                   "additionalProperties": {
                     "type": "number"
                   },
-                  "description": "One dimension per objective in window for the sector: its holdouts there, never summed."
+                  "description": "One dimension per objective in window for the sector: its holdouts there, or a scalar's distance to its target, never summed."
                 },
                 "stalled": {
                   "type": "boolean",
@@ -961,7 +1018,7 @@
           },
           "complete": {
             "type": "boolean",
-            "description": "No holdouts remain in any objective."
+            "description": "No holdouts remain in any objective, and every scalar with a target has reached it."
           },
           "onComplete": {
             "type": "string",

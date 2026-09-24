@@ -172,10 +172,34 @@ export const SnapshotObjective = Schema.Struct({
     "When a holdout last left the ledger, ISO 8601 — the stall clock's reading; `null` with no ledger.",
   ),
   concessions: describe(Schema.Finite, "How many times a count was allowed to go up."),
-  complete: describe(Schema.Boolean, "No holdouts remain."),
+  complete: describe(
+    Schema.Boolean,
+    "No holdouts remain; for a scalar objective, every sector is at its target.",
+  ),
   ledgered: describe(
     Schema.Boolean,
     "Whether a ledger exists. An objective with none has been declared and not yet cleared.",
+  ),
+  measure: Schema.optionalKey(
+    describe(
+      Schema.Struct({
+        direction: describe(Schema.Literals(["down", "up"]), "Which way is better."),
+        value: describe(Schema.Finite, "The number measured now, every sector in window summed."),
+        recorded: describe(
+          Schema.Finite,
+          "The number the ledger holds the sectors to, summed: the best `objectives clear` has written, plus conceded rises.",
+        ),
+        target: describe(
+          Schema.NullOr(Schema.Finite),
+          "The value at which the objective is met, or `null` for a standing measure that only ratchets.",
+        ),
+        tolerance: describe(
+          Schema.Finite,
+          "How far either side of the record still counts as at it.",
+        ),
+      }),
+      "For a scalar objective: the number, where the holdout counts above are all 0.",
+    ),
   ),
 });
 
@@ -203,7 +227,7 @@ export const SnapshotSector = Schema.Struct({
   files: describe(Schema.Finite, "How many files the sector claims."),
   residue: describe(
     Schema.Record(Schema.String, Schema.Finite),
-    "One dimension per objective in window for the sector: its holdouts there, never summed.",
+    "One dimension per objective in window for the sector: its holdouts there, or a scalar's distance to its target, never summed.",
   ),
   stalled: describe(
     Schema.Boolean,
@@ -261,7 +285,10 @@ export const SnapshotCampaign = Schema.Struct({
     Schema.Boolean,
     "Holdouts remain and nothing has been cleared, attested or noted within the campaign's `staleAfter`.",
   ),
-  complete: describe(Schema.Boolean, "No holdouts remain in any objective."),
+  complete: describe(
+    Schema.Boolean,
+    "No holdouts remain in any objective, and every scalar with a target has reached it.",
+  ),
   onComplete: describe(
     Schema.Literals(["keep", "remove"]),
     "What the manifest asks once complete: keep the campaign as a guard, or remove it.",

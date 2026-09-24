@@ -490,4 +490,166 @@ describe("loadPolicy with campaigns", () => {
       ),
     ).toThrow(/endState/);
   });
+
+  describe("a scalar objective", () => {
+    const scalar = (overrides: Record<string, unknown> = {}) => ({
+      measure: { lines: true },
+      direction: "down",
+      ...overrides,
+    });
+    const detailOf = (manifest: unknown): string => {
+      const loaded = load(manifest, [go()]);
+      if (!Result.isFailure(loaded)) throw new Error("expected the manifest to be refused");
+      return loaded.failure.detail;
+    };
+    const withScalar = (
+      overrides: Record<string, unknown> = {},
+      campaignOverrides: Record<string, unknown> = {},
+    ) =>
+      withCampaigns({
+        "js-to-go": {
+          scope: ["svc/**"],
+          objectives: { lines: { ...scalar(), ...overrides } },
+          ...campaignOverrides,
+        },
+      });
+
+    it("compiles a measure with its direction, tolerance and target", () => {
+      const policy = unwrap(
+        load(withScalar({ tolerance: 2, target: 0, how: "Delete it." }), [go()]),
+      );
+      const [objective] = stateOf(policy).campaignRules[0]?.objectives ?? [];
+      expect(objective).toMatchObject({
+        measure: { kind: "sum", of: { kind: "lines" } },
+        direction: "down",
+        tolerance: 2,
+        target: 0,
+        holdout: null,
+        detect: null,
+      });
+    });
+
+    it("refuses the shapes a number does not have, naming the field", () => {
+      const undirected = withCampaigns({
+        "js-to-go": { scope: ["svc/**"], objectives: { lines: { measure: { lines: true } } } },
+      });
+      expect(detailOf(undirected)).toMatch(
+        /states which way is better: `direction: down` or `direction: up`/,
+      );
+      expect(detailOf(withScalar({ holdout: "file" }))).toMatch(/holds nothing out/);
+      expect(detailOf(withScalar({ tolerance: -1 }))).toMatch(/tolerance/);
+      expect(detailOf(one({ target: 3 }))).toMatch(/`target` belongs to a `measure` objective/);
+      expect(detailOf(withScalar({ match: { path: { file: "x" } } }))).toMatch(
+        /exactly one of `match`.*`sector`.*and `measure`/,
+      );
+      expect(detailOf(withScalar({ measure: { fn: "./m.mjs#m" } }))).toMatch(
+        /a `measure` with a `report` or `fn` source carries `probes.fires`/,
+      );
+      expect(
+        detailOf(withScalar({ measure: { command: "du -k dist" }, probes: { fires: [] } })),
+      ).toMatch(/no probe of one file can stand in for/);
+    });
+
+    it("refuses a phase naming a scalar with no target, and a command under a perimeter", () => {
+      expect(() =>
+        load(withScalar({}, { phases: [{ id: "small", objectives: ["lines"] }] }), [go()]),
+      ).toThrow(/phase "small" names the scalar objective "lines", which states no `target`/);
+      expect(() =>
+        load(
+          withScalar({ measure: { command: "du -k dist" } }, { perimeter: { glob: "svc/*/" } }),
+          [go()],
+        ),
+      ).toThrow(/measures a `command`, and the campaign has a perimeter/);
+      expect(() =>
+        load(withScalar({ measure: { command: "du -k dist", pattern: "(\\d+)" } }), [go()]),
+      ).toThrow(/no named group `value`/);
+    });
+
+    it("proves a function source on its probes: above zero, the value stated, and zero where it ignores", () => {
+      const weigh: CampaignPredicate = ((input: { text: string }) =>
+        input.text.length) as unknown as CampaignPredicate;
+      const functions = new Map([["./m.mjs#weigh", weigh]]);
+      const proven = (probes: unknown) =>
+        load(withScalar({ measure: { fn: "./m.mjs#weigh" }, probes }), [go()], { functions });
+      expect(
+        Result.isSuccess(
+          proven({
+            fires: [{ path: "svc/a.go", source: "abc", value: 3 }],
+            ignores: [{ path: "svc/b.go", source: "" }],
+          }),
+        ),
+      ).toBe(true);
+      const wrong = proven({ fires: [{ path: "svc/a.go", source: "abc", value: 4 }] });
+      expect(Result.isFailure(wrong) && wrong.failure.message).toMatch(
+        /campaign\/js-to-go\/lines \(fires probe svc\/a.go measured 3, not 4\)/,
+      );
+      const silent = proven({
+        fires: [{ path: "svc/a.go", source: "abc" }],
+        ignores: [{ path: "svc/b.go", source: "x" }],
+      });
+      expect(Result.isFailure(silent) && silent.failure.message).toMatch(
+        /ignores probe svc\/b.go measured 1, not 0/,
+      );
+      const unloaded = load(
+        withScalar({
+          measure: { fn: "./m.mjs#other" },
+          probes: { fires: [{ path: "svc/a.go", source: "x" }] },
+        }),
+        [go()],
+        { functions },
+      );
+      expect(Result.isFailure(unloaded) && unloaded.failure.message).toMatch(
+        /did not load: \.\/m\.mjs#other/,
+      );
+    });
+
+    it("reads its ledger as the second schema, and refuses the wrong kind in either place", () => {
+      const measured = {
+        version: 2,
+        kind: "measure",
+        campaign: "js-to-go",
+        objective: "lines",
+        created: "2026-09-15T00:00:00.000Z",
+        direction: "down",
+        sectors: {
+          scope: {
+            entered: "2026-09-15T00:00:00.000Z",
+            initial: 120,
+            recorded: 120,
+            improved: 0,
+            closed: null,
+            lastImproved: "2026-09-15T00:00:00.000Z",
+          },
+        },
+        concessions: [],
+      };
+      const files = makeFileSystemFake([], {
+        "ledgers/js-to-go/lines.json": JSON.stringify(measured),
+      });
+      const policy = unwrap(
+        load({ ...withScalar(), ledger: "ledgers" }, [go()], { files }),
+      );
+      expect(stateOf(policy).measureLedgers.get("js-to-go/lines")?.sectors.scope?.recorded).toBe(
+        120,
+      );
+      expect(stateOf(policy).ledgers.size).toBe(0);
+
+      const flipped = load({ ...withScalar({ direction: "up" }), ledger: "ledgers" }, [go()], {
+        files,
+      });
+      expect(Result.isFailure(flipped) && flipped.failure.message).toMatch(
+        /records js-to-go\/lines with `direction: down`, and the manifest now says `up`/,
+      );
+
+      const holdout = makeFileSystemFake([], {
+        "ledgers/js-to-go/port-it.json": JSON.stringify({ ...measured, objective: "port-it" }),
+      });
+      const crossed = load(withCampaigns({ "js-to-go": campaign() }, "ledgers"), [go()], {
+        files: holdout,
+      });
+      expect(Result.isFailure(crossed) && crossed.failure.message).toMatch(
+        /is a scalar objective's, and js-to-go\/port-it holds out file/,
+      );
+    });
+  });
 });

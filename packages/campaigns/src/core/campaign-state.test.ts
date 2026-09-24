@@ -192,3 +192,159 @@ describe("one campaign over its files", () => {
     expect(placed.sectors.get("billing")?.residue).toEqual({ "no-flag": 1 });
   });
 });
+
+describe("a scalar objective over its files", () => {
+  const scalar = (id: string, extra: Partial<ObjectiveRule>): ObjectiveRule => ({
+    name: `campaign/c/${id}`,
+    id,
+    campaign: "c",
+    message: `shrink ${id}`,
+    measure: { lines: true },
+    direction: "down",
+    tolerance: 0,
+    probes: { fires: [], ignores: [] },
+    ...extra,
+  });
+  const texts = {
+    "src/billing/context.ts": "",
+    "src/billing/a.ts": "one\n\n  \ntwo\nthree\n",
+    "src/billing/b.ts": "any any\nfour\n",
+    "src/orders/context.ts": "",
+    "src/services/old.ts": "x\ny\n",
+  };
+  const evaluate = (rule: CompiledCampaign, files: Readonly<Record<string, string>> = texts) =>
+    evaluateCampaign(rule, {
+      files: Object.keys(files),
+      inputOf: inputOf(files),
+      readText: () => "",
+      globToRegExp,
+      recordOf: () => undefined,
+    });
+
+  it("sums a per-file number over each sector, blank lines excepted", () => {
+    const rule = campaign({
+      perimeter: { kind: "marker", marker: "^.*/context\\.ts$" },
+      objectives: [scalar("lines", {}), scalar("files", { measure: { files: true } })],
+    });
+    const evaluation = evaluate(rule);
+    expect(evaluation.sectors.get("billing")?.values).toEqual({ lines: 5, files: 3 });
+    expect(evaluation.sectors.get("orders")?.values).toEqual({ lines: 0, files: 1 });
+    expect(evaluation.sectors.get(LEGACY_SECTOR)?.values).toEqual({ lines: 2, files: 1 });
+    // A standing measure has no target, so it is never residue, and no hit.
+    expect(evaluation.sectors.get("billing")?.residue).toEqual({ lines: 0, files: 0 });
+    expect(evaluation.hits).toEqual([]);
+  });
+
+  it("takes a ratio of the sector's sums, not an average of its files', and 0 over nothing", () => {
+    const reported = campaign({
+      perimeter: { kind: "marker", marker: "^.*/context\\.ts$" },
+      objectives: [
+        scalar("density", {
+          measure: {
+            ratio: {
+              of: { report: { file: ["any.txt"], format: "tsc" } },
+              per: { lines: true },
+              scale: 1000,
+            },
+          },
+        }),
+      ],
+    });
+    const evaluation = evaluateCampaign(reported, {
+      files: Object.keys(texts),
+      inputOf: (file) => ({
+        ...inputOf(texts)(file),
+        reports: makeReportSourceFake({
+          "src/billing/b.ts": [
+            { line: 0, column: 0, code: "any", message: "a" },
+            { line: 0, column: 4, code: "any", message: "b" },
+          ],
+        }),
+      }),
+      readText: () => "",
+      globToRegExp,
+      recordOf: () => undefined,
+    });
+    // Two diagnostics over the sector's five non-blank lines, per thousand —
+    // where the mean of its files' own ratios would be (0 + 1000) / 2.
+    expect(evaluation.sectors.get("billing")?.values).toEqual({ density: 400 });
+    expect(evaluation.sectors.get("orders")?.values).toEqual({ density: 0 });
+  });
+
+  it("measures a sector the same however its code is split into files", () => {
+    const rule = campaign({ objectives: [scalar("lines", {})] });
+    const whole = evaluate(rule, { "src/a.ts": "a\nb\nc\nd\n" });
+    const split = evaluate(rule, { "src/a.ts": "a\nb\n", "src/b.ts": "\nc\nd\n" });
+    expect(whole.sectors.get("scope")?.values).toEqual(split.sectors.get("scope")?.values);
+  });
+
+  it("holds a sector at the phase naming it until the number reaches its target", () => {
+    const rule = campaign({
+      perimeter: { kind: "marker", marker: "^.*/context\\.ts$" },
+      phases: [phase("small", ["lines"]), phase("clean", ["no-knex"])],
+      objectives: [scalar("lines", { target: 2 }), contentObjective("no-knex", "knex")],
+    });
+    const evaluation = evaluate(rule);
+    // billing measures 5 against a target of 2: three to go, at `small`.
+    expect(evaluation.sectors.get("billing")?.phase).toBe(0);
+    expect(evaluation.sectors.get("billing")?.residue).toEqual({ lines: 3 });
+    expect(towardNextOf(rule, evaluation.sectors.get("billing") ?? fail())).toEqual({ lines: 3 });
+    // orders measures 0: met, and on to `clean`, which it also meets.
+    expect(evaluation.sectors.get("orders")?.phase).toBe(2);
+  });
+
+  it("measures upward toward a target from below", () => {
+    const rule = campaign({
+      phases: [phase("covered", ["files"])],
+      objectives: [scalar("files", { measure: { files: true }, direction: "up", target: 4 })],
+    });
+    expect(
+      evaluate(rule, { "src/a.ts": "", "src/b.ts": "" }).sectors.get("scope")?.residue,
+    ).toEqual({ files: 2 });
+  });
+
+  it("reads a function's answer as a number, and anything else as no number", () => {
+    const rule = campaign({
+      objectives: [scalar("weight", { measure: { fn: "./weight.js#weight" } })],
+    });
+    const run = (answer: unknown) =>
+      evaluateCampaign(rule, {
+        files: ["src/a.ts", "src/b.ts"],
+        inputOf: (file) => ({
+          ...inputOf({})(file),
+          functions: new Map([["./weight.js#weight", () => answer as boolean]]),
+        }),
+        readText: () => "",
+        globToRegExp,
+        recordOf: () => undefined,
+      }).sectors.get("scope")?.values.weight;
+    expect(run(2.5)).toBe(5);
+    expect(run(true)).toBeNaN();
+    expect(run(-1)).toBeNaN();
+  });
+
+  it("asks the host for a command's number once per campaign, and has none without it", () => {
+    const rule = campaign({
+      objectives: [scalar("bundle", { measure: { command: "du -k dist" } })],
+    });
+    const asked: Array<string> = [];
+    const answered = evaluateCampaign(rule, {
+      files: ["src/a.ts"],
+      inputOf: inputOf({}),
+      readText: () => "",
+      globToRegExp,
+      recordOf: () => undefined,
+      commandValueOf: (measure) => {
+        if (measure.kind === "command") asked.push(measure.command);
+        return 812;
+      },
+    });
+    expect(answered.sectors.get("scope")?.values).toEqual({ bundle: 812 });
+    expect(asked).toEqual(["du -k dist"]);
+    expect(evaluate(rule).sectors.get("scope")?.values.bundle).toBeNaN();
+  });
+});
+
+const fail = (): never => {
+  throw new Error("missing");
+};

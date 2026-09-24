@@ -17,6 +17,8 @@ import type {
   CampaignProbe,
   CampaignRule,
   Detector,
+  Measure,
+  MeasureSource,
   ObjectiveRule,
   PerimeterRule,
   PhaseRule,
@@ -28,6 +30,7 @@ import {
   type CampaignSpec,
   type DetectorSpec,
   durationMs,
+  type MeasureSourceSpec,
   type PhaseSpec,
   type SyntaxTermSpec,
 } from "./spec.js";
@@ -376,9 +379,66 @@ const lowerCampaign = (
         campaign: id,
         message,
         ...(why === undefined ? {} : { why }),
-        holdout: spec.holdout,
+        ...(spec.holdout === undefined ? {} : { holdout: spec.holdout }),
         ...(spec.until === undefined ? {} : { until: spec.until }),
       };
+      if (spec.measure !== undefined) {
+        const measure = spec.measure;
+        if ("command" in measure && campaign.perimeter !== undefined) {
+          refuse(
+            `(${objectiveId}) measures a \`command\`, and the campaign has a perimeter. A ` +
+              `command's number is about the repository, not a sector; it belongs to a ` +
+              `campaign with no perimeter, whose scope is its one sector.`,
+          );
+        }
+        const source = (one: MeasureSourceSpec): MeasureSource =>
+          "report" in one || "fn" in one
+            ? (lower(one, objectiveId) as MeasureSource)
+            : "lines" in one
+              ? { lines: true }
+              : { files: true };
+        const lowered: Measure =
+          "ratio" in measure
+            ? {
+                ratio: {
+                  of: source(measure.ratio.of),
+                  per: source(measure.ratio.per),
+                  scale: measure.ratio.scale ?? 1,
+                },
+              }
+            : "command" in measure
+              ? {
+                  command: measure.command,
+                  ...(measure.pattern === undefined ? {} : { pattern: measure.pattern }),
+                }
+              : source(measure);
+        if ("command" in measure && measure.pattern !== undefined) {
+          let groups: Readonly<Record<string, unknown>> | undefined;
+          try {
+            groups = new RegExp(`${measure.pattern}|`).exec("")?.groups;
+          } catch (cause) {
+            refuse(
+              `(${objectiveId}) has a \`pattern\` that is not a regular expression: ${String(cause)}`,
+            );
+          }
+          if (groups === undefined || !("value" in groups)) {
+            refuse(
+              `(${objectiveId}) has a \`pattern\` with no named group \`value\` to read the number from.`,
+            );
+          }
+        }
+        return {
+          ...base,
+          measure: lowered,
+          direction: spec.direction ?? "down",
+          tolerance: spec.tolerance ?? 0,
+          ...(spec.target === undefined ? {} : { target: spec.target }),
+          probes: {
+            fires: [...(spec.probes?.fires ?? [])],
+            ignores: [...(spec.probes?.ignores ?? [])],
+          },
+        };
+      }
       if (spec.match !== undefined) {
         return {
           ...base,
@@ -467,6 +527,15 @@ const lowerCampaign = (
       if (!objectiveIds.has(objectiveId)) {
         refuse(
           `phase "${phase.id}" names an objective "${objectiveId}" the campaign does not declare.`,
+        );
+      }
+      const named = objectives.find((one) => one.id === objectiveId);
+      if (named?.measure !== undefined && named.target === undefined) {
+        refuse(
+          `phase "${phase.id}" names the scalar objective "${objectiveId}", which states no ` +
+            `\`target\`. A phase's objectives are what a sector must meet to leave it, and a ` +
+            `number with no target is never met: give it one, or leave it out of every phase ` +
+            `as a standing measure.`,
         );
       }
       const already = namedBy.get(objectiveId);
@@ -564,6 +633,16 @@ const lowerCampaign = (
           match: objective?.match ?? null,
           sector: objective?.sector ?? null,
           until: objective?.until ?? null,
+          // Only when present, so a phase with no scalar hashes as it did
+          // before scalars existed and no committed plan reads as changed.
+          ...(objective?.measure === undefined
+            ? {}
+            : {
+                measure: objective.measure,
+                direction: objective.direction ?? null,
+                tolerance: objective.tolerance ?? null,
+                target: objective.target ?? null,
+              }),
         };
       }),
     }),

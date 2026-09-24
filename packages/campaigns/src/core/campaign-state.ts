@@ -2,13 +2,21 @@ import type { Violation } from "@goodbones/core";
 
 import type { PhaseRule } from "../domain/config.js";
 import {
+  addParts,
   type CampaignHit,
   type CampaignInput,
   candidatesOf,
   type CompiledCampaign,
+  type CompiledMeasure,
   type CompiledObjective,
+  distanceToTarget,
   evaluateObjectives,
+  measureFile,
+  type MeasureParts,
+  perFileMeasuresOf,
   perFileObjectivesOf,
+  valueOfParts,
+  ZERO_PARTS,
 } from "./campaigns.js";
 import type { SectorRecord } from "./ledger.js";
 import { positionOf } from "./ledger.js";
@@ -50,8 +58,12 @@ export type SectorState = {
   readonly phase: number;
   readonly position: SectorPosition;
   readonly inWindow: ReadonlyArray<CompiledObjective>;
-  // Every objective's hits in the sector, in window or not.
+  // Every objective's hits in the sector, in window or not; for a scalar
+  // objective, its distance to its target.
   readonly counts: Residue;
+  // Every scalar objective's value in the sector, in window or not. `NaN`
+  // where a source did not answer with a number.
+  readonly values: Readonly<Record<string, number>>;
   // One dimension per objective in window.
   readonly residue: Residue;
 };
@@ -77,6 +89,9 @@ export type CampaignEvaluationInput = {
   // the plugin's position, which never evaluates one.
   readonly endStateOf?:
     ((sector: Sector, phase: PhaseRule, family: string) => ReadonlyArray<Violation>) | undefined;
+  // For a `command` measure: the number its command prints, read once.
+  // Absent, it measures `NaN`, which `check` refuses.
+  readonly commandValueOf?: ((measure: CompiledMeasure) => number) | undefined;
 };
 
 const sectorHit = (objective: CompiledObjective, sector: Sector): ObjectiveHit => ({
@@ -139,6 +154,27 @@ export const evaluateCampaign = (
     }
   }
 
+  // Every scalar's parts, per sector, from the same walk: a file counts for
+  // the sector it belongs to.
+  const parts = new Map<string, Map<string, MeasureParts>>();
+  const measured = perFileMeasuresOf(rule);
+  if (measured.length > 0) {
+    for (const file of input.files) {
+      const sector = index.sectorOf(file);
+      if (sector === null) continue;
+      let own = parts.get(sector);
+      if (own === undefined) {
+        own = new Map();
+        parts.set(sector, own);
+      }
+      for (const objective of measured) {
+        if (objective.measure === null) continue;
+        const one = measureFile(objective.measure, inputOf(file));
+        own.set(objective.id, addParts(own.get(objective.id) ?? ZERO_PARTS, one));
+      }
+    }
+  }
+
   const names = [...index.sectors.keys(), ...(index.legacy.length > 0 ? [LEGACY_SECTOR] : [])];
   for (const name of names) {
     const sector = sectorNamed(index, name);
@@ -188,9 +224,20 @@ export const evaluateCampaign = (
     const sector = sectorNamed(index, name);
     if (sector === null) continue;
     const counts: Record<string, number> = {};
+    const values: Record<string, number> = {};
     for (const objective of rule.objectives) counts[objective.id] = 0;
     for (const hit of hits) {
       if (hit.sector === name) counts[hit.objective] = (counts[hit.objective] ?? 0) + 1;
+    }
+    for (const objective of rule.objectives) {
+      const measure = objective.measure;
+      if (measure === null) continue;
+      const value =
+        measure.kind === "command"
+          ? (input.commandValueOf?.(measure) ?? Number.NaN)
+          : valueOfParts(measure, parts.get(name)?.get(objective.id) ?? ZERO_PARTS);
+      values[objective.id] = value;
+      counts[objective.id] = distanceToTarget(objective, value);
     }
     const position = positionOf(rule, input.recordOf(name));
     const phase =
@@ -200,7 +247,7 @@ export const evaluateCampaign = (
     const inWindow = objectivesInWindow(rule, phase, position);
     const residue: Record<string, number> = {};
     for (const objective of inWindow) residue[objective.id] = counts[objective.id] ?? 0;
-    sectors.set(name, { name, sector, phase, position, inWindow, counts, residue });
+    sectors.set(name, { name, sector, phase, position, inWindow, counts, values, residue });
   }
 
   return { rule, index, hits, sectors };

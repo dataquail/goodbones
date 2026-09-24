@@ -6,12 +6,15 @@ import {
   type CampaignPolicy,
   type CampaignRule,
   CAMPAIGNS_EXTENSION_ID,
+  clearedMeasure,
   clearedSector,
   compileCampaignRules,
   EMPTY_LEDGER,
+  EMPTY_MEASURE_LEDGER,
   EMPTY_SECTOR_RECORD,
   type Ledger,
   ledgerKeyOf,
+  type MeasureLedger,
   NO_REPORTS,
   reachedRecord,
   type SectorRecord,
@@ -89,6 +92,41 @@ const rules: ReadonlyArray<CampaignRule> = [
     ],
     onComplete: "keep",
   },
+  // A scalar holds the first phase until its number reaches the target.
+  {
+    name: "campaign/shrink",
+    id: "shrink",
+    scope: "^scalar/",
+    extensions: [],
+    perimeter: { kind: "glob", glob: "^scalar/[^/]+/" },
+    phases: [
+      { id: "small", objectives: ["lines"], attested: false, concessions: [], hash: "s" },
+      { id: "ported", objectives: ["no-knex"], attested: false, concessions: [], hash: "p" },
+    ],
+    objectives: [
+      {
+        name: "campaign/shrink/lines",
+        id: "lines",
+        campaign: "shrink",
+        message: "Shrink it.",
+        measure: { lines: true },
+        direction: "down",
+        tolerance: 0,
+        target: 1,
+        probes: { fires: [], ignores: [] },
+      },
+      {
+        name: "campaign/shrink/no-knex",
+        id: "no-knex",
+        campaign: "shrink",
+        message: "Behind the port.",
+        holdout: "match",
+        match: { syntax: { rule: { pattern: "knex($$$)" } } },
+        probes: { fires: [], ignores: [] },
+      },
+    ],
+    onComplete: "keep",
+  },
 ];
 
 const compiled = compileCampaignRules(rules);
@@ -97,6 +135,7 @@ if (Result.isFailure(compiled)) throw compiled.failure;
 const policyWith = (
   ledgers: ReadonlyMap<string, Ledger>,
   records: ReadonlyMap<string, SectorRecord> = new Map(),
+  measureLedgers: ReadonlyMap<string, MeasureLedger> = new Map(),
 ): LoadedPolicy => ({
   repoRoot,
   config: { resolve: { scopes: [{ files: "", language: "typescript" }] }, tree: {} },
@@ -113,6 +152,7 @@ const policyWith = (
       {
         campaignRules: compiled.success,
         ledgers,
+        measureLedgers,
         legacyLedgers: new Map(),
         sectorRecords: records,
         plans: new Map(),
@@ -229,5 +269,56 @@ new RuleTester({ cwd: repoRoot }).run(
   {
     valid: [{ code: "const flag = dualWrite;\n", filename }],
     invalid: [],
+  },
+);
+
+// A scalar's record places the sector: the plugin cannot sum the sector's
+// lines, so it reads the value `clear` recorded and its distance to target.
+const shrink = compiled.success[1];
+if (shrink === undefined) throw new Error("no campaign");
+const scalarFile = path.join(repoRoot, "scalar/billing/service.ts");
+const recordedAt = (value: number): ReadonlyMap<string, MeasureLedger> =>
+  new Map([
+    [
+      ledgerKeyOf("shrink", "lines"),
+      clearedMeasure(
+        EMPTY_MEASURE_LEDGER("shrink", "lines", "down", 0),
+        "scalar/billing",
+        value,
+        0,
+        0,
+        "inside",
+      ),
+    ],
+  ]);
+const shrinkPlaced = (phase: number): ReadonlyMap<string, SectorRecord> =>
+  new Map([
+    [
+      ledgerKeyOf("shrink", "scalar/billing"),
+      reachedRecord(EMPTY_SECTOR_RECORD("shrink", "scalar/billing", 0), shrink, phase, 0),
+    ],
+  ]);
+
+new RuleTester({ cwd: repoRoot }).run(
+  "phases: a scalar short of its target holds the sector at its phase",
+  makeCampaignsRule(policyWith(new Map(), shrinkPlaced(0), recordedAt(40))),
+  {
+    valid: [{ code: "export const x = knex('y');", filename: scalarFile }],
+    invalid: [],
+  },
+);
+
+new RuleTester({ cwd: repoRoot }).run(
+  "phases: a scalar recorded at its target lets the sector on to the next phase",
+  makeCampaignsRule(policyWith(new Map(), shrinkPlaced(0), recordedAt(1))),
+  {
+    valid: [],
+    invalid: [
+      {
+        code: "export const x = knex('y');",
+        filename: scalarFile,
+        errors: [{ message: "[campaign/shrink/no-knex] Behind the port." }],
+      },
+    ],
   },
 );

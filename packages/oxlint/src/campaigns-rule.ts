@@ -10,6 +10,7 @@ import {
   derivePhase,
   detectorCandidatesOf,
   detectorOf,
+  distanceToTarget,
   evaluateObjectives,
   ledgerKeyOf,
   LEGACY_PHASE,
@@ -91,8 +92,20 @@ const inWindowFor = (
 ): ReadonlyArray<CompiledObjective> => {
   const record = campaignsOf(policy).sectorRecords.get(ledgerKeyOf(rule.id, sector));
   const position = positionOf(rule, record);
-  const counts = (objectiveId: string): number =>
-    campaignsOf(policy).ledgers.get(ledgerKeyOf(rule.id, objectiveId))?.sectors[sector]?.holdouts.length ?? 0;
+  // A scalar objective's residue is its recorded value's distance to its
+  // target: the plugin sees one file and cannot sum a sector, so the record
+  // `clear` last wrote is what places the sector, as the holdout count is.
+  const counts = (objectiveId: string): number => {
+    const key = ledgerKeyOf(rule.id, objectiveId);
+    const objective = rule.objectives.find((one) => one.id === objectiveId);
+    if (objective !== undefined && objective.measure !== null) {
+      const own = campaignsOf(policy).measureLedgers.get(key)?.sectors[sector];
+      return own === undefined || own.closed !== null
+        ? 0
+        : distanceToTarget(objective, own.recorded);
+    }
+    return campaignsOf(policy).ledgers.get(key)?.sectors[sector]?.holdouts.length ?? 0;
+  };
   const phase =
     sector === LEGACY_SECTOR || record === undefined
       ? Math.min(LEGACY_PHASE, rule.phases.length)

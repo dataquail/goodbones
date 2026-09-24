@@ -20,6 +20,7 @@ import {
   historyOf,
   hitsInWindow,
   ledgeredFilter,
+  measureFile,
   note,
   nudgeOf,
   readDiff,
@@ -29,11 +30,13 @@ import {
   renderNudge,
   reportSpecsOf,
   snapshotCampaignsOf,
+  valueOfParts,
   widenedExtensions,
 } from "@goodbones/campaigns";
 import {
   type Baseline,
   baselineOf,
+  breaches,
   CONFORMANCE_MEASURES,
   type ConformanceMeasure,
   type CoverageFamily,
@@ -497,7 +500,9 @@ const shortfallsOf = (coverage: CoverageReport): ReadonlyArray<Shortfall> =>
   COVERAGE_FAMILIES.flatMap((family) => {
     const { covered, floor, total } = coverage[family];
     const actual = total === 0 ? 1 : covered / total;
-    return floor === undefined || actual >= floor ? [] : [{ family, actual, floor }];
+    return floor === undefined || !breaches({ direction: "up", limit: floor, tolerance: 0 }, actual)
+      ? []
+      : [{ family, actual, floor }];
   });
 
 // A conformance measure over the ceiling the policy states for it.
@@ -510,7 +515,10 @@ type Excess = {
 const excessesOf = (conformance: ConformanceReport): ReadonlyArray<Excess> =>
   CONFORMANCE_MEASURES.flatMap((measure) => {
     const { ceiling, count } = conformance[measure];
-    return ceiling === undefined || count <= ceiling ? [] : [{ measure, count, ceiling }];
+    return ceiling === undefined ||
+      !breaches({ direction: "down", limit: ceiling, tolerance: 0 }, count)
+      ? []
+      : [{ measure, count, ceiling }];
   });
 
 const failureOf = (
@@ -969,6 +977,19 @@ export const explain = (
       return [
         ...(evaluation === undefined ? [] : explainCampaignLines(policy, evaluation, relative)),
         ...rule.objectives.flatMap((objective) => {
+          const measure = objective.measure;
+          if (measure !== null) {
+            // A scalar: what this file adds to its sector's number.
+            if (measure.kind === "command") return [];
+            const parts = measureFile(measure, input);
+            const here =
+              measure.kind === "ratio"
+                ? `${String(parts.of)} of ${String(parts.per)} here`
+                : `${String(valueOfParts(measure, parts))} here`;
+            return [
+              `      ${objective.name} — ${firstSentence(objective.why ?? objective.message)} (measure, ${objective.direction}; ${here})`,
+            ];
+          }
           const table = explainObjective(objective, input);
           if (table.length === 0) return [];
           const fired = table.length > 0 && table.every((line) => line.answer);
@@ -1436,6 +1457,32 @@ export const objectives = (
                   ]
                 : []),
             ];
+            if (outcome.measure !== undefined) {
+              const moved = [
+                ...(outcome.entered.length > 0
+                  ? [
+                      `${count(outcome.entered.length, "sector")} entered (${outcome.entered.join(", ")})`,
+                    ]
+                  : []),
+                ...(outcome.measure.improved.length > 0
+                  ? [
+                      `${count(outcome.measure.improved.length, "sector")} improved (${outcome.measure.improved
+                        .map((one) => `${one.sector} ${String(one.from)} → ${String(one.to)}`)
+                        .join(", ")})`,
+                    ]
+                  : []),
+                ...(outcome.closed > 0 ? [`${count(outcome.closed, "sector")} closed`] : []),
+                ...(outcome.rebaselined.length > 0
+                  ? [
+                      `${count(outcome.rebaselined.length, "sector")} re-baselined (${outcome.rebaselined.join(", ")})`,
+                    ]
+                  : []),
+              ];
+              lines.push(
+                `${outcome.campaign}/${outcome.objective}: ${moved.length === 0 ? "nothing to clear" : moved.join(", ")}; held to ${String(outcome.measure.recorded)}.`,
+              );
+              continue;
+            }
             lines.push(
               `${outcome.campaign}/${outcome.objective}: ${parts.length === 0 ? "nothing to clear" : parts.join(", ")}; ${count(outcome.left, "holdout")} left.`,
             );
@@ -1493,6 +1540,25 @@ export const objectives = (
           },
         );
         if (Result.isFailure(outcome)) return yield* Effect.fail(fail(outcome.failure));
+        const scalar =
+          rule.objectives.find((one) => one.id === objective.success)?.measure !== null;
+        if (scalar) {
+          if (outcome.success.conceded.length === 0) {
+            return yield* report([
+              `${rule.id}/${objective.success}: nothing to concede; no sector measures past its record.`,
+            ]);
+          }
+          return yield* report([
+            `${rule.id}/${objective.success}: a rise conceded in ${count(outcome.success.conceded.length, "sector")}, recorded by ${by}.`,
+            ...outcome.success.conceded.map((one) => `  ${one.sector} · ${one.entry}`),
+            ...(outcome.success.left.length === 0
+              ? []
+              : [
+                  "",
+                  `${count(outcome.success.left.length, "sector")} left past the record; check still fails on them.`,
+                ]),
+          ]);
+        }
         if (outcome.success.conceded.length === 0) {
           return yield* report([
             `${rule.id}/${objective.success}: nothing to concede; every hit is in the ledger.`,

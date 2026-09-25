@@ -1,0 +1,335 @@
+---
+// How the campaign's vocabulary nests: a campaign owns an ordered ladder of phases, each phase is
+// recognized by its objectives, and sectors climb the ladder as their holdouts reach zero.
+// Colours are Starlight's own tokens, so the figure follows the site's light and dark themes.
+const columns = [
+  { n: "Phase 1", id: "domain", objectives: ["no-io-in-domain", "has-unit-tests"] },
+  { n: "Phase 2", id: "repository", objectives: ["no-raw-queries", "has-migration"] },
+  { n: "Phase 3", id: "dual-write", objectives: ["has-flag", "has-both-writes"] },
+  { n: "Phase 4", id: "cutover", objectives: ["no-flag", "no-legacy-write"] },
+];
+const x0 = 120;
+const w = 122;
+const gap = 12;
+const col = (i: number) => x0 + i * (w + gap);
+const endX = col(4);
+
+const sectors = [
+  { name: "legacy", left: "212", column: 0, row: 0, kind: "legacy" },
+  { name: "orders", left: "31", column: 0, row: 1, kind: "sector" },
+  { name: "billing", left: "7", column: 1, row: 0, kind: "sector" },
+  { name: "payments", left: "2", column: 3, row: 0, kind: "sector" },
+  { name: "shipping", left: "done", column: 4, row: 0, kind: "done" },
+];
+const sectorY = (row: number) => 246 + row * 38;
+---
+
+<figure class="campaign-figure">
+  <div class="scroll">
+    <svg
+      viewBox="0 0 800 470"
+      role="img"
+      aria-labelledby="ch-title ch-desc"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <title id="ch-title">How a campaign is put together</title>
+      <desc id="ch-desc">
+        A campaign contains an ordered ladder of phases ending at the end state. Each phase is
+        recognized by its objectives. Sectors of the code stand at the first phase whose objectives
+        still have holdouts in them, and move right, toward the end, as those holdouts are cleared.
+      </desc>
+      <defs>
+        <marker
+          id="ch-arrow"
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="7"
+          markerHeight="7"
+          orient="auto-start-reverse"
+        >
+          <path d="M0,0 L10,5 L0,10 z" class="arrowhead"></path>
+        </marker>
+      </defs>
+
+      <!-- the campaign -->
+      <rect x="6" y="6" width="788" height="458" rx="12" class="frame"></rect>
+      <text x="24" y="34" class="eyebrow">CAMPAIGN</text>
+      <text x="100" y="34" class="title mono">billing-ddd</text>
+      <text x="24" y="54" class="muted">
+        scope src/** · the perimeter (**/context.ts) births one sector per bounded context
+      </text>
+
+      <!-- row labels -->
+      <text x="24" y="98" class="label">Phases</text>
+      <text x="24" y="114" class="muted small">in order</text>
+      <text x="24" y="160" class="label">Objectives</text>
+      <text x="24" y="176" class="muted small">detector + ledger</text>
+      <text x="24" y="262" class="label">Sectors</text>
+      <text x="24" y="278" class="muted small">holdouts left</text>
+
+      <line x1="20" y1="214" x2="780" y2="214" class="rule"></line>
+
+      <!-- phases and their objectives -->
+      {
+        columns.map((c, i) => (
+          <g>
+            <rect x={col(i)} y="76" width={w} height="46" rx="8" class="phase" />
+            <text x={col(i) + 12} y="94" class="eyebrow">
+              {c.n.toUpperCase()}
+            </text>
+            <text x={col(i) + 12} y="112" class="title small-title">
+              {c.id}
+            </text>
+            {c.objectives.map((o, j) => (
+              <g>
+                <rect x={col(i) + 4} y={134 + j * 32} width={w - 8} height="26" rx="13" class="chip" />
+                <text x={col(i) + w / 2} y={151 + j * 32} class="chip-text mono" text-anchor="middle">
+                  {o}
+                </text>
+              </g>
+            ))}
+            <line
+              x1={col(i) + w + 1}
+              y1="99"
+              x2={col(i) + w + gap - 1}
+              y2="99"
+              class="connector"
+              marker-end="url(#ch-arrow)"
+            />
+          </g>
+        ))
+      }
+
+      <!-- the end -->
+      <rect x={endX} y="76" width={w} height="118" rx="8" class="end"></rect>
+      <text x={endX + 12} y="94" class="eyebrow end-text">THE END</text>
+      <text x={endX + 12} y="112" class="title small-title end-text">end state</text>
+      <text x={endX + 12} y="148" class="small end-text">every objective</text>
+      <text x={endX + 12} y="164" class="small end-text">met: no holdouts,</text>
+      <text x={endX + 12} y="180" class="small end-text">numbers at target</text>
+
+      <!-- column guides through the sector lane -->
+      {
+        [0, 1, 2, 3, 4].map((i) => (
+          <rect x={col(i)} y="228" width={w} height="96" rx="8" class="lane" />
+        ))
+      }
+
+      <!-- sectors, each at the first phase that still has residue for it -->
+      {
+        sectors.map((s) => (
+          <g>
+            <rect
+              x={col(s.column) + 4}
+              y={sectorY(s.row)}
+              width={w - 8}
+              height="28"
+              rx="6"
+              class={`sector ${s.kind}`}
+            />
+            <text x={col(s.column) + 14} y={sectorY(s.row) + 19} class={`sector-name mono ${s.kind}`}>
+              {s.name}
+            </text>
+            <text
+              x={col(s.column) + w - 14}
+              y={sectorY(s.row) + 19}
+              class={`sector-count ${s.kind}`}
+              text-anchor="end"
+            >
+              {s.left}
+            </text>
+          </g>
+        ))
+      }
+
+      <!-- billing, about to move on -->
+      <rect
+        x={col(2) + 4}
+        y={sectorY(0)}
+        width={w - 8}
+        height="28"
+        rx="6"
+        class="sector ghost"></rect>
+      <text x={col(2) + 14} y={sectorY(0) + 19} class="sector-name mono ghost-text">billing</text>
+      <path
+        d={`M ${col(1) + w - 4} ${sectorY(0) + 14} L ${col(2) + 2} ${sectorY(0) + 14}`}
+        class="move"
+        marker-end="url(#ch-arrow)"></path>
+      <text x={col(1) + w / 2} y={sectorY(1) + 20} class="small muted" text-anchor="middle">
+        clear the last 7 →
+      </text>
+      <text x={col(1) + w / 2} y={sectorY(1) + 36} class="small muted" text-anchor="middle">
+        billing moves on
+      </text>
+
+      <!-- the direction of travel -->
+      <line
+        x1={col(0)}
+        y1="352"
+        x2={endX + w}
+        y2="352"
+        class="travel"
+        marker-end="url(#ch-arrow)"></line>
+      <text x={col(0)} y="378" class="body">
+        A sector stands at the first phase whose objectives still have holdouts in it.
+      </text>
+      <text x={col(0)} y="398" class="body">
+        Clearing them moves it right; the legacy (what no sector has claimed) stands at phase 1.
+      </text>
+      <text x={col(0)} y="428" class="muted small">
+        Each objective keeps a ledger of every place its pattern still occurs, per sector. It only
+        shrinks on its own:
+      </text>
+      <text x={col(0)} y="444" class="muted small">
+        growth needs a recorded reason, so the counts above can only go down.
+      </text>
+    </svg>
+  </div>
+  <figcaption>
+    A campaign owns an ordered ladder of phases; each phase is recognized by its objectives;
+    sectors climb the ladder as their holdouts reach zero.
+  </figcaption>
+</figure>
+
+<style>
+  .campaign-figure {
+    margin-block: 1.5rem;
+  }
+  .scroll {
+    overflow-x: auto;
+  }
+  svg {
+    display: block;
+    width: 100%;
+    min-width: 640px;
+    height: auto;
+    font-family: var(--__sl-font);
+  }
+  figcaption {
+    margin-top: 0.5rem;
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-3);
+  }
+  .mono {
+    font-family: var(--__sl-font-mono);
+  }
+  .frame {
+    fill: none;
+    stroke: var(--sl-color-gray-5);
+    stroke-width: 1.5;
+  }
+  .rule {
+    stroke: var(--sl-color-gray-5);
+    stroke-dasharray: 2 4;
+  }
+  .eyebrow {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+    fill: var(--sl-color-gray-3);
+  }
+  .title {
+    font-size: 16px;
+    font-weight: 600;
+    fill: var(--sl-color-white);
+  }
+  .small-title {
+    font-size: 14px;
+  }
+  .label {
+    font-size: 13px;
+    font-weight: 600;
+    fill: var(--sl-color-white);
+  }
+  .body {
+    font-size: 13px;
+    fill: var(--sl-color-text);
+  }
+  .muted {
+    font-size: 12px;
+    fill: var(--sl-color-gray-3);
+  }
+  .small {
+    font-size: 11px;
+  }
+  .phase {
+    fill: var(--sl-color-gray-6);
+    stroke: var(--sl-color-gray-5);
+  }
+  .connector,
+  .travel {
+    stroke: var(--sl-color-gray-4);
+    stroke-width: 1.5;
+  }
+  .travel {
+    stroke-width: 2;
+  }
+  .arrowhead {
+    fill: var(--sl-color-gray-4);
+  }
+  .chip {
+    fill: var(--sl-color-accent-low);
+  }
+  .chip-text {
+    font-size: 10.5px;
+    fill: var(--sl-color-accent-high);
+  }
+  .end {
+    fill: var(--sl-color-green-low);
+    stroke: var(--sl-color-green);
+  }
+  .end-text {
+    fill: var(--sl-color-green-high);
+  }
+  .lane {
+    fill: none;
+    stroke: var(--sl-color-gray-5);
+    stroke-dasharray: 3 3;
+  }
+  .sector {
+    fill: var(--sl-color-bg);
+    stroke: var(--sl-color-gray-3);
+  }
+  .sector.legacy {
+    fill: var(--sl-color-orange-low);
+    stroke: var(--sl-color-orange);
+    stroke-dasharray: 4 3;
+  }
+  .sector.done {
+    fill: var(--sl-color-green-low);
+    stroke: var(--sl-color-green);
+  }
+  .sector.ghost {
+    fill: none;
+    stroke: var(--sl-color-gray-4);
+    stroke-dasharray: 4 3;
+  }
+  .sector-name {
+    font-size: 12px;
+    fill: var(--sl-color-white);
+  }
+  .sector-count {
+    font-size: 12px;
+    font-weight: 600;
+    fill: var(--sl-color-gray-2);
+  }
+  .sector-name.legacy,
+  .sector-count.legacy {
+    fill: var(--sl-color-orange-high);
+  }
+  .sector-name.done,
+  .sector-count.done {
+    fill: var(--sl-color-green-high);
+  }
+  .ghost-text {
+    fill: var(--sl-color-gray-4);
+    font-size: 12px;
+  }
+  .move {
+    fill: none;
+    stroke: var(--sl-color-accent);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 3;
+  }
+</style>

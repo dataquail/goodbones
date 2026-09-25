@@ -138,52 +138,11 @@ same tree against a target manifest instead of the repository's own. It never fa
 is a measurement, and `check` is what holds it to any ceiling the manifest states in
 `limits.conformance`. See [Conformance](/goodbones/architecture-rules/enforcement/conformance/).
 
-## `campaigns`
+## `campaigns` and `objectives`
 
-The [campaigns](/goodbones/architecture-rules/manifest/campaigns/) the manifest declares.
-Alone, the status table — each campaign's progress, what is left, its owner, whether it is
-stalled or complete, the distribution of its sectors over its phases when it has any, and
-each objective's burn-down beneath:
-
-```
-$ architecture campaigns
-
-1 campaign under packages
-
-  lowering-reports-not-throws   21%     15 left  @dataquail
-    throws-in-lowering   21%     15 left  4 cleared  2 conceded
-```
-
-```bash
-architecture campaigns status --changed [--base <ref>] [--json] [--hotfix "<reason>"]   # the nudge
-architecture campaigns attest <sector> <phase> --reason "<why>" [--evidence <url>]      # a step no detector sees
-architecture campaigns note <sector> "<text>"                                           # a remark for the next touch
-architecture campaigns history [<campaign>] [--since <ref>] [--json]                    # the ledgers' git history
-```
-
-`status --changed` is [the nudge](/goodbones/architecture-rules/enforcement/nudge/): per
-sector the diff touches, which campaign, what phase, what would move it on, and a verdict it
-exits non-zero on. `attest` and `note` write the sector's record; both take `--campaign <id>`
-when the policy declares more than one. `history` replays the ledgers' and the manifest's git
-history as a series. Roots follow the subcommand, as they do everywhere else.
-
-## `objectives`
-
-The [ledgers](/goodbones/architecture-rules/enforcement/ledger/):
-
-```bash
-architecture objectives clear [<campaign>[/<objective>]]                                 # reconcile with the code
-architecture objectives concede <campaign>[/<objective>] --reason "<why>" [--by <email>]  # record why a count may rise
-```
-
-`clear` reconciles every ledger with the code wherever that is not a regression: stale
-holdouts leave, drifted ones are rewritten, a sector entering a window is recorded with its
-initial (which is how a first ledger is written), a sector past a window has its holdouts
-closed, a receipted phase change re-baselines, and each sector's `reached` and the plan are
-recorded. `concede` is the one way a holdout is added, and it always appends a concession —
-the holdouts, a reason, a timestamp and the author, which defaults to git's `user.email`;
-`--holdouts a,b` concedes a subset and leaves the rest failing, `--sector <name>` narrows to
-one sector. `campaigns init`, `prune` and `allow` are refused by name.
+The campaign verbs — the status table, the nudge, `attest`, `note`, `history`, and the ledger
+verbs `objectives clear` and `objectives concede` — are documented with the family, under
+[Campaigns → Commands](/goodbones/campaigns/running/cli/).
 
 ## `coverage`
 

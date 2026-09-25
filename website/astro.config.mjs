@@ -4,9 +4,9 @@ import { defineConfig } from "astro/config";
 export default defineConfig({
   integrations: [
     starlight({
-      title: "Oxlint Utils",
+      title: "Goodbones",
       description:
-        "Oxlint plugins and tooling from dataquail. Architecture Rules turns architecture policy into one manifest of your repository, enforced by oxlint.",
+        "Architecture policy as one manifest of your repository, enforced by oxlint and a CLI — and refactors tracked as campaigns that only move forward.",
       social: [
         {
           icon: "github",
@@ -40,7 +40,6 @@ export default defineConfig({
                 { slug: "architecture-rules/manifest/surface" },
                 { slug: "architecture-rules/manifest/graph" },
                 { slug: "architecture-rules/manifest/structure" },
-                { slug: "architecture-rules/manifest/campaigns" },
                 { slug: "architecture-rules/manifest/inheritance" },
                 { slug: "architecture-rules/manifest/javascript" },
               ],
@@ -51,11 +50,40 @@ export default defineConfig({
                 { slug: "architecture-rules/enforcement/resolution" },
                 { slug: "architecture-rules/enforcement/probes" },
                 { slug: "architecture-rules/enforcement/baseline" },
-                { slug: "architecture-rules/enforcement/ledger" },
-                { slug: "architecture-rules/enforcement/nudge" },
                 { slug: "architecture-rules/enforcement/adoption" },
                 { slug: "architecture-rules/enforcement/conformance" },
                 { slug: "architecture-rules/enforcement/cli" },
+              ],
+            },
+          ],
+        },
+        {
+          label: "Campaigns",
+          items: [
+            {
+              label: "Getting Started",
+              items: [
+                { slug: "campaigns/getting-started/introduction" },
+                { slug: "campaigns/getting-started/installation" },
+              ],
+            },
+            {
+              label: "Defining a Campaign",
+              items: [
+                { slug: "campaigns/manifest", label: "Overview" },
+                { slug: "campaigns/manifest/objectives" },
+                { slug: "campaigns/manifest/scalars" },
+                { slug: "campaigns/manifest/sectors" },
+                { slug: "campaigns/manifest/phases" },
+                { slug: "campaigns/manifest/detectors" },
+              ],
+            },
+            {
+              label: "Running a Campaign",
+              items: [
+                { slug: "campaigns/running/ledger" },
+                { slug: "campaigns/running/nudge" },
+                { slug: "campaigns/running/cli" },
               ],
             },
           ],

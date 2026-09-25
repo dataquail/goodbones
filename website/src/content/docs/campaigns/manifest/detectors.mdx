@@ -1,0 +1,204 @@
+---
+title: Detectors
+description: The terms an objective's match is built from — path, imports, exports, members, requires, content, syntax, report and fn — and how all, any and not compose them.
+---
+
+| Term       | Shape                                                      | Holds when…                                                                                                                                                                   |
+| ---------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `path`     | `{ file, fileNot?, subject?, convention? }`                | the repo-relative path matches `file` (a regular expression) and not `fileNot`; with `subject` and `convention`, the capture group named has the convention's shape           |
+| `imports`  | `{ resolves, symbols? }`                                   | some import of the file resolves to the target — a path glob, `{ external: <package> }` or `{ builtin: <module> }` — and, with `symbols`, pulls one of those names across it  |
+| `exports`  | `{ name?, kinds?, declares?, reexport? }`                  | an export site the [`surface`](/goodbones/architecture-rules/manifest/surface/) selectors admit                                                                               |
+| `members`  | `{ subject, name?, in?, declares? }`                       | a member or called name the [`members`](/goodbones/architecture-rules/manifest/members/) selectors admit; `calls` is about the file, `members` about the declaration it is in |
+| `requires` | `["{base}.test.ts", …]`                                    | every named sibling exists — the [`structure`](/goodbones/architecture-rules/manifest/structure/) parity strings                                                              |
+| `content`  | `{ regex }`                                                | the regular expression matches the file's text (multiline)                                                                                                                    |
+| `syntax`   | an ast-grep rule, plus `where`                             | the engine finds a node — see [The syntax term](#the-syntax-term)                                                                                                             |
+| `report`   | `{ command \| file, format, pattern?, codes?, codesNot? }` | another program reported a diagnostic on the file — see [The report term](#the-report-term)                                                                                   |
+| `fn`       | `"module#export"`                                          | the function answers `true`, or lists subjects — see [The function term](#the-function-term)                                                                                  |
+
+Each term is an object with exactly one key, so a misspelled one is a decode error naming
+the line rather than a term that quietly matches nothing. `path.convention` is one of
+`kebab-case`, `camelCase`, `PascalCase`, `snake_case` or `{ regex }`; the `path` term reads
+positively — _the name has this shape_ — so a rename campaign detects the old shape.
+
+## Composition
+
+`all`, `any` and `not` compose terms, and each other, to any depth — the same three words
+ast-grep uses inside a rule.
+
+```yaml
+rsc-boundaries:
+  why: A component that uses client-only APIs must say so, or the server render fails at runtime.
+  how: Add the `use client` directive at the top of the file, or move the hook into a client component.
+  scope: ["app/**"]
+  staleAfter: 30d
+  objectives:
+    client-boundary:
+      holdout: file
+      match:
+        all:
+          - not: { content: { regex: '^["'']use client["'']' } }
+          - any:
+              - syntax: { pattern: "$HOOK($$$)", where: { HOOK: { regex: "^use[A-Z]" } } }
+              - imports: { resolves: { external: framer-motion } }
+              - fn: ./campaigns/rsc.mjs#needsClientBoundary
+      probes:
+        fires: [{ path: app/x.tsx, source: "export default () => { useState(); }" }]
+```
+
+Terms are evaluated cheapest first — the path, then the facts the parser already produced
+(`imports`, `exports`, `members`), then the file system (`requires`), the text
+(`content`), the syntax tree (`syntax`, parsed once per file and shared by every objective),
+and last a predicate function. An `all` stops at the first file-level term that fails, so a
+`path` term in front of a `syntax` term is what keeps the parse off files the objective
+was never about.
+
+## The syntax term
+
+The `syntax` term is an [ast-grep](https://ast-grep.github.io/reference/rule.html) rule
+object — `pattern`, `kind`, `regex`, `has`, `inside`, `precedes`, `follows`, `nthChild`,
+`all`, `any`, `not` — with `where` beside it. Metavariables are `$NAME` for one node and
+`$$$` for any number. A pattern is matched structurally, so `class $NAME extends $BASE { $$$ }`
+finds a class whatever its body says, and `$HOOK($$$)` finds every call.
+
+`where` narrows a metavariable:
+
+```yaml
+where:
+  HOOK: { regex: "^use[A-Z]" }
+  BASE: { binding: { resolves: { external: react }, member: [Component, PureComponent] } }
+```
+
+`regex` is over the text the metavariable captured. `binding` follows the identifier at the
+root of the capture back to the import that bound it — `C` in
+`import { Component as C }`, `React` in `import React from "react"` — resolves that edge
+the way every other rule resolves one, and checks the target against `resolves` and the
+name pulled across against `member`: the exported name for a named import, the property
+accessed (`React.Component` → `Component`) for a default or namespace one. This is how
+_"a class that extends a React component"_ is said without listing every alias the file
+might use, and it is done in the core against the file's facts, not by the engine.
+
+The names `kind` takes, inside `has` and `inside` too, are the engine's node kinds — and
+the engine is ast-grep, so they are tree-sitter's for the grammar the file is parsed with:
+`class_declaration`, `call_expression`, `arrow_function`. A relational rule (`has`, `inside`)
+searches the immediate children or ancestors unless it says `stopBy: end`. `pattern` is
+engine-neutral by construction; a later matcher over a different tree would ship a
+documented kind mapping rather than a compatibility surprise.
+
+## The report term
+
+Some patterns no parser of ours sees: a type error, a finding from another linter, anything a
+program prints one line per occurrence. The `report` term reads such a program's output and
+makes each diagnostic a match, so a campaign can ratchet down what another tool reports —
+with the granularity a count-per-file baseline throws away.
+
+```yaml
+type-errors:
+  why: The strict tsconfig cannot land while these remain.
+  how: Fix the type error at its source; do not add a cast or a `!`.
+  owner: "@team/platform"
+  scope: ["src/**"]
+  staleAfter: 30d
+  objectives:
+    tsc:
+      holdout: match
+      match:
+        report:
+          command: "npx tsc --noEmit --pretty false"
+          format: tsc
+          codesNot: [TS6133]
+      probes:
+        fires:
+          [
+            {
+              path: src/a.ts,
+              report: [{ line: 1, code: TS2551, message: "Property 'x' does not exist" }],
+            },
+          ]
+        ignores:
+          [
+            {
+              path: src/b.ts,
+              report: [{ line: 1, code: TS6133, message: "'x' is declared but never used" }],
+            },
+          ]
+```
+
+| Field      | Meaning                                                                                                                                        |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `command`  | a program run from the repository root, once per process, or a list of them; a non-zero exit is expected (`tsc` exits 2 when there are errors) |
+| `file`     | instead of `command`: a report an earlier step wrote, relative to the repository root, or a list of them                                       |
+| `format`   | `tsc` (`file(line,col): error TSxxxx: message`), `eslint` (`--format json`), `oxlint` (`--format json`), or `regex`                            |
+| `pattern`  | `regex` only: named groups `file` and `line`, and optionally `column`, `code`, `message`; one diagnostic per matching line                     |
+| `codes`    | the codes the term speaks to (`TS2551`, `no-unused-vars`, `eslint(no-debugger)`); omit for every one                                           |
+| `codesNot` | codes carved back out                                                                                                                          |
+
+Each diagnostic is anchored on the declaration at its position through the scope's syntax
+matcher — `anchorAt`, the second thing a matcher answers — and keyed
+`Anchor#code#hash(message)`, so an entry survives the line moving and changes when the
+message does. Two identical diagnostics at two positions in one declaration are two entries
+(`~2`, `~3`), so a ledger keeps its count; a diagnostic printed twice at one position is one.
+A diagnostic with no enclosing declaration, or in a file with no matcher, is keyed by code
+and message alone.
+
+### Several commands, one report
+
+A tool that checks one project at a time — `tsc --project`, a language service over a
+tsconfig — is run once per project, and `command` takes the list:
+
+```yaml
+match:
+  report:
+    command:
+      - "npx effect-tsgo diagnostics --project packages/server/tsconfig.src.json --format text --severity message"
+      - "npx effect-tsgo diagnostics --project packages/web/tsconfig.json --format text --severity message"
+    format: regex
+    pattern: '^(?<file>.+?)\((?<line>\d+),(?<column>\d+)\): message effect\((?<code>\w+)\): (?<message>.*)$'
+```
+
+The outputs are one report: each is parsed, the diagnostics are joined in the order the
+commands are written, and a diagnostic two of them print — a project's program includes the
+files of the projects it references, so the same finding is reported under each — is kept
+once, when identical in file, position, code and message. The commands run at the same
+time, as many at once as the machine has cores, in both hosts: the CLI runs them before it
+walks a file and the plugin as it loads. `file` takes a list the same way, for a report
+written one file per project.
+
+The commands run once per process and the output is cached: the CLI is one process per
+`check`, and oxlint's language server is one process per editor session, which sees the
+report as of when it loaded the plugin. Under the plugin a command is forked from oxlint
+itself, and the plugin runs it as it loads, before a file is linted — once the linter is
+running, its per-thread AST buffers can add up to one mapping larger than the machine's
+RAM and swap, and Linux's default overcommit heuristic refuses to fork such a process
+(`spawnSync /bin/sh ENOMEM`); at load, the process is small. Running at load means the
+commands run on every plugin load, an editor session included, whether or not a selected
+file is opened. A report an earlier step writes to a file — `file: tsc-report.txt` — is the
+form for CI as well as for the editor, and the one to use when the command is slow;
+`command:` is the CLI's form, where `check` is the only thing in the process.
+
+A command that cannot be spawned, or a file no step wrote, is one failure per run, not one
+per file: the source keeps the failure as it would have kept the report, `check` stops with
+it, and the plugin reports it once, on the first file a campaign naming that report selects,
+while every other campaign on that file is still judged. A probe answers the term with
+`report: [{ line, column?, code?, message? }]`, positions one-based as a tool prints them,
+so no program runs at load.
+
+## The function term
+
+`fn: ./campaigns/rsc.mjs#needsClientBoundary` names an export of a module, resolved relative
+to the root manifest. The host imports it before the policy loads and refuses a reference
+whose export is not a function. A `.mjs` manifest may hold the function itself in place of
+the string.
+
+```js
+/** @type {import("@goodbones/core").CampaignPredicate} */
+export const needsClientBoundary = ({ file, text, facts, syntax }) =>
+  facts.specifiers.some((one) => one.startsWith("@vendor/browser-")) ||
+  (syntax?.findAll({ pattern: "window.$X" }).length ?? 0) > 0;
+```
+
+It is given the file's path, its text, its facts (`specifiers`, `bindings`, `memberSites`,
+`exportSites`) and its syntax tree (`null` without a matcher), and answers either a boolean —
+a statement about the file — or a list of `{ subject, range? }`: declaration names in a
+`declaration` objective, ledger keys of its own choosing in a `match` one. `CampaignPredicate`
+is exported from `@goodbones/core` so the module typechecks on its own. The function runs
+last, after every other term, and only when the cheaper ones have not already decided.

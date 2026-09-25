@@ -1,0 +1,134 @@
+---
+title: Installation
+description: Installing the campaigns family, enabling its oxlint rule, writing a first campaign and its ledger, and delivering the nudge to people and agents.
+---
+
+## Install
+
+Campaigns ship as [`@goodbones/campaigns`](https://www.npmjs.com/package/@goodbones/campaigns),
+and both hosts depend on it, so installing the CLI and the plugin is the whole install:
+
+```bash
+pnpm add -D @goodbones/cli      # the `architecture` CLI: check, the ledger verbs, the nudge
+pnpm add -D @goodbones/oxlint   # the plugin: holdouts the ledger does not carry, in the editor and CI
+```
+
+The CLI is the one you need. It is the only host that sees every file at once, so it is where
+sectors are discovered, sector-level objectives are answered, ledgers are written and the nudge
+is computed. The plugin is optional and per file: it refuses a new holdout the ledger does not
+carry, as you type.
+
+Both pull in `@goodbones/ast-grep`, the syntax matcher behind the
+[`syntax` term](/goodbones/campaigns/manifest/detectors/#the-syntax-term). It wraps
+[`@ast-grep/napi`](https://www.npmjs.com/package/@ast-grep/napi), which ships a prebuilt
+binary as an optional, per-platform dependency — there is no install script to allow, but an
+install that skips optional dependencies (`--no-optional`, `--omit=optional`) leaves the
+matcher without its binary, and a platform ast-grep does not publish for fails at install.
+
+If you have not set up Architecture Rules yet, its
+[installation page](/goodbones/architecture-rules/getting-started/installation/) covers the
+manifest, the plugin's wiring and the editor schema; a campaign lives in that same
+`architecture.yaml`.
+
+## Enable the plugin's rule
+
+The plugin's campaign rule is `architecture/campaigns`, beside the five architecture rules:
+
+```json
+// .oxlintrc.json
+{
+  "jsPlugins": [{ "name": "architecture", "specifier": "@goodbones/oxlint" }],
+  "rules": {
+    "architecture/campaigns": "error"
+  }
+}
+```
+
+For every objective whose window contains the file's sector's current phase, it reports a
+holdout the ledger does not carry. It reads the sector off the perimeter and the phase off the
+ledgers, and parses with the same ast-grep matcher the CLI uses, so the two hosts agree. It
+never nags about holdouts that are already recorded — that is the nudge's job.
+
+## Write a campaign
+
+Add a `campaigns` key to `architecture.yaml`. The
+[smallest campaign](/goodbones/campaigns/getting-started/introduction/#the-smallest-campaign)
+is one objective with a probe; [Defining a campaign](/goodbones/campaigns/manifest/) has the
+full shape. Every `match` objective must carry a probe it fires on, and the policy refuses to
+load until it does — the same vacuity check every architecture rule makes.
+
+## Write the first ledger
+
+```bash
+pnpm exec architecture objectives clear   # record every place each objective fires today
+pnpm exec architecture check              # now holds the count: it may only go down
+```
+
+`objectives clear` writes one JSON file per objective under `.architecture-campaigns/`
+(the manifest's `ledger` key moves it) — the [ledger](/goodbones/campaigns/running/ledger/).
+**Commit that directory.** It is the burn-down, it is read in review, and until a sector in an
+objective's window has an entry, `check` fails and names this command.
+
+Optionally, put the campaign's owner on every change to its counts:
+
+```
+# CODEOWNERS
+.architecture-campaigns/billing-ddd/  @your-org/billing
+```
+
+## Deliver the nudge
+
+The [nudge](/goodbones/campaigns/running/nudge/) is delivered, not discovered: nothing shows
+it unless something runs it. Two places to run it:
+
+- **Before an agent finishes.** A stop hook, or a line in `CLAUDE.md` / `AGENTS.md`, that runs
+  `architecture campaigns status --changed --json` and reads its `ask` and `verdict` fields.
+  It exits non-zero on anything but `ok` and `hotfix`, so a hook can block on the exit code
+  alone.
+- **In CI.** `architecture campaigns status --changed --base origin/main` evaluates the base
+  tree exactly and can be posted as a pull-request comment; `architecture check` in the same
+  job holds every ledger.
+
+```bash
+# CI
+pnpm exec architecture check
+pnpm exec architecture campaigns status --changed --base origin/main
+```
+
+## Embedding the loader
+
+`campaigns` is the one family `@goodbones/core` does not own: `@goodbones/campaigns` depends on
+the core and on nothing else.
+
+The split is visible in exactly one place, and only if you are embedding the loader yourself
+rather than using the CLI or the plugin. A host composes the family as an extension:
+
+```ts
+import { campaignsExtension, campaignsOf } from "@goodbones/campaigns";
+import { loadPolicy } from "@goodbones/core";
+
+const policy = loadPolicy({
+  // …
+  extensions: [campaignsExtension({ functions, reports })],
+});
+
+const { campaignRules, ledgers } = campaignsOf(policy);
+```
+
+An extension claims its own top-level manifest keys — here `campaigns` and `ledger` — and decodes
+them with its own codec. The core splits those keys off before decoding the rest, so a manifest
+key that belongs to no loaded family is still refused as a misspelling, and the errors a campaign's
+own codec reports still name the line and the `use` they came through. A policy loaded without the
+extension simply has no campaigns; `architecture check` on a manifest that declares none is not an
+error either way.
+
+Why it is separate: the six architecture families answer "what may never happen", and this one
+answers "what is the code moving away from, and how far has it got". The second question needs a
+ledger, a git diff, a clock and another program's diagnostics, none of which the first needs. Every
+dependency runs one way — nothing in the core imports this family — so keeping them in one package
+only meant a policy that states architecture alone paid for machinery it never ran.
+
+The matcher is `@goodbones/ast-grep`, which both hosts compose into the TypeScript pack.
+The plugin parses `sourceCode.text` with the same matcher the CLI uses, so this family's
+parity contract is _one engine_ rather than a corpus. A campaign whose `scope` covers a
+language with no matcher is refused at load, with the language named.

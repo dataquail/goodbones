@@ -1,9 +1,9 @@
 ---
-title: Oxlint Utils
-description: Oxlint plugins and tooling from dataquail.
+title: Goodbones
+description: Architecture policy as one manifest of your repository, enforced by oxlint and a CLI, and refactors tracked as campaigns.
 template: splash
 hero:
-  tagline: Oxlint plugins and tooling. Today that is Architecture Rules — write down what each part of your repository may reach, who may reach it, what it may declare, and which files are allowed to live there — once, in a file that reads like a directory listing.
+  tagline: Write down what each part of your repository may reach, who may reach it, what it may declare, and which files are allowed to live there — once, in a file that reads like a directory listing. Then track the refactors that get you there as campaigns.
   actions:
     - text: Get Started
       link: /goodbones/architecture-rules/getting-started/introduction/
@@ -62,5 +62,28 @@ files and enforced by oxlint.
     An oxlint plugin for the editor and CI, and a CLI that evaluates the same policy with no linter
     in the loop. Both answer to the same core, so an alpha plugin API is not a single point of
     failure.
+  </Card>
+</CardGrid>
+
+## Campaigns
+
+`@goodbones/campaigns` tracks a multi-step refactor as an object in the same manifest: objectives
+with ledgers that only shrink, over the sectors of code that move through it, through phases you
+define as you learn them — and a nudge that tells whoever touches a sector what would move it on.
+
+<CardGrid>
+  <Card title="A refactor you can measure" icon="list-format">
+    Each objective records every place its pattern still occurs, per sector. The count only goes
+    down on its own; growth needs a recorded reason.
+
+    [Read the introduction →](/goodbones/campaigns/getting-started/introduction/)
+
+  </Card>
+  <Card title="A plan written as you learn" icon="random">
+    Define the phases you know and leave the rest open. As sectors reach the edge of the plan, the
+    next step becomes clear and is written down.
+
+    [How phases work →](/goodbones/campaigns/manifest/phases/)
+
   </Card>
 </CardGrid>

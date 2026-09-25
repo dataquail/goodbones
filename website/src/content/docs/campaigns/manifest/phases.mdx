@@ -1,0 +1,127 @@
+---
+title: Phases
+description: The ordered ladder a sector climbs — defined phases recognized by their objectives, windows for shapes the end forbids, attested steps, the open phase where the plan runs out, and the end state.
+---
+
+A phase is a named, ordered group of objectives. It is **defined** when it names at least one
+objective (or is `attested`, or carries an `endState`) and **open** when it carries only an
+`intent` — and then it is last. Phases are not nested and carry no policy of their own; a
+phase's criteria are its objectives. The loader refuses an open phase that is not last, an
+objective named by two phases, and a phase naming an objective the campaign does not declare.
+
+| Field         | Meaning                                                                                                                               |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`          | kebab-case                                                                                                                            |
+| `intent`      | prose: what the phase is for. Required on an open phase; welcome on a defined one. What the nudge says when there are no criteria yet |
+| `objectives`  | the ids this phase is recognized by                                                                                                   |
+| `attested`    | `true` for a step no detector sees — a backfill, a flag flip — left by `campaigns attest`                                             |
+| `onTouch`     | this phase's word over the campaign's                                                                                                 |
+| `endState`    | a sector-relative node tree expanding into this phase's structural objectives — see [The end state](#the-end-state)                   |
+| `concessions` | `[{ reason, at, by? }]`: the receipt a change to a defined phase needs — see [Changing a defined phase](#changing-a-defined-phase)    |
+
+**A sector's phase is derived, never declared**: the first phase, in order, with residue for
+that sector — an objective the phase names with a holdout in the sector, an attested phase not
+yet attested for it, or the open phase, which always has residue. A sector past the last phase
+of a ladder that ends defined is done. This can move _down_ when a plan edit adds an objective
+to an earlier phase, which is correct behaviour under a fluid plan. There is no commitment file
+and no `advance` verb; the stall clock is what says nobody is paying.
+
+**Reached.** What derivation cannot say is where a sector _has been_, and windows need that.
+So `objectives clear` records, in the sector's own file, the furthest phase it has ever been
+derived at — derived by the tool, written on the run, checked by `check`, never edited by hand.
+
+**Why every phase has teeth.** The obvious way to game "legacy is shrinking" is relocation:
+move a 2,000-line service into a folder with a `context.ts`. Because the first phase has real
+objectives, that folder is a sector at phase one with a hundred holdouts, the phase distribution
+shows a sector that just appeared at the bottom, and the legacy line shrinks by the same
+amount — both are reported, and the report never collapses them into one number.
+
+## Windows
+
+An objective counts for a sector from the phase that names it until the phase its `until`
+names, exclusive; the default is to the end. That is how a phase recognizes a shape the end
+forbids: `has-flag` is a holdout while the flag is missing during `dual-write`, and stops
+counting at `cutover`, where `no-flag` starts. When a sector enters an objective's window, its
+occurrences are recorded as that sector's `initial` by `objectives clear` — growth that is the
+plan working, not a regression. When a sector leaves a window, `clear` records its remaining
+holdouts as `closed`, not cleared, so a window shutting is never counted as progress and never
+moves the stall clock. And a window whose `until` is at or before the sector's `reached` is
+shut for that sector for good: when a later plan edit sends the sector back down the ladder,
+the transitional shapes it has already been through are not demanded again. The loader
+refuses an `until` naming a phase that does not exist, or one at or before the naming phase.
+
+Expected growth is a window; unexpected growth is a concession. A parallel-change step raises a
+count on purpose — the shim that calls the old API, the flag that writes twice. Under a ledger
+that only shrinks, every such step is a regression demanding a reason, which is noise; the fix
+is to say where the growth belongs. When the growth is a _place_ rather than a class — one shim
+file — narrowing the detector is the right tool, not a phase.
+
+## Attested phases
+
+A phase with `attested: true` has no detector; it is left by
+`architecture campaigns attest <sector> <phase> --reason "<why>" [--evidence <url>]`, which
+writes a dated entry in the sector's file. The tool cannot see a backfill or a flag flip; it
+can insist that someone said so, on the record. An attestation is accepted only while the
+sector's derived phase is that phase, so it cannot be recorded ahead and passed through on
+arrival.
+
+## Open phases
+
+An open phase collects: the intent is what the nudge says, and
+`architecture campaigns note <sector> "…"` appends a dated remark for the next person or
+agent, recorded under the phase it was left at. Refining an open phase into a defined one —
+adding its first objective, with a probe — is free, and the ledger records the sector initials
+on the next `clear`; notes left under the phase before it was refined leave the nudge and stay
+in the file. The conformance report flags this as **plan refined**, apart from **plan
+changed**, so the one a reviewer must read every time stays readable.
+
+## Changing a defined phase
+
+Any change to a defined phase's objectives, an objective's detector, or its position fails
+`check` unless the phase carries a new `concessions` entry naming a reason, dated. The tool
+does not judge whether the new criteria are weaker — that is not decidable in general and
+wrong on renames — so this is code review with a receipt. One receipt is the whole price: the
+concession authorizes the next `objectives clear` to re-baseline the sectors already in that
+phase's window, recording `{ from, to, reason }` in each ledger, so a widened detector does not
+also demand a concession per new hit. What `check` compares against is the plan
+`objectives clear` last wrote, in `.architecture-campaigns/<campaign>/plan.json`.
+
+## The end state
+
+For a campaign whose end is a layering — an onion, CQRS, the strangler's new host — writing
+structural objectives by hand is tedious and error-prone. `endState` is one ordinary node tree
+whose root `~/` is the sector rather than the repository, written on a phase (or on the
+campaign, where it belongs to the last phase; a campaign with no phases gets one, `end`). It
+expands into one objective per family it lowers to — `end-state-imports`, `end-state-members`,
+`end-state-surface`, `end-state-structure`, `end-state-exports` — each with `holdout:
+declaration`, keyed `file#subject` from the sector's root. It is compiled and probed once at an
+abstract root, so a tree whose rules cannot fire is refused at load like any other, and lowered
+once per sector with the sector's root as root when the CLI evaluates it.
+
+```yaml
+endState:
+  ~/:
+    surface: [{ message: "no default exports", kinds: [default] }]
+    children:
+      "domain/":
+        {
+          layout: open,
+          children: {},
+          imports: { allow: ["~/domain/**"] },
+          members: [{ use: no-file-system-calls }],
+        }
+      "ports/": { layout: open, children: {}, imports: { allow: ["~/domain/**"] } }
+      "adapters/":
+        {
+          layout: open,
+          children: {},
+          imports: { allow: ["~/ports/**", { sector: "*", via: "~/ports/" }] },
+        }
+```
+
+The one allow entry the sector-relative tree adds is `{ sector, via }` — another sector (`*`
+for any), through its port: for each other sector it expands to that sector's `via` folder. An
+end state needs a sector with one root; a campaign whose perimeter is a `marker` (which may
+list globs) is refused one at load, and `oneRoot` as an earlier phase's objective is how it
+gets there. The plugin never evaluates an end state; its residue reaches a file only as the
+phase it puts the sector at.

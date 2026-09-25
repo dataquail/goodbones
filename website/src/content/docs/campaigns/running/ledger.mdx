@@ -3,7 +3,7 @@ title: Ledger
 description: An objective's record of every place the pattern still occurs, per sector, and of every time a count was allowed to go up — with the sector's own record beside it.
 ---
 
-Each objective of a [campaign](/goodbones/architecture-rules/manifest/campaigns/) has a ledger:
+Each objective of a [campaign](/goodbones/campaigns/getting-started/introduction/) has a ledger:
 one JSON file under the manifest's `ledger` directory (default `.architecture-campaigns/`),
 at `<campaign>/<objective>.json`. It is the
 [baseline](/goodbones/architecture-rules/enforcement/baseline/)'s cousin and not the baseline —
@@ -78,7 +78,7 @@ is rewritten in place and counts as neither; `lastCleared` moves only when somet
 sector newly inside an objective's window is recorded with its `initial`, which is how a
 first ledger is written; a sector past a window has what still fires `closed`; a sector the
 code no longer births is closed the same way. A defined phase changed with a
-[concession](/goodbones/architecture-rules/manifest/campaigns/#changing-a-defined-phase) has
+[concession](/goodbones/campaigns/manifest/phases/#changing-a-defined-phase) has
 its sectors re-baselined, each recording `{ from, to }` with the phase concession's reason.
 Unrecorded growth is left where it is: `clear` never adds a holdout. Alongside the ledgers it
 writes each sector's record and the campaign's plan, below. Until a sector in a window has an
@@ -103,7 +103,7 @@ sector. `campaigns clear` and `campaigns concede` are accepted as the same verbs
 
 ## Scalar objectives
 
-A [scalar objective](/goodbones/architecture-rules/manifest/campaigns/#scalar-objectives)'s
+A [scalar objective](/goodbones/campaigns/manifest/scalars/)'s
 ledger is the same file with a second schema, told apart by `kind`:
 
 ```json

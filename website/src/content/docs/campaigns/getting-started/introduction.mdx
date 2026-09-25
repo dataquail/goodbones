@@ -1,0 +1,116 @@
+---
+title: Introduction
+description: A multi-step refactor as an object in the repository — objectives with ledgers that only shrink, over sectors the code births, through phases toward an end — and a nudge that tells whoever touches a sector what would move it on.
+---
+
+import CampaignHierarchy from "../../../../components/CampaignHierarchy.astro";
+import CampaignFrontier from "../../../../components/CampaignFrontier.astro";
+
+Most debt paydown is an incremental migration: every class component to hooks, every page
+under `pages/` to `app/`, every bounded context out of the mud and behind a port. The work is
+too big for one change, so it is cut into tickets, and the tickets become the only record of
+how far it has got. Nothing static enforces that a count goes down; nothing tells someone
+editing a file that the file is inside a migration, or which step it is at; nothing notices
+when a migration has quietly stopped.
+
+Goodbones Campaigns makes the refactor an object in the repository, written in the same
+[`architecture.yaml`](/goodbones/architecture-rules/manifest/) as the rest of the policy:
+
+> A **campaign** over a **scope** pursues **objectives** across **sectors**, each recognized by
+> its **perimeter**, through **phases** — defined or open — toward an **end**, as the
+> **legacy** shrinks.
+
+## How the pieces fit
+
+<CampaignHierarchy />
+
+- A **campaign** is one refactor: a name, a `why`, an owner, and the files it sees (its
+  `scope`).
+- A **phase** is a named, ordered step of the refactor. The phases form a ladder, and the last
+  one is the end. See [Phases](/goodbones/campaigns/manifest/phases/).
+- An **objective** is a detector with a [ledger](/goodbones/campaigns/running/ledger/): a
+  pattern the code is moving away from (or a thing it must come to have), every place it still
+  occurs recorded, and growth refused unless it comes with a reason. It can also be a
+  [scalar](/goodbones/campaigns/manifest/scalars/) — a number per sector, such as lines of
+  legacy code, held to its record and met at a target. A phase is recognized by the objectives
+  it names. See [Objectives](/goodbones/campaigns/manifest/objectives/).
+- A **sector** is the piece of code that moves through the campaign as one — a bounded context,
+  a component folder, a single file. The code declares it through the campaign's **perimeter**;
+  the manifest never lists one. Whatever no sector claims is the **legacy**, and it stands at
+  the first phase. See [Sectors](/goodbones/campaigns/manifest/sectors/).
+
+A sector's phase is never declared: it is **derived**, as the first phase whose objectives
+are not yet met in that sector — holdouts left, or a number short of its target. Meeting them
+is what moves the sector on, so progress is a fact about the code rather than a status
+someone remembered to update.
+
+And the thing the rest exists to serve is [the nudge](/goodbones/campaigns/running/nudge/):
+`architecture campaigns status --changed` tells a person, or an agent working on their behalf,
+which campaign the files they touched belong to, what phase that sector is at, and what small
+concrete thing in the touched files would move it toward the next.
+
+## A plan you write as you learn
+
+Real refactors are rarely known end to end on day one. You know the first step — get the
+domain out of the services, say — and you have a hunch about the shape at the end, but the
+steps in between only become clear once a few parts of the code have actually been through
+the first ones. A plan that demands every phase up front forces you to invent the parts you
+do not know yet, and then to keep amending a fiction.
+
+So a campaign's last phase may be **open**: an `intent` in prose and nothing else. It is the
+edge of what the team knows. Everything before it is **defined** — recognized by objectives,
+recorded in ledgers and held by a ratchet — and so deterministic: a sector is at `repository`
+or it is not, and the tool can say exactly what is left.
+
+<CampaignFrontier />
+
+As sectors reach the open phase, the people and agents working in them are told its intent
+and asked to leave [notes](/goodbones/campaigns/running/nudge/) about what they learn. Once
+the next step is clear, it is written down as a defined phase — its first objective, with a
+probe — and the open phase moves one step further out. Refining an open phase is free; only
+changing a phase that is already defined needs a
+[recorded reason](/goodbones/campaigns/manifest/phases/#changing-a-defined-phase).
+
+That is how software development actually goes: each interim state you implement makes the
+next one clearer, and a campaign lets you commit to each one — deterministically, enforced —
+the moment you know it, without pretending to know the rest.
+
+## The smallest campaign
+
+A campaign can be one objective, no perimeter and no phases — what this repository runs on
+itself:
+
+```yaml
+campaigns:
+  lowering-reports-not-throws:
+    why: "`loadPolicy` returns a `Result`, but a manifest that lowers badly escapes it as a thrown `Error`."
+    how: "Return `Result.fail(new ConfigInvalid({ configPath, detail }))` and let `loadPolicy` pass it up."
+    owner: "@dataquail"
+    scope: ["packages/core/src/manifest/**"]
+    staleAfter: 90d
+    objectives:
+      throws-in-lowering:
+        holdout: match
+        match:
+          all:
+            - path: { file: "\\.ts$", fileNot: "\\.test\\.ts$" }
+            - syntax: { pattern: "throw new Error($$$)" }
+        probes:
+          fires:
+            - path: packages/core/src/manifest/zzprobe.ts
+              source: 'const lower = () => { throw new Error("bad manifest"); };'
+          ignores:
+            - path: packages/core/src/manifest/zzprobe.ts
+              source: "const lower = () => Result.fail(new ConfigInvalid({ configPath, detail }));"
+```
+
+Everything else — sectors, phases, windows, attested steps, an end state — is added when the
+refactor needs it. [Defining a campaign](/goodbones/campaigns/manifest/) shows the full shape.
+
+## What it does not do
+
+A campaign joins no coverage row: its reach is its `scope`, so the coverage numbers and the
+residue are unchanged by adding one. It transforms no code — a campaign says what, why and
+which phase; codemods say how. It traces no runtime behaviour, runs no tests, and lands
+nothing across repositories. And, unless its scope widens the walk, it walks what the
+language pack walks: the TypeScript pack visits `.ts`, `.tsx`, `.mts` and `.cts`.

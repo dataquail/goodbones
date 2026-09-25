@@ -1,0 +1,85 @@
+---
+title: Scalar objectives
+description: An objective that is a number per sector rather than a set of places — lines of legacy code, any per thousand lines, a bundle's size — held to its ledger's record within a tolerance and met at a target.
+---
+
+Not every migration is a set of occurrences. Lines of legacy code, `any` per thousand lines,
+a bundle's size: each is a number, and a holdout ledger has no word for "the file halved" or
+"within 2 of the record". A **scalar objective** has a `measure` in place of `match` and
+`sector`, no `holdout`, and three fields of its own:
+
+| Field       | Meaning                                                                                                       |
+| ----------- | ------------------------------------------------------------------------------------------------------------- |
+| `measure`   | where the number comes from — below                                                                           |
+| `direction` | which way is better: `down` or `up`. Required                                                                 |
+| `tolerance` | how far either side of the record still counts as at it, for a number that wobbles. Default `0`               |
+| `target`    | the value at which it is met. Required when a phase names the objective; without one it is a standing ratchet |
+
+```yaml
+objectives:
+  legacy-lines:
+    measure: { lines: true }
+    direction: down
+    target: 0
+  any-density:
+    measure:
+      ratio:
+        of: { report: { command: node ./campaign/any-sites.mjs, format: regex, pattern: "..." } }
+        per: { lines: true }
+        scale: 1000
+    direction: down
+    tolerance: 0.5
+    probes:
+      fires: [{ path: src/a.ts, source: "let x: any;", report: [{ line: 1 }] }]
+```
+
+A measure is a number **per file, summed over each sector**, so it is evaluated in the same
+walk as every detector and a sector's value does not change when its code is split across
+more files:
+
+| `measure`                   | Per file                                                                                             |
+| --------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `lines: true`               | its non-blank lines — reformatting is not progress; comments count                                   |
+| `files: true`               | 1, so the sector's value is its file count                                                           |
+| `report: <term>`            | the diagnostics a [report term](/goodbones/campaigns/manifest/detectors/#the-report-term) puts on it |
+| `fn: module#export`         | the number a `CampaignMeasure` function returns for it                                               |
+| `ratio: { of, per, scale }` | two of the above: the sector's value is `scale × Σof / Σper`, 0 over nothing                         |
+
+`command: <shell>` is the one number that is not a sum: a command run once from the
+repository root, its output read whole or through a `pattern` with a `value` group — a
+bundle size, another tool's coverage. It is a number about the repository, so only a
+campaign with **no perimeter** may run one, where the scope is its one sector. A function
+or a command that answers anything but a finite number of zero or more measures nothing,
+and `check` fails on it rather than reading it as 0.
+
+A scalar is held to what its [ledger](/goodbones/campaigns/running/ledger/#scalar-objectives)
+last recorded for each sector. A value worse than the record by more than the tolerance is
+unrecorded growth, and `objectives concede` records it with a reason; a value better by more
+than the tolerance is progress `objectives clear` has not written yet, and `check` fails until
+it does, as it fails on a holdout that stopped firing — so the improvement lands as a visible
+diff and cannot quietly be given back. `concede` takes `--sector`, and refuses `--holdouts`:
+a number has none.
+
+## Phases
+
+A scalar's dimension of the residue vector is its distance to `target` — `value −
+target` under `down`, `target − value` under `up`, 0 once met — so a sector leaves a phase
+naming the scalar when the number reaches its target, exactly as it leaves when a holdout count
+reaches zero. A phase may name only a scalar with a `target`, since one without is never
+met; a standing scalar, named by no phase, ratchets in every phase and is never residue. The
+plugin cannot sum a sector, so it reads the value the ledger last recorded to place the
+sector, and never reports a scalar in the editor.
+
+## Scalar or holdout
+
+A plain count is still a `holdout: match` objective — over a `report`, say — because that
+also says **where**: the ledger lists every place, the nudge shows the nearest ones, and a
+reviewer reads the diff. Reach for a scalar when the number is not a count of places, or
+when the places have no identity that survives an edit.
+
+## Probes
+
+A scalar with a `report` or `fn` source carries `probes.fires`: each probe's file
+must measure above zero, or exactly its `value` when it states one; each `ignores` probe must
+measure zero. `lines` and `files` need none, since they cannot drift into measuring nothing,
+and a `command` takes none, since no probe of one file can stand in for the repository.

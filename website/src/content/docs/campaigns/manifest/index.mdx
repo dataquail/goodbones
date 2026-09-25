@@ -1,0 +1,132 @@
+---
+title: Defining a campaign
+description: The shape of a campaign in the manifest — a scope, a perimeter, a ladder of phases and the objectives that recognize them, and the fields every campaign may carry.
+---
+
+A campaign is an entry under the manifest's top-level `campaigns` key, keyed by its id. The
+[introduction](/goodbones/campaigns/getting-started/introduction/#the-smallest-campaign)
+shows the smallest one; this page is the full shape, and the pages after it take each part
+in turn.
+
+The full shape — the design's ball-of-mud-to-DDD campaign — is a perimeter that births a
+sector per bounded context, a ladder of phases each recognized by criteria, a transitional
+shape the end forbids, a step no analysis sees, and an open phase where the plan runs out:
+
+```yaml
+campaigns:
+  billing-ddd:
+    scope: src/**
+    legacy: src/services/** # what no sector has claimed; stands at `domain`
+    perimeter:
+      marker: "**/context.ts" # names the bounded context, may list the globs it owns
+    onTouch: ratchet # growth in a touched sector is refused; the default for a defined phase
+
+    phases:
+      - id: domain
+        intent: a domain module with unit tests, no I/O
+        objectives: [no-io-in-domain, domain-has-unit-tests]
+      - id: repository
+        intent: a repository behind a port, one migration, an integration test
+        objectives: [no-raw-queries-outside-repository, has-migration, has-integration-test]
+      - id: dual-write
+        intent: the feature flag writes to both tables; nothing reads the new one yet
+        objectives: [has-flag, has-both-writes] # windowed: gone by `cutover`
+      - id: backfilled
+        intent: legacy rows copied into the new table and verified
+        attested: true # no detector sees a backfill; `campaigns attest` leaves this phase
+      - id: cutover
+        intent: the flag and the legacy write path are removed
+        objectives: [no-flag, no-legacy-write]
+      - id: aggregates # open, and therefore last: no objectives yet
+        intent: >
+          Model refunds and disputes inside the billing aggregate, or split them out —
+          undecided until two contexts have reached `cutover`.
+
+    objectives:
+      no-io-in-domain:
+        holdout: declaration
+        match:
+          {
+            all:
+              [
+                { path: { file: "/domain/" } },
+                { members: { subject: calls, name: "readFileSync" } },
+              ],
+          }
+        probes: { fires: [{ path: src/billing/domain/a.ts, source: "readFileSync('x')" }] }
+      domain-has-unit-tests: # per file: each domain file owes a sibling test
+        holdout: file
+        match:
+          {
+            all:
+              [{ path: { file: "/domain/.*\\.ts$" } }, { not: { requires: ["{base}.test.ts"] } }],
+          }
+        probes: { fires: [{ path: src/billing/domain/a.ts }] }
+      no-raw-queries-outside-repository:
+        holdout: match
+        match:
+          {
+            all:
+              [{ not: { path: { file: "/repository/" } } }, { syntax: { pattern: "knex($$$)" } }],
+          }
+        probes: { fires: [{ path: src/billing/a.ts, source: "knex('x')" }] }
+      has-migration: # a presence: the sector is the holdout until one file in it matches
+        holdout: sector
+        sector: { has: { path: { file: "/migrations/.*\\.ts$" } } }
+      has-integration-test:
+        holdout: sector
+        sector: { has: { path: { file: "/repository/.*\\.integration\\.test\\.ts$" } } }
+      has-flag: # a transitional shape: must be there in `dual-write`, must be gone by `cutover`
+        holdout: sector
+        until: cutover
+        sector: { has: { content: { regex: "flags\\.billingDualWrite" } } }
+        probes: { fires: [{ path: src/billing/a.ts, source: "flags.billingDualWrite" }] }
+      has-both-writes:
+        {
+          holdout: sector,
+          until: cutover,
+          sector: { has: { content: { regex: "writeBoth" } } },
+          probes: { fires: [{ path: src/billing/a.ts, source: "writeBoth()" }] },
+        }
+      no-flag:
+        {
+          holdout: file,
+          match: { content: { regex: "flags\\.billingDualWrite" } },
+          probes: { fires: [{ path: src/billing/a.ts, source: "flags.billingDualWrite" }] },
+        }
+      no-legacy-write:
+        {
+          holdout: match,
+          match: { syntax: { pattern: "legacyBilling.write($$$)" } },
+          probes: { fires: [{ path: src/billing/a.ts, source: "legacyBilling.write(x)" }] },
+        }
+```
+
+| Field        | Meaning                                                                                                                                                                                                                    |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `why`        | the rationale, printed by `explain` and `conformance`                                                                                                                                                                      |
+| `how`        | what a reader at a holdout does about it — the message every hit carries, unless the objective states its own                                                                                                              |
+| `owner`      | who is running it; printed in the status table                                                                                                                                                                             |
+| `scope`      | which files it sees: alias-aware globs, as [`graph`](/goodbones/architecture-rules/manifest/graph/) takes; or `{ path, extensions }` to widen the walk — see [The scope](/goodbones/campaigns/manifest/sectors/#the-scope) |
+| `legacy`     | which unclaimed files count as legacy; omit for all of them — see [Sectors](/goodbones/campaigns/manifest/sectors/)                                                                                                        |
+| `perimeter`  | how a sector is recognized — see [Sectors](/goodbones/campaigns/manifest/sectors/)                                                                                                                                         |
+| `onTouch`    | what a touched sector owes: `advise`, `ratchet` or `paydown` — see [The nudge](/goodbones/campaigns/running/nudge/)                                                                                                        |
+| `phases`     | the ladder, in order — see [Phases](/goodbones/campaigns/manifest/phases/)                                                                                                                                                 |
+| `endState`   | sugar for the last phase: a sector-relative node tree — see [The end state](/goodbones/campaigns/manifest/phases/#the-end-state)                                                                                           |
+| `objectives` | the detectors, keyed by id — see [Objectives](/goodbones/campaigns/manifest/objectives/)                                                                                                                                   |
+| `staleAfter` | `14d`, `12h`: how long without progress before the report calls it stalled; omit for never                                                                                                                                 |
+| `onComplete` | `keep` (the default — stays as a guard against recurrence) or `remove` (`check` fails until it is deleted)                                                                                                                 |
+
+Everything above `objectives` is optional. A campaign's findings are of kind `campaign`, their
+rule name is `campaign/<campaign>/<objective>`, and they are judged against the objective's
+ledger, never against the baseline.
+
+## From the family's first shape
+
+The family shipped as a list of campaigns each carrying one `detect`. That shape is refused
+by name: a campaign is now a map keyed by its id, what a campaign used to be is one of its
+`objectives`, `unit` is `holdout` and `detect` is `match`; `title`, `why`, `how`, `owner`,
+`staleAfter` and `onComplete` sit on the campaign. A ledger in the first layout,
+`.architecture-campaigns/<id>.json`, is read as the one objective's under the implicit sector
+and rewritten in the new layout by the next `objectives clear`. `campaigns init`, `prune` and
+`allow` are `objectives clear` (which also writes a first ledger) and `objectives concede`.

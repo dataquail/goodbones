@@ -3,7 +3,7 @@ title: The nudge
 description: What a person or an agent touching a sector under a campaign is told — which campaign, what phase, and what small thing in the touched files would move it on — as text and as JSON a hook can read.
 ---
 
-[Campaigns](/goodbones/architecture-rules/manifest/campaigns/) exist so that someone working
+[Campaigns](/goodbones/campaigns/getting-started/introduction/) exist so that someone working
 on an ordinary feature, enhancement or bugfix — or an agent working on their behalf — learns
 when the files they touch lie in an area under refactor: which campaign, what phase that area
 is at, and what would move it toward its next phase. That per-touch signal is the primary
@@ -118,7 +118,7 @@ growth, and a ratchet, which _refuses_ it:
   touch teaches people and agents to put new code outside the sector; a new file landing in
   the legacy inside the scope gets its own line — _this belongs in a sector_.
 
-A [scalar objective](/goodbones/architecture-rules/manifest/campaigns/#scalar-objectives)
+A [scalar objective](/goodbones/campaigns/manifest/scalars/)
 goes back by its tolerance, not by any rise: a touched sector whose number is worse than the
 record — or the base tree's number, in the exact mode — by more than the tolerance fails
 `ratchet`, and the hotfix escape concedes it the same way. `paydown` asks for fewer holdouts,

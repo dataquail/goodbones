@@ -1,0 +1,62 @@
+---
+title: Sectors
+description: The pieces of code that move through a campaign as one — born by the perimeter, never listed — the legacy remainder, the scope, and the terms quantified over a sector's files.
+---
+
+A sector is never listed in the manifest. It is born by the perimeter, which has five forms,
+because the pieces that move through a refactor as one come in four sizes and one of them may
+already be named by a project system:
+
+| Perimeter           | Sectors                                                                                                                                                                                                                                                                                                                                                            | Identity                       |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------ |
+| `{ marker }`        | one per file matching the glob — `**/context.ts`, `**/port.ts` — which may export a `sector` object naming it and listing the globs it `owns`: `export const sector = { name: "billing", owns: ["src/controllers/billing*", "src/services/billing/**"] }`. Without one, the folder holding the marker is the sector, named after the folder. Read, never executed. | the name                       |
+| `{ glob }`          | one per match: `src/components/*/`                                                                                                                                                                                                                                                                                                                                 | the matched path               |
+| `{ match, probes }` | one per detector match — every exported page, every exported component — at the `holdout` named (`declaration` by default). The perimeter must recognize a sector in every phase, not only the shape the campaign is leaving, so at least one of its `fires` probes must be a sector in its end shape: one no objective fires on. Refused at load otherwise.       | `file#declaration`             |
+| `file`              | one per file, for a refactor where a file is the thing that moves                                                                                                                                                                                                                                                                                                  | the path without its extension |
+| `nx`                | the workspace's projects, read from their `project.json` files                                                                                                                                                                                                                                                                                                     | the project's name             |
+
+The `owns` list exists because a legacy tree is usually laid out by technical concern —
+`controllers/`, `services/`, `repositories/` — so the piece that must move together is spread
+over several folders, and a sector that could only be born by co-locating first would demand
+the hardest step before the first measurement. A name declared by two markers is one sector
+with both roots. A `match` perimeter matching "class component" would un-birth the sector the
+moment the class was gone, which is the moment the first phase was met: the perimeter for a
+pages-to-app-router campaign is "an exported component, in either shape", and the first
+phase's objective is the old shape. `file` identity drops the extension so `a.js → a.ts` is one
+sector before and after — the one transition that campaign exists for.
+
+**The scope is one implicit sector.** A campaign with no perimeter still has a sector, named
+`scope`, rooted at the repository — so phases, windows and the per-sector ledger apply to a
+sector-less campaign without a second code path, and a library-swap campaign, whose phases
+are campaign-wide, is written with none.
+
+**Legacy is the remainder, and stands at the first phase.** Everything in the scope no sector
+claims is the sector `legacy`. The first phase's objectives are in window for it, so a holdout
+moved from a sector into the legacy is unrecorded growth there, not a disappearance; the legacy
+is not a sink. `legacy: <globs>` narrows which unclaimed files count; an unclaimed file outside
+them is in no sector at all. A file in two sectors — nested perimeters — fails `check`, as a
+folder under `src/` that no node governs fails today. Deleting a marker returns its folder to
+the legacy; the nudge names it on the diff that does it.
+
+## The scope
+
+`scope` is the globs the campaign sees. Written as `{ path, extensions }` it also widens the
+walk: `{ path: src/**, extensions: [.js, .jsx] }` lets a JS-to-TS campaign see the JavaScript
+half a TypeScript pack does not visit. A file the pack cannot parse contributes no facts, so an
+objective over such files is path-only, or `report`- or `fn`-backed. Only the campaign that
+widened the walk sees those files; no other family does, in either host.
+
+## Sector terms
+
+Three terms are quantified over the sector's files rather than answered by one, and an
+objective holding one has `holdout: sector`: its holdout is the sector itself, one while the
+term fails and zero once it holds.
+
+| Term              | Holds when…                                                                                                                                                                                                                                  |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `has: <detector>` | at least one file in the sector satisfies the detector — a presence: a migration, an integration test, a flag. What a per-file detector cannot say, because a holdout is a thing that must go to zero and a presence a thing that must exist |
+| `oneRoot: true`   | every file of the sector sits under the root its perimeter was found at — co-located, which is what an `endState` needs                                                                                                                      |
+| `oneHost: <glob>` | every file of the sector matches the host — lifted whole                                                                                                                                                                                     |
+
+They need the sector's file list and nothing else, so the CLI reports them; the plugin, which
+sees one file, never reports one and reads its effect on the sector's phase through the ledger.

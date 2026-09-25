@@ -14,7 +14,7 @@ pnpm add -D @goodbones/cli      # the `architecture` CLI: check, baseline, cover
 
 Both pull in `@goodbones/core` (the manifest schema and the evaluators),
 `@goodbones/typescript` (the TypeScript language pack) and `@goodbones/campaigns` (the
-[campaigns family](/goodbones/architecture-rules/manifest/campaigns/), which the core does not
+[campaigns family](/goodbones/campaigns/getting-started/introduction/), which the core does not
 own) transitively; you never install those directly until a second language pack exists. The pack parses files with
 [`oxc-parser`](https://www.npmjs.com/package/oxc-parser) and resolves modules with
 [`unrs-resolver`](https://www.npmjs.com/package/unrs-resolver); each ships its own native

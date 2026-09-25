@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "kind": "measure",
+  "campaign": "host-campaigns-shrinks",
+  "objective": "host-lines",
+  "created": "2026-09-24T14:06:20.142Z",
+  "direction": "down",
+  "sectors": {
+    "scope": {
+      "entered": "2026-09-24T14:06:20.142Z",
+      "initial": 2140,
+      "recorded": 2140,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-09-24T14:06:20.142Z"
+    }
+  },
+  "concessions": []
+}

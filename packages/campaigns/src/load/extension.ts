@@ -28,15 +28,19 @@ import {
   type CompiledDetector,
   detectorOf,
   leafTermsOf,
+  measureDetectorsOf,
 } from "../core/campaigns.js";
 import {
   decodeLedger,
+  decodeMeasureLedger,
   decodePlanRecord,
   decodeSectorRecord,
   isLegacyLedger,
+  isMeasureLedger,
   type Ledger,
   ledgerPathOf,
   legacyLedgerPathOf,
+  type MeasureLedger,
   planPathOf,
   type PlanRecord,
   type SectorRecord,
@@ -69,8 +73,10 @@ export type CampaignPolicy = {
   // has seen, is one `objectives clear` has not been run for, and `check`
   // says so.
   readonly campaignRules: ReadonlyArray<CompiledCampaign>;
-  // Keyed `<campaign>/<objective>`.
+  // Keyed `<campaign>/<objective>`: the holdout ledgers, and the scalar
+  // objectives' in a map of their own — the same file, a second schema.
   readonly ledgers: ReadonlyMap<string, Ledger>;
+  readonly measureLedgers: ReadonlyMap<string, MeasureLedger>;
   // Ledgers read from the family's first layout, `<ledgerDir>/<campaign>.json`,
   // by campaign: `clear` rewrites each in the new layout and removes it.
   readonly legacyLedgers: ReadonlyMap<string, string>;
@@ -91,6 +97,7 @@ export type CampaignPolicy = {
 const NOTHING: CampaignPolicy = {
   campaignRules: [],
   ledgers: new Map(),
+  measureLedgers: new Map(),
   legacyLedgers: new Map(),
   sectorRecords: new Map(),
   plans: new Map(),
@@ -130,18 +137,19 @@ const referencedFunctions = (detect: CompiledDetector): ReadonlyArray<string> =>
   }
 };
 
-// Every detector a campaign holds: its objectives' (a `has` term's included)
-// and its perimeter's.
+// Every detector a campaign holds: its objectives' (a `has` term's and a
+// measure's report and function sources included) and its perimeter's.
 const detectorsOf = (rule: CompiledCampaign): ReadonlyArray<CompiledDetector> => [
   ...rule.objectives.flatMap((objective) => {
     const detect = detectorOf(objective);
-    return detect === null ? [] : [detect];
+    return [...(detect === null ? [] : [detect]), ...measureDetectorsOf(objective)];
   }),
   ...(rule.perimeter?.kind === "match" ? [rule.perimeter.detect] : []),
 ];
 
 type ReadLedgers = {
   readonly ledgers: ReadonlyMap<string, Ledger>;
+  readonly measureLedgers: ReadonlyMap<string, MeasureLedger>;
   readonly legacy: ReadonlyMap<string, string>;
   readonly sectorRecords: ReadonlyMap<string, SectorRecord>;
   readonly plans: ReadonlyMap<string, PlanRecord>;
@@ -176,6 +184,7 @@ const readLedgers = (
   campaigns: ReadonlyArray<CompiledCampaign>,
 ): Result.Result<ReadLedgers, ConfigInvalid> => {
   const ledgers = new Map<string, Ledger>();
+  const measureLedgers = new Map<string, MeasureLedger>();
   const legacy = new Map<string, string>();
   const sectorRecords = new Map<string, SectorRecord>();
   const plans = new Map<string, PlanRecord>();
@@ -202,6 +211,57 @@ const readLedgers = (
         if (raw.success !== null) legacy.set(campaign.id, from);
       }
       if (raw.success === null) continue;
+      // A scalar objective's ledger is the second schema. Either kind in the
+      // other's place is refused by name: read as the wrong one it would be
+      // a decode error that says nothing about why.
+      if ((objective.measure !== null) !== isMeasureLedger(raw.success)) {
+        return Result.fail(
+          new ConfigInvalid({
+            configPath,
+            detail:
+              objective.measure !== null
+                ? `the ledger ${from} is a holdout ledger, and ${campaign.id}/${objective.id} is a scalar objective. Remove it and run \`objectives clear\` to record the number.`
+                : `the ledger ${from} is a scalar objective's, and ${campaign.id}/${objective.id} holds out ${objective.holdout ?? "matches"}. Remove it and run \`objectives clear\`.`,
+          }),
+        );
+      }
+      if (objective.measure !== null) {
+        const measured = decodeMeasureLedger(raw.success);
+        if (Result.isFailure(measured)) {
+          return Result.fail(
+            new ConfigInvalid({
+              configPath,
+              detail: `the ledger ${from} does not decode:\n${measured.failure}`,
+            }),
+          );
+        }
+        if (
+          measured.success.campaign !== campaign.id ||
+          measured.success.objective !== objective.id
+        ) {
+          return Result.fail(
+            new ConfigInvalid({
+              configPath,
+              detail:
+                `the ledger ${from} says it belongs to "${measured.success.campaign}/${measured.success.objective}", ` +
+                `not "${campaign.id}/${objective.id}".`,
+            }),
+          );
+        }
+        if (measured.success.direction !== objective.direction) {
+          return Result.fail(
+            new ConfigInvalid({
+              configPath,
+              detail:
+                `the ledger ${from} records ${campaign.id}/${objective.id} with \`direction: ${measured.success.direction}\`, ` +
+                `and the manifest now says \`${objective.direction}\`. A number that changed which way is better is a new objective: ` +
+                `remove the ledger and run \`objectives clear\`.`,
+            }),
+          );
+        }
+        measureLedgers.set(ledgerKeyOf(campaign.id, objective.id), measured.success);
+        continue;
+      }
       const decoded = decodeLedger(raw.success);
       if (Result.isFailure(decoded)) {
         return Result.fail(
@@ -270,7 +330,7 @@ const readLedgers = (
       plans.set(campaign.id, decoded.success);
     }
   }
-  return Result.succeed({ ledgers, legacy, sectorRecords, plans });
+  return Result.succeed({ ledgers, measureLedgers, legacy, sectorRecords, plans });
 };
 
 const load = (
@@ -423,7 +483,10 @@ const load = (
     ).map((failed) =>
       failed.outOfScope === true
         ? `${failed.name} (its probe ${failed.probe.path} is outside the campaign's own scope)`
-        : failed.expected === "fires"
+        : failed.measured !== undefined
+          ? `${failed.name} (${failed.expected} probe ${failed.probe.path} measured ${String(failed.measured)}, ` +
+            `${failed.expected === "ignores" ? "not 0" : failed.probe.value === undefined ? "not above 0" : `not ${String(failed.probe.value)}`})`
+          : failed.expected === "fires"
           ? `${failed.name} (fires probe ${failed.probe.path} did not fire)`
           : failed.expected === "end-shape"
             ? `${failed.name} (no fires probe is a sector in its end shape — one that no objective ` +
@@ -442,6 +505,7 @@ const load = (
     value: {
       campaignRules: campaignRules.success,
       ledgers: ledgers.success.ledgers,
+      measureLedgers: ledgers.success.measureLedgers,
       legacyLedgers: ledgers.success.legacy,
       sectorRecords: ledgers.success.sectorRecords,
       plans: ledgers.success.plans,

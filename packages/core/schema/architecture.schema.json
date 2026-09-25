@@ -1181,6 +1181,9 @@
                                                         }
                                                       }
                                                     ]
+                                                  },
+                                                  "value": {
+                                                    "type": "number"
                                                   }
                                                 },
                                                 "required": [
@@ -1324,6 +1327,9 @@
                                                         }
                                                       }
                                                     ]
+                                                  },
+                                                  "value": {
+                                                    "type": "number"
                                                   }
                                                 },
                                                 "required": [
@@ -2483,6 +2489,701 @@
                                 }
                               ]
                             },
+                            "measure": {
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "anyOf": [
+                                        {
+                                          "$ref": "#/$defs/Use"
+                                        },
+                                        {
+                                          "$ref": "#/$defs/Include"
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "lines": {
+                                              "type": "boolean",
+                                              "enum": [
+                                                true
+                                              ]
+                                            }
+                                          },
+                                          "required": [
+                                            "lines"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "anyOf": [
+                                        {
+                                          "$ref": "#/$defs/Use"
+                                        },
+                                        {
+                                          "$ref": "#/$defs/Include"
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "files": {
+                                              "type": "boolean",
+                                              "enum": [
+                                                true
+                                              ]
+                                            }
+                                          },
+                                          "required": [
+                                            "files"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "anyOf": [
+                                        {
+                                          "$ref": "#/$defs/Use"
+                                        },
+                                        {
+                                          "$ref": "#/$defs/Include"
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "report": {
+                                              "anyOf": [
+                                                {
+                                                  "$ref": "#/$defs/Use"
+                                                },
+                                                {
+                                                  "$ref": "#/$defs/Include"
+                                                },
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
+                                                    "command": {
+                                                      "anyOf": [
+                                                        {
+                                                          "type": "string"
+                                                        },
+                                                        {
+                                                          "anyOf": [
+                                                            {
+                                                              "$ref": "#/$defs/Include"
+                                                            },
+                                                            {
+                                                              "type": "array",
+                                                              "items": {
+                                                                "type": "string"
+                                                              },
+                                                              "allOf": [
+                                                                {
+                                                                  "minItems": 1
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    },
+                                                    "file": {
+                                                      "anyOf": [
+                                                        {
+                                                          "type": "string"
+                                                        },
+                                                        {
+                                                          "anyOf": [
+                                                            {
+                                                              "$ref": "#/$defs/Include"
+                                                            },
+                                                            {
+                                                              "type": "array",
+                                                              "items": {
+                                                                "type": "string"
+                                                              },
+                                                              "allOf": [
+                                                                {
+                                                                  "minItems": 1
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    },
+                                                    "format": {
+                                                      "type": "string",
+                                                      "enum": [
+                                                        "tsc",
+                                                        "eslint",
+                                                        "oxlint",
+                                                        "regex"
+                                                      ]
+                                                    },
+                                                    "pattern": {
+                                                      "type": "string"
+                                                    },
+                                                    "codes": {
+                                                      "anyOf": [
+                                                        {
+                                                          "$ref": "#/$defs/Include"
+                                                        },
+                                                        {
+                                                          "type": "array",
+                                                          "items": {
+                                                            "type": "string"
+                                                          }
+                                                        }
+                                                      ]
+                                                    },
+                                                    "codesNot": {
+                                                      "anyOf": [
+                                                        {
+                                                          "$ref": "#/$defs/Include"
+                                                        },
+                                                        {
+                                                          "type": "array",
+                                                          "items": {
+                                                            "type": "string"
+                                                          }
+                                                        }
+                                                      ]
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "format"
+                                                  ],
+                                                  "additionalProperties": false
+                                                }
+                                              ]
+                                            }
+                                          },
+                                          "required": [
+                                            "report"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "anyOf": [
+                                        {
+                                          "$ref": "#/$defs/Use"
+                                        },
+                                        {
+                                          "$ref": "#/$defs/Include"
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "fn": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "fn"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "anyOf": [
+                                    {
+                                      "$ref": "#/$defs/Use"
+                                    },
+                                    {
+                                      "$ref": "#/$defs/Include"
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "ratio": {
+                                          "anyOf": [
+                                            {
+                                              "$ref": "#/$defs/Use"
+                                            },
+                                            {
+                                              "$ref": "#/$defs/Include"
+                                            },
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "of": {
+                                                  "anyOf": [
+                                                    {
+                                                      "anyOf": [
+                                                        {
+                                                          "$ref": "#/$defs/Use"
+                                                        },
+                                                        {
+                                                          "$ref": "#/$defs/Include"
+                                                        },
+                                                        {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "lines": {
+                                                              "type": "boolean",
+                                                              "enum": [
+                                                                true
+                                                              ]
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "lines"
+                                                          ],
+                                                          "additionalProperties": false
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "anyOf": [
+                                                        {
+                                                          "$ref": "#/$defs/Use"
+                                                        },
+                                                        {
+                                                          "$ref": "#/$defs/Include"
+                                                        },
+                                                        {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "files": {
+                                                              "type": "boolean",
+                                                              "enum": [
+                                                                true
+                                                              ]
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "files"
+                                                          ],
+                                                          "additionalProperties": false
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "anyOf": [
+                                                        {
+                                                          "$ref": "#/$defs/Use"
+                                                        },
+                                                        {
+                                                          "$ref": "#/$defs/Include"
+                                                        },
+                                                        {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "report": {
+                                                              "anyOf": [
+                                                                {
+                                                                  "$ref": "#/$defs/Use"
+                                                                },
+                                                                {
+                                                                  "$ref": "#/$defs/Include"
+                                                                },
+                                                                {
+                                                                  "type": "object",
+                                                                  "properties": {
+                                                                    "command": {
+                                                                      "anyOf": [
+                                                                        {
+                                                                          "type": "string"
+                                                                        },
+                                                                        {
+                                                                          "anyOf": [
+                                                                            {
+                                                                              "$ref": "#/$defs/Include"
+                                                                            },
+                                                                            {
+                                                                              "type": "array",
+                                                                              "items": {
+                                                                                "type": "string"
+                                                                              },
+                                                                              "allOf": [
+                                                                                {
+                                                                                  "minItems": 1
+                                                                                }
+                                                                              ]
+                                                                            }
+                                                                          ]
+                                                                        }
+                                                                      ]
+                                                                    },
+                                                                    "file": {
+                                                                      "anyOf": [
+                                                                        {
+                                                                          "type": "string"
+                                                                        },
+                                                                        {
+                                                                          "anyOf": [
+                                                                            {
+                                                                              "$ref": "#/$defs/Include"
+                                                                            },
+                                                                            {
+                                                                              "type": "array",
+                                                                              "items": {
+                                                                                "type": "string"
+                                                                              },
+                                                                              "allOf": [
+                                                                                {
+                                                                                  "minItems": 1
+                                                                                }
+                                                                              ]
+                                                                            }
+                                                                          ]
+                                                                        }
+                                                                      ]
+                                                                    },
+                                                                    "format": {
+                                                                      "type": "string",
+                                                                      "enum": [
+                                                                        "tsc",
+                                                                        "eslint",
+                                                                        "oxlint",
+                                                                        "regex"
+                                                                      ]
+                                                                    },
+                                                                    "pattern": {
+                                                                      "type": "string"
+                                                                    },
+                                                                    "codes": {
+                                                                      "anyOf": [
+                                                                        {
+                                                                          "$ref": "#/$defs/Include"
+                                                                        },
+                                                                        {
+                                                                          "type": "array",
+                                                                          "items": {
+                                                                            "type": "string"
+                                                                          }
+                                                                        }
+                                                                      ]
+                                                                    },
+                                                                    "codesNot": {
+                                                                      "anyOf": [
+                                                                        {
+                                                                          "$ref": "#/$defs/Include"
+                                                                        },
+                                                                        {
+                                                                          "type": "array",
+                                                                          "items": {
+                                                                            "type": "string"
+                                                                          }
+                                                                        }
+                                                                      ]
+                                                                    }
+                                                                  },
+                                                                  "required": [
+                                                                    "format"
+                                                                  ],
+                                                                  "additionalProperties": false
+                                                                }
+                                                              ]
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "report"
+                                                          ],
+                                                          "additionalProperties": false
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "anyOf": [
+                                                        {
+                                                          "$ref": "#/$defs/Use"
+                                                        },
+                                                        {
+                                                          "$ref": "#/$defs/Include"
+                                                        },
+                                                        {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "fn": {
+                                                              "type": "string"
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "fn"
+                                                          ],
+                                                          "additionalProperties": false
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                "per": {
+                                                  "anyOf": [
+                                                    {
+                                                      "anyOf": [
+                                                        {
+                                                          "$ref": "#/$defs/Use"
+                                                        },
+                                                        {
+                                                          "$ref": "#/$defs/Include"
+                                                        },
+                                                        {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "lines": {
+                                                              "type": "boolean",
+                                                              "enum": [
+                                                                true
+                                                              ]
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "lines"
+                                                          ],
+                                                          "additionalProperties": false
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "anyOf": [
+                                                        {
+                                                          "$ref": "#/$defs/Use"
+                                                        },
+                                                        {
+                                                          "$ref": "#/$defs/Include"
+                                                        },
+                                                        {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "files": {
+                                                              "type": "boolean",
+                                                              "enum": [
+                                                                true
+                                                              ]
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "files"
+                                                          ],
+                                                          "additionalProperties": false
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "anyOf": [
+                                                        {
+                                                          "$ref": "#/$defs/Use"
+                                                        },
+                                                        {
+                                                          "$ref": "#/$defs/Include"
+                                                        },
+                                                        {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "report": {
+                                                              "anyOf": [
+                                                                {
+                                                                  "$ref": "#/$defs/Use"
+                                                                },
+                                                                {
+                                                                  "$ref": "#/$defs/Include"
+                                                                },
+                                                                {
+                                                                  "type": "object",
+                                                                  "properties": {
+                                                                    "command": {
+                                                                      "anyOf": [
+                                                                        {
+                                                                          "type": "string"
+                                                                        },
+                                                                        {
+                                                                          "anyOf": [
+                                                                            {
+                                                                              "$ref": "#/$defs/Include"
+                                                                            },
+                                                                            {
+                                                                              "type": "array",
+                                                                              "items": {
+                                                                                "type": "string"
+                                                                              },
+                                                                              "allOf": [
+                                                                                {
+                                                                                  "minItems": 1
+                                                                                }
+                                                                              ]
+                                                                            }
+                                                                          ]
+                                                                        }
+                                                                      ]
+                                                                    },
+                                                                    "file": {
+                                                                      "anyOf": [
+                                                                        {
+                                                                          "type": "string"
+                                                                        },
+                                                                        {
+                                                                          "anyOf": [
+                                                                            {
+                                                                              "$ref": "#/$defs/Include"
+                                                                            },
+                                                                            {
+                                                                              "type": "array",
+                                                                              "items": {
+                                                                                "type": "string"
+                                                                              },
+                                                                              "allOf": [
+                                                                                {
+                                                                                  "minItems": 1
+                                                                                }
+                                                                              ]
+                                                                            }
+                                                                          ]
+                                                                        }
+                                                                      ]
+                                                                    },
+                                                                    "format": {
+                                                                      "type": "string",
+                                                                      "enum": [
+                                                                        "tsc",
+                                                                        "eslint",
+                                                                        "oxlint",
+                                                                        "regex"
+                                                                      ]
+                                                                    },
+                                                                    "pattern": {
+                                                                      "type": "string"
+                                                                    },
+                                                                    "codes": {
+                                                                      "anyOf": [
+                                                                        {
+                                                                          "$ref": "#/$defs/Include"
+                                                                        },
+                                                                        {
+                                                                          "type": "array",
+                                                                          "items": {
+                                                                            "type": "string"
+                                                                          }
+                                                                        }
+                                                                      ]
+                                                                    },
+                                                                    "codesNot": {
+                                                                      "anyOf": [
+                                                                        {
+                                                                          "$ref": "#/$defs/Include"
+                                                                        },
+                                                                        {
+                                                                          "type": "array",
+                                                                          "items": {
+                                                                            "type": "string"
+                                                                          }
+                                                                        }
+                                                                      ]
+                                                                    }
+                                                                  },
+                                                                  "required": [
+                                                                    "format"
+                                                                  ],
+                                                                  "additionalProperties": false
+                                                                }
+                                                              ]
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "report"
+                                                          ],
+                                                          "additionalProperties": false
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "anyOf": [
+                                                        {
+                                                          "$ref": "#/$defs/Use"
+                                                        },
+                                                        {
+                                                          "$ref": "#/$defs/Include"
+                                                        },
+                                                        {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "fn": {
+                                                              "type": "string"
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "fn"
+                                                          ],
+                                                          "additionalProperties": false
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                "scale": {
+                                                  "type": "number"
+                                                }
+                                              },
+                                              "required": [
+                                                "of",
+                                                "per"
+                                              ],
+                                              "additionalProperties": false
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "ratio"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
+                                },
+                                {
+                                  "anyOf": [
+                                    {
+                                      "$ref": "#/$defs/Use"
+                                    },
+                                    {
+                                      "$ref": "#/$defs/Include"
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "command": {
+                                          "type": "string"
+                                        },
+                                        "pattern": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "command"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "direction": {
+                              "type": "string",
+                              "enum": [
+                                "down",
+                                "up"
+                              ]
+                            },
+                            "tolerance": {
+                              "type": "number",
+                              "allOf": [
+                                {
+                                  "minimum": 0
+                                }
+                              ]
+                            },
+                            "target": {
+                              "type": "number"
+                            },
                             "until": {
                               "type": "string",
                               "allOf": [
@@ -2633,6 +3334,9 @@
                                                         }
                                                       }
                                                     ]
+                                                  },
+                                                  "value": {
+                                                    "type": "number"
                                                   }
                                                 },
                                                 "required": [
@@ -2776,6 +3480,9 @@
                                                         }
                                                       }
                                                     ]
+                                                  },
+                                                  "value": {
+                                                    "type": "number"
                                                   }
                                                 },
                                                 "required": [
@@ -2797,9 +3504,6 @@
                               ]
                             }
                           },
-                          "required": [
-                            "holdout"
-                          ],
                           "additionalProperties": false
                         }
                       ]

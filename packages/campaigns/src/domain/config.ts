@@ -182,6 +182,9 @@ export const CampaignProbe = Schema.Struct({
   edges: Schema.optionalKey(Schema.Record(Schema.String, ImportProbeTarget)),
   files: Schema.optionalKey(Schema.Array(Schema.String)),
   report: Schema.optionalKey(Schema.Array(ProbeDiagnostic)),
+  // A scalar objective's probe only: the number the file contributes. A
+  // `fires` probe without one asserts only that it is above zero.
+  value: Schema.optionalKey(Schema.Finite),
 });
 
 export const CampaignProbes = Schema.Struct({
@@ -189,12 +192,43 @@ export const CampaignProbes = Schema.Struct({
   ignores: Schema.Array(CampaignProbe),
 });
 
+// Where a scalar objective's number comes from, per file: its non-blank
+// lines, the file itself (so a sector's value is its file count), the
+// diagnostics a report puts on it, or what a `module#export` function
+// answers for it. A sector's value is the sum over its files.
+export const MeasureSource = Schema.Union([
+  Schema.Struct({ lines: Schema.Literal(true) }),
+  Schema.Struct({ files: Schema.Literal(true) }),
+  Schema.Struct({ report: ReportTerm }),
+  Schema.Struct({ fn: Schema.String }),
+]);
+export type MeasureSource = (typeof MeasureSource)["Type"];
+
+// A scalar objective's number: one source summed, a ratio of two sums
+// (`scale × Σof / Σper`, 0 where `per` sums to 0), or — for a campaign with
+// no perimeter, whose scope is its one sector — a command whose output is
+// the number, read whole or through a `pattern` with a `value` group.
+export const Measure = Schema.Union([
+  MeasureSource,
+  Schema.Struct({
+    ratio: Schema.Struct({ of: MeasureSource, per: MeasureSource, scale: Schema.Finite }),
+  }),
+  Schema.Struct({ command: Schema.String, pattern: Schema.optionalKey(Schema.String) }),
+]);
+export type Measure = (typeof Measure)["Type"];
+
+// Which way a scalar objective's number is better.
+export const MeasureDirection = Schema.Literals(["down", "up"]);
+export type MeasureDirection = (typeof MeasureDirection)["Type"];
+
 // An objective: a detector, a granularity, probes, and a ledger that only
 // shrinks on its own. Owned by one campaign; named by at most one phase (an
 // objective no phase names is in window in every phase). Exactly one of
-// `match` (a per-file detector, evaluated by both hosts) and `sector` (a
-// term over the sector's files, evaluated by the CLI) — or, for the
-// objectives an `endState` expands into, `endState` naming the family.
+// `match` (a per-file detector, evaluated by both hosts), `sector` (a term
+// over the sector's files, evaluated by the CLI) and `measure` (a number
+// per sector, evaluated by the CLI and read off its ledger by the plugin) —
+// or, for the objectives an `endState` expands into, `endState` naming the
+// family.
 export const ObjectiveRule = Schema.Struct({
   // `campaign/<campaign>/<objective>`, the rule name a violation carries.
   name: Schema.String,
@@ -203,9 +237,17 @@ export const ObjectiveRule = Schema.Struct({
   // The `how`: what a reader at a holdout does about it.
   message: Schema.String,
   why: Schema.optionalKey(Schema.String),
-  holdout: Holdout,
+  // Absent for a scalar objective, which holds nothing out.
+  holdout: Schema.optionalKey(Holdout),
   match: Schema.optionalKey(Detector),
   sector: Schema.optionalKey(SectorTerm),
+  // A scalar objective: a number per sector with a direction, held to the
+  // value its ledger last recorded within `tolerance`, and met — for the
+  // phase that names it — at `target`.
+  measure: Schema.optionalKey(Measure),
+  direction: Schema.optionalKey(MeasureDirection),
+  tolerance: Schema.optionalKey(Schema.Finite),
+  target: Schema.optionalKey(Schema.Finite),
   endState: Schema.optionalKey(
     Schema.Struct({
       phase: Schema.String,

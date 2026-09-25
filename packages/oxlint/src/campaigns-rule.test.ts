@@ -109,6 +109,7 @@ const policy: LoadedPolicy = {
       {
         campaignRules: compiled.success,
         ledgers: new Map(),
+        measureLedgers: new Map(),
         legacyLedgers: new Map(),
         sectorRecords: new Map(),
         plans: new Map(),

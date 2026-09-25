@@ -184,6 +184,8 @@ const CampaignProbe = Schema.Struct({
   edges: Schema.optionalKey(Schema.Record(Schema.String, ImportProbeTarget)),
   files: Schema.optionalKey(Schema.Array(Schema.String)),
   report: Schema.optionalKey(Schema.Array(ProbeDiagnostic)),
+  // A scalar objective's probe: the number the file contributes.
+  value: Schema.optionalKey(Schema.Finite),
 });
 
 const CampaignProbes = Schema.Struct({
@@ -207,29 +209,122 @@ const SectorTermSpec = Schema.Union([
   Schema.Struct({ oneHost: Globs }),
 ]);
 
+// Where a scalar objective's number comes from, per file, summed over a
+// sector: `lines` (non-blank), `files` (one each), the diagnostics a
+// `report` puts on the file, or the number an `fn` returns for it.
+const MeasureSourceSpec = Schema.Union([
+  Schema.Struct({ lines: Schema.Literal(true) }),
+  Schema.Struct({ files: Schema.Literal(true) }),
+  Schema.Struct({ report: ReportTerm }),
+  Schema.Struct({ fn: Schema.String }),
+]);
+
+// A scalar objective's number: one source, a `ratio` of two (`scale × Σof /
+// Σper`, `scale` defaulting to 1), or a `command` whose output is the number
+// — whole, or the `value` group of `pattern`. A command measures the
+// repository, not a file, so only a campaign with no perimeter may run one.
+const MeasureSpec = Schema.Union([
+  MeasureSourceSpec,
+  Schema.Struct({
+    ratio: Schema.Struct({
+      of: MeasureSourceSpec,
+      per: MeasureSourceSpec,
+      scale: Schema.optionalKey(Schema.Finite),
+    }),
+  }),
+  Schema.Struct({ command: Schema.String, pattern: Schema.optionalKey(Schema.String) }),
+]);
+
+type MeasureSpec = typeof MeasureSpec.Type;
+export type MeasureSourceSpec = typeof MeasureSourceSpec.Type;
+
+// Whether any source of the measure is one a probe must prove: a report or
+// a function, which can drift into measuring nothing.
+const measureNeedsProbe = (measure: MeasureSpec): boolean => {
+  const sources = "ratio" in measure ? [measure.ratio.of, measure.ratio.per] : [measure];
+  return sources.some((one) => "report" in one || "fn" in one);
+};
+
 // An objective: a detector with a ledger that only shrinks on its own. The
 // `holdout` says what one ledger entry is; `match` is a per-file detector
 // and `sector` a term over the sector's files, exactly one of them.
-// `until` names the phase at which it stops counting.
+// `until` names the phase at which it stops counting. A scalar objective
+// has a `measure` in place of both, a `direction`, a `tolerance` either side
+// of its record, and the `target` at which it is met.
 const Objective = Schema.Struct({
   // What a reader at a holdout does about it — the message every hit
   // carries; falls back to the campaign's.
   how: Schema.optionalKey(Schema.String),
   why: Schema.optionalKey(Schema.String),
-  holdout: Holdout,
+  holdout: Schema.optionalKey(Holdout),
   match: Schema.optionalKey(DetectorRef),
   sector: Schema.optionalKey(SectorTermSpec),
+  measure: Schema.optionalKey(MeasureSpec),
+  direction: Schema.optionalKey(Schema.Literals(["down", "up"])),
+  tolerance: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
+  target: Schema.optionalKey(Schema.Finite),
   until: Schema.optionalKey(KebabId),
   probes: Schema.optionalKey(CampaignProbes),
 }).check(
   Schema.makeFilter((objective) => {
     const issues: Array<Schema.FilterIssue> = [];
-    if ((objective.match === undefined) === (objective.sector === undefined)) {
+    const named = [objective.match, objective.sector, objective.measure].filter(
+      (one) => one !== undefined,
+    ).length;
+    if (named !== 1) {
       issues.push(
-        "an objective names exactly one of `match` (a detector over each file) and `sector` (a term over the sector's files)",
+        "an objective names exactly one of `match` (a detector over each file), `sector` (a term over the sector's files) and `measure` (a number per sector)",
       );
     }
-    if (objective.sector !== undefined && objective.holdout !== "sector") {
+    if (objective.measure !== undefined) {
+      if (objective.holdout !== undefined) {
+        issues.push({
+          path: ["holdout"],
+          issue: "a `measure` objective holds nothing out: it is a number, so drop `holdout`",
+        });
+      }
+      if (objective.direction === undefined) {
+        issues.push({
+          path: ["direction"],
+          issue:
+            "a `measure` objective states which way is better: `direction: down` or `direction: up`",
+        });
+      }
+      if ("command" in objective.measure && objective.probes !== undefined) {
+        issues.push({
+          path: ["probes"],
+          issue:
+            "a `command` measure is a number about the repository, which no probe of one file can stand in for: drop `probes`",
+        });
+      } else if (
+        measureNeedsProbe(objective.measure) &&
+        (objective.probes?.fires.length ?? 0) === 0
+      ) {
+        issues.push({
+          path: ["probes"],
+          issue:
+            "a `measure` with a `report` or `fn` source carries `probes.fires`: at least one file it must measure above zero",
+        });
+      }
+      return issues;
+    }
+    for (const key of ["direction", "tolerance", "target"] as const) {
+      if (objective[key] !== undefined) {
+        issues.push({ path: [key], issue: `\`${key}\` belongs to a \`measure\` objective` });
+      }
+    }
+    if (objective.holdout === undefined) {
+      issues.push({
+        path: ["holdout"],
+        issue:
+          "an objective with `match` or `sector` says what one holdout is: `holdout: file`, `declaration`, `match` or `sector`",
+      });
+    }
+    if (
+      objective.sector !== undefined &&
+      objective.holdout !== undefined &&
+      objective.holdout !== "sector"
+    ) {
       issues.push({
         path: ["holdout"],
         issue: "a `sector` objective's holdout is the sector: write `holdout: sector`",

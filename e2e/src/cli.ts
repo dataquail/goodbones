@@ -105,6 +105,7 @@ export type CheckJson = {
     }>;
     readonly drifted: number;
     readonly missingLedger: boolean;
+    readonly unmeasured: ReadonlyArray<{ readonly objective: string; readonly sector: string }>;
     readonly arithmetic: boolean;
     readonly complete: boolean;
     readonly stalled: boolean;
@@ -113,6 +114,14 @@ export type CheckJson = {
       readonly id: string;
       readonly count: number;
       readonly ledgered: boolean;
+      // A scalar objective's number across its sectors in window.
+      readonly measure?: {
+        readonly direction: "down" | "up";
+        readonly value: number | null;
+        readonly recorded: number | null;
+        readonly target: number | null;
+        readonly tolerance: number;
+      };
     }>;
     readonly sectors: ReadonlyArray<{
       readonly name: string;

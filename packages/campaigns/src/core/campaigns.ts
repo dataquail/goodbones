@@ -28,12 +28,16 @@ import type {
   CampaignUnit,
   Detector,
   Holdout,
+  Measure,
+  MeasureDirection,
+  MeasureSource,
   ObjectiveRule,
   OnTouch,
   PerimeterRule,
   PhaseRule,
   ReportFormat,
 } from "../domain/config.js";
+import type { CampaignMeasure } from "../ports/campaign-measure.js";
 import type { CampaignPredicate, Range } from "../ports/campaign-predicate.js";
 import type { ReportSource, ReportSpec } from "../ports/report-source.js";
 
@@ -139,19 +143,48 @@ export type CompiledSectorTerm =
   | { readonly kind: "oneRoot" }
   | { readonly kind: "oneHost"; readonly hosts: ReadonlyArray<RegExp> };
 
+// Where a scalar objective's number comes from, per file. A `report` source
+// is its report term compiled as a detector and counted at `match`, and an
+// `fn` source is an `fn` detector read as a number — so both reach the
+// function loading, the report pre-reading and the syntax parse by the
+// paths every detector does.
+export type CompiledMeasureSource =
+  | { readonly kind: "lines" }
+  | { readonly kind: "files" }
+  | { readonly kind: "report"; readonly detect: CompiledDetector }
+  | { readonly kind: "fn"; readonly detect: CompiledDetector & { readonly kind: "fn" } };
+
+export type CompiledMeasure =
+  | { readonly kind: "sum"; readonly of: CompiledMeasureSource }
+  | {
+      readonly kind: "ratio";
+      readonly of: CompiledMeasureSource;
+      readonly per: CompiledMeasureSource;
+      readonly scale: number;
+    }
+  | { readonly kind: "command"; readonly command: string; readonly pattern: RegExp | null };
+
 export type CompiledObjective = {
   readonly name: string;
   readonly id: string;
   readonly campaign: string;
   readonly message: string;
   readonly why: string | null;
-  readonly holdout: Holdout;
+  // `null` for a scalar objective, which holds nothing out.
+  readonly holdout: Holdout | null;
   // The unit a per-file detector answers at; `declaration` for the
   // objectives no per-file detector answers, whose entries are `file#subject`.
   readonly unit: CampaignUnit;
   readonly detect: CompiledDetector | null;
   readonly sector: CompiledSectorTerm | null;
   readonly endState: { readonly phase: string; readonly family: string } | null;
+  // A scalar objective: its number, which way is better, the slack either
+  // side of the record, and the value at which it is met (`null` for a
+  // standing measure, which only ratchets).
+  readonly measure: CompiledMeasure | null;
+  readonly direction: MeasureDirection;
+  readonly tolerance: number;
+  readonly target: number | null;
   readonly until: string | null;
   readonly probes: {
     readonly fires: ReadonlyArray<CampaignProbe>;
@@ -376,6 +409,51 @@ const compileDetector = (
   return Result.succeed({ kind: "fn", name: detector.fn });
 };
 
+const compileMeasureSource = (
+  name: string,
+  source: MeasureSource,
+): Result.Result<CompiledMeasureSource, PatternInvalid> => {
+  if ("lines" in source) return Result.succeed({ kind: "lines" });
+  if ("files" in source) return Result.succeed({ kind: "files" });
+  if ("fn" in source)
+    return Result.succeed({ kind: "fn", detect: { kind: "fn", name: source.fn } });
+  const detect = compileDetector(name, source);
+  return Result.isFailure(detect)
+    ? Result.fail(detect.failure)
+    : Result.succeed({ kind: "report", detect: detect.success });
+};
+
+const compileMeasure = (
+  name: string,
+  measure: Measure,
+): Result.Result<CompiledMeasure, PatternInvalid> => {
+  if ("command" in measure) {
+    const pattern = compilePatterns(name, "measure.pattern", measure.pattern);
+    if (Result.isFailure(pattern)) return Result.fail(pattern.failure);
+    return Result.succeed({
+      kind: "command",
+      command: measure.command,
+      pattern: pattern.success[0] ?? null,
+    });
+  }
+  if ("ratio" in measure) {
+    const of = compileMeasureSource(name, measure.ratio.of);
+    if (Result.isFailure(of)) return Result.fail(of.failure);
+    const per = compileMeasureSource(name, measure.ratio.per);
+    if (Result.isFailure(per)) return Result.fail(per.failure);
+    return Result.succeed({
+      kind: "ratio",
+      of: of.success,
+      per: per.success,
+      scale: measure.ratio.scale,
+    });
+  }
+  const of = compileMeasureSource(name, measure);
+  return Result.isFailure(of)
+    ? Result.fail(of.failure)
+    : Result.succeed({ kind: "sum", of: of.success });
+};
+
 export const compileObjective = (
   rule: ObjectiveRule,
 ): Result.Result<CompiledObjective, PatternInvalid> => {
@@ -399,17 +477,28 @@ export const compileObjective = (
       sector = { kind: "oneHost", hosts: hosts.success };
     }
   }
+  let measure: CompiledMeasure | null = null;
+  if (rule.measure !== undefined) {
+    const compiled = compileMeasure(rule.name, rule.measure);
+    if (Result.isFailure(compiled)) return Result.fail(compiled.failure);
+    measure = compiled.success;
+  }
+  const holdout = rule.holdout ?? null;
   return Result.succeed({
     name: rule.name,
     id: rule.id,
     campaign: rule.campaign,
     message: rule.message,
     why: rule.why ?? null,
-    holdout: rule.holdout,
-    unit: rule.holdout === "sector" ? "declaration" : rule.holdout,
+    holdout,
+    unit: holdout === null || holdout === "sector" ? "declaration" : holdout,
     detect,
     sector,
     endState: rule.endState ?? null,
+    measure,
+    direction: rule.direction ?? "down",
+    tolerance: rule.tolerance ?? 0,
+    target: rule.target ?? null,
     until: rule.until ?? null,
     probes: rule.probes,
   });
@@ -1087,6 +1176,7 @@ export const reportSpecsOf = (
     for (const objective of rule.objectives) {
       if (objective.detect !== null) walk(objective.detect);
       if (objective.sector?.kind === "has") walk(objective.sector.detect);
+      for (const detect of measureDetectorsOf(objective)) walk(detect);
     }
     if (rule.perimeter?.kind === "match") walk(rule.perimeter.detect);
   }
@@ -1097,6 +1187,119 @@ export const evaluateObjectives = (
   selected: ReadonlyArray<CompiledObjective>,
   input: CampaignInput,
 ): ReadonlyArray<CampaignHit> => selected.flatMap((rule) => evaluateObjective(rule, input));
+
+// ---------------------------------------------------------------------------
+// Scalar objectives: a number per file, summed per sector.
+
+const measureSourcesOf = (measure: CompiledMeasure): ReadonlyArray<CompiledMeasureSource> =>
+  measure.kind === "sum" ? [measure.of] : measure.kind === "ratio" ? [measure.of, measure.per] : [];
+
+// The detectors a scalar objective reads a file through: its report and
+// function sources, so the loader holds its functions, the host reads its
+// reports ahead and parses the file when either needs the tree.
+export const measureDetectorsOf = (
+  objective: CompiledObjective,
+): ReadonlyArray<CompiledDetector> =>
+  objective.measure === null
+    ? []
+    : measureSourcesOf(objective.measure).flatMap((source) =>
+        source.kind === "report" || source.kind === "fn" ? [source.detect] : [],
+      );
+
+// The scalar objectives a host measures file by file: all but a command's,
+// which measures the repository once.
+export const perFileMeasuresOf = (rule: CompiledCampaign): ReadonlyArray<CompiledObjective> =>
+  rule.objectives.filter(
+    (objective) => objective.measure !== null && objective.measure.kind !== "command",
+  );
+
+// Six decimals: enough for a density, and few enough that a ratio reads the
+// same on every run and the ledger's arithmetic compares exactly.
+export const roundMeasure = (value: number): number => Math.round(value * 1e6) / 1e6;
+
+const NON_BLANK = /\S/;
+
+const measureSource = (source: CompiledMeasureSource, input: CampaignInput): number => {
+  switch (source.kind) {
+    case "lines": {
+      let lines = 0;
+      for (const line of input.text.split("\n")) if (NON_BLANK.test(line)) lines += 1;
+      return lines;
+    }
+    case "files":
+      return 1;
+    case "report":
+      return candidatesOf(source.detect, "match", input).length;
+    case "fn": {
+      // The loader holds whatever the manifest named; a measure reads its
+      // answer as a number, and anything else — a boolean, a list, a
+      // negative or non-finite number — is `NaN`, which `check` refuses.
+      const found = input.functions.get(source.detect.name) as
+        ((...args: Parameters<CampaignMeasure>) => unknown) | undefined;
+      if (found === undefined) return Number.NaN;
+      const answer = found({
+        file: input.file,
+        text: input.text,
+        facts: input.facts,
+        syntax: input.syntax,
+      });
+      return typeof answer === "number" && Number.isFinite(answer) && answer >= 0
+        ? answer
+        : Number.NaN;
+    }
+  }
+};
+
+// What one file contributes: to the sum, or to a ratio's two sums.
+export type MeasureParts = { readonly of: number; readonly per: number };
+
+export const ZERO_PARTS: MeasureParts = { of: 0, per: 0 };
+
+export const measureFile = (measure: CompiledMeasure, input: CampaignInput): MeasureParts =>
+  measure.kind === "ratio"
+    ? { of: measureSource(measure.of, input), per: measureSource(measure.per, input) }
+    : measure.kind === "sum"
+      ? { of: measureSource(measure.of, input), per: 0 }
+      : ZERO_PARTS;
+
+export const addParts = (left: MeasureParts, right: MeasureParts): MeasureParts => ({
+  of: left.of + right.of,
+  per: left.per + right.per,
+});
+
+// A sector's value from its files' parts: the sum, or `scale × Σof / Σper`
+// (0 where the denominator is).
+export const valueOfParts = (measure: CompiledMeasure, parts: MeasureParts): number => {
+  if (measure.kind !== "ratio") return roundMeasure(parts.of);
+  if (parts.per === 0) return Number.isNaN(parts.of) ? Number.NaN : 0;
+  return roundMeasure((measure.scale * parts.of) / parts.per);
+};
+
+// A command's output as a number: the whole of it, trimmed, or the `value`
+// group of the first match of the pattern. `NaN` when neither reads as one.
+export const numberFromOutput = (measure: CompiledMeasure, output: string): number => {
+  if (measure.kind !== "command") return Number.NaN;
+  const text =
+    measure.pattern === null ? output.trim() : measure.pattern.exec(output)?.groups?.value;
+  if (text === undefined || text.trim() === "") return Number.NaN;
+  const value = Number(text.trim());
+  return Number.isFinite(value) ? roundMeasure(value) : Number.NaN;
+};
+
+// How far a scalar is from being met: the distance to its target in the
+// direction it improves, 0 once there — and 0 for a standing measure, which
+// has no target and is never residue. This is the scalar's dimension of the
+// residue vector, so a phase is left when it reaches 0 as when a holdout
+// count does.
+export const distanceToTarget = (objective: CompiledObjective, value: number): number => {
+  if (objective.target === null) return 0;
+  // A number that did not measure holds the sector where it is — `check`
+  // refuses it — rather than letting it pass a phase it has not met.
+  if (Number.isNaN(value)) return 1;
+  const distance =
+    objective.direction === "down" ? value - objective.target : objective.target - value;
+  return Math.max(0, roundMeasure(distance));
+};
 
 // One line per leaf term: how it reads, and what it answered for this file —
 // every leaf evaluated, with no short-circuit, since the point is to show
@@ -1239,6 +1442,8 @@ export type FailedProbe = {
   readonly admittedBy?: string;
   // For a probe outside the campaign's own scope.
   readonly outOfScope?: boolean;
+  // For a scalar objective's probe: what the file measured.
+  readonly measured?: number;
 };
 
 // Every objective must fire on each of its `fires` probes and stay silent
@@ -1283,6 +1488,30 @@ export const campaignsFailingTheirProbe = (
       return input;
     };
     for (const objective of rule.objectives) {
+      const measure = objective.measure;
+      if (measure !== null) {
+        // A scalar's probe is proven on the number the file contributes:
+        // the probe's `value` when it states one, above zero when it does
+        // not, and zero for an `ignores` probe.
+        const prove = (probe: CampaignProbe, expected: "fires" | "ignores"): void => {
+          if (!anyMatches(rule.scope, probe.path)) {
+            failed.push({ name: objective.name, probe, expected, outOfScope: true });
+            return;
+          }
+          const input = probeInputOf(probe, extractor, matcherFor(probe.path), functions);
+          const measured = valueOfParts(measure, measureFile(measure, input));
+          const holds =
+            expected === "ignores"
+              ? measured === 0
+              : probe.value === undefined
+                ? measured > 0
+                : measured === roundMeasure(probe.value);
+          if (!holds) failed.push({ name: objective.name, probe, expected, measured });
+        };
+        for (const probe of objective.probes.fires) prove(probe, "fires");
+        for (const probe of objective.probes.ignores) prove(probe, "ignores");
+        continue;
+      }
       const detect = detectorOf(objective);
       if (detect === null) continue;
       const unit = objective.sector?.kind === "has" ? "file" : objective.unit;

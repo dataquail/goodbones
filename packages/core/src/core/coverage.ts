@@ -1,4 +1,5 @@
 import { OPEN_LAYOUT } from "../domain/architecture-config.js";
+import { breaches } from "./bound.js";
 import type { CompiledGraph } from "./graph.js";
 import type { CompiledImportRule } from "./imports.js";
 import type { CompiledMemberRule } from "./members.js";
@@ -278,7 +279,8 @@ export const coverageShortfalls = (
   ];
   return families.flatMap((family) => {
     const floor = floors[family];
-    if (floor === undefined || actual[family] >= floor) return [];
+    if (floor === undefined) return [];
+    if (!breaches({ direction: "up", limit: floor, tolerance: 0 }, actual[family])) return [];
     return [{ family, actual: actual[family], floor }];
   });
 };

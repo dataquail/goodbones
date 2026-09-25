@@ -24,6 +24,14 @@ export {
   unbaselined,
 } from "./core/baseline.js";
 export {
+  type Bound,
+  type BoundDirection,
+  breaches,
+  shortfallOf,
+  type Standing,
+  standingOf,
+} from "./core/bound.js";
+export {
   type Coverage,
   type CoverageFamily,
   type CoverageFloors,

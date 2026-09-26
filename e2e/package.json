@@ -11,6 +11,7 @@
     "clean": "rm -rf build .tsbuildinfo"
   },
   "devDependencies": {
+    "@goodbones/browser": "workspace:*",
     "@goodbones/cli": "workspace:*",
     "@goodbones/core": "workspace:*",
     "@goodbones/oxlint": "workspace:*",

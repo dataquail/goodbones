@@ -98,6 +98,9 @@ importers:
 
   e2e:
     devDependencies:
+      '@goodbones/browser':
+        specifier: workspace:*
+        version: link:../packages/browser
       '@goodbones/cli':
         specifier: workspace:*
         version: link:../packages/cli

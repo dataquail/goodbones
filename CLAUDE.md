@@ -195,7 +195,10 @@ six that exist), plus a `paths` pair in `tsconfig.base.json` and `tsconfig.resol
 `vitest.workspace.ts`, an alias in `vitest.shared.ts`, a reference in the root `tsconfig.json` and
 `tsconfig.build.json`, a `references` entry in each dependent's `tsconfig.src.json` _and_
 `tsconfig.build.json`, an alias in the root manifest, an entry in the `no-dead-modules` graph rule
-for each of its barrels, and — if a host installs it — `PACKAGES` in `e2e/src/install.ts`. Before
+for each of its barrels, and — if a host installs it — `PACKAGES` in `e2e/src/install.ts` _and_ a
+`workspace:*` devDependency in `e2e/package.json`: the e2e target builds its dependencies through
+`^build`, so a package the suite packs but does not depend on is packed unbuilt on a clean CI
+checkout (how #67 broke `main`). Before
 trusting a rule you just wrote, plant the violation it exists to catch and watch `pnpm lint` fail — the
 probe check proves a rule _can_ fire, not that it fires on what you meant.
 

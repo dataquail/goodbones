@@ -3,7 +3,7 @@
   "version": "0.1.1-beta.2",
   "type": "module",
   "license": "MIT",
-  "description": "The campaigns family for @goodbones/core: a refactor tracked as objectives over sectors through phases, with a ledger that only shrinks on its own and a diff-scoped nudge.",
+  "description": "The campaigns family for @goodbones/core: a refactor tracked as objectives over sectors through phases — each objective a detector with a ledger that only shrinks on its own, or a number held to a target — with a diff-scoped nudge for whoever touches a sector.",
   "author": "zacharyweidenbach",
   "keywords": [
     "architecture",

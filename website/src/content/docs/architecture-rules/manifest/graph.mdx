@@ -1,20 +1,18 @@
 ---
 title: Graph
-description: Rules about the shape of the whole import graph — cycles, orphans, and what a tier may reach through any number of hops.
+description: Rules about the whole import graph, such as cycles, unused files and indirect reach.
 ---
 
-Every other family judges one file, or one edge leaving it. `graph` judges the **whole
-repository resolved at once**: whether two files import each other, whether anything imports
-a file at all, and whether one tier can reach another through any number of intermediate
-hops. No single file can answer those, and a rule about one edge cannot: a barrel hop
-between an adapter and a live implementation satisfies every per-edge allowlist and still
-puts the adapter one `import` away from the thing it was never supposed to touch.
+import ImportGraph from "../../../../components/ImportGraph.astro";
+
+`graph` rules check the whole import graph: cycles, files nothing imports, and whether one
+layer reaches another through any number of hops, which per-file rules can't see.
 
 ```yaml
 graph:
   cycles:
     - name: no-cycles
-      message: "These files import each other, directly or through others."
+      message: "These files import each other."
       within: "packages/*/src/**"
       withinNot: "**/*.test.ts"
   orphans:
@@ -31,37 +29,44 @@ graph:
       via: "packages/*/src/ports/**"
 ```
 
-`graph` is a top-level section, not a node: its rules are statements about the repository,
-and every glob in it is expanded through `aliases` like the rest of the manifest.
+`graph` is a top-level key. Its globs expand `aliases`.
+
+<ImportGraph />
+
+:::caution[CLI only]
+Graph rules run in [`architecture check`](/goodbones/architecture-rules/enforcement/cli/),
+not in the oxlint plugin. Both [probe](/goodbones/architecture-rules/enforcement/probes/) them
+at load, so a broken rule fails either.
+:::
+
+## Fields
+
+Every rule needs `name` and `message`.
+
+| Rule      | Field                 | Meaning                                                    |
+| --------- | --------------------- | ---------------------------------------------------------- |
+| `cycles`  | `within`, `withinNot` | Files to check. Required: `within`.                        |
+| `orphans` | `within`, `withinNot` | Files to check. Required: `within`.                        |
+| `orphans` | `entry`               | Entry points, which nothing needs to import. Required.     |
+| `reach`   | `from`, `fromNot`     | Origin files. Required: `from`.                            |
+| `reach`   | `to`, `toNot`         | Files they must not reach. Required: `to`.                 |
+| `reach`   | `via`                 | Files a path may pass through. Omit to forbid every route. |
 
 ## `cycles`
 
-A strongly connected component — two or more files that can each reach the other, or a file
-that imports itself — among the files `within` (and not `withinNot`). Each component is
-reported **once**, and the violation's subject is the component as a sorted set, so its
-[baseline](/goodbones/architecture-rules/enforcement/baseline/) entry survives an edge added
-or removed elsewhere in the same cycle.
-
-A cycle that runs through a file outside the scope is not seen: `withinNot: "**/*.test.ts"`
-means a test importing the module it tests, which imports a helper the test also imports, is
-not a cycle the rule speaks to.
+Reports each group of files that import each other, once. A cycle through a file outside
+`within` isn't seen. Its [baseline](/goodbones/architecture-rules/enforcement/adoption/) entry
+is keyed on the set of files.
 
 ## `orphans`
 
-A file `within` scope that **nothing imports** and that is not an `entry`. An importer counts
-from anywhere — a fake imported only by a test is not an orphan, because the test imports it.
-The files that are imported by nothing _by design_ are the program's entry points, and
-`entry` is where a policy lists them.
+Reports a file in scope that nothing imports and isn't an `entry`. An import from anywhere
+counts, including tests.
 
 ## `reach`
 
-A file matching `from` that can reach a file matching `to` through any number of hops
-**without passing through** a `via` file. `via` is the tier that was supposed to mediate: a
-path that steps onto one is fine, and only a path that avoids every `via` is the violation.
-Omit `via` for a plain "must never reach, by any route".
-
-A violation is reported per origin and target, and the route that reached it is appended to
-the message:
+Reports a `from` file that can reach a `to` file without passing through a `via` file. The
+route is appended to the message:
 
 ```
   packages/server/src/adapters/http/todos.ts
@@ -69,23 +74,10 @@ the message:
       (route: packages/server/src/adapters/http/todos.ts → packages/server/src/shared/db.ts → packages/server/src/infrastructure/pg-live.ts)
 ```
 
-The route is in the message and not the subject, so the fingerprint is `(origin, target)`
-and survives the route changing underneath it.
+The baseline entry is keyed on origin and target, not the route.
 
-## What the graph is
+## What's in the graph
 
-Every file the CLI walked, and for each the walked files it resolves to. An external package,
-a builtin, a file outside the walked roots, and an edge nobody can resolve are not in it —
-the first three are not the repository's shape, and the last is reported by
-[`check`](/goodbones/architecture-rules/enforcement/cli/) on its own. A type-only import is
-an edge like any other: it is still a dependency between the two files.
-
-## CLI only
-
-Graph rules are **evaluated by `architecture check` and not by the oxlint plugin.** The plugin
-sees one file at a time, with no view of the others, and cannot answer "does anything import
-this?". Both adapters compile and [probe](/goodbones/architecture-rules/enforcement/probes/)
-the rules at load — a `via` that covers its own target fails `oxlint` too — but only the CLI
-has the graph to evaluate them against. See
-[the CLI](/goodbones/architecture-rules/enforcement/cli/#graph-rules) for what that means for
-how the two are run.
+Every walked file, with an edge per import that resolves to another walked file, type-only
+imports included. External packages and builtins aren't in it. `check` reports unresolved
+imports separately.

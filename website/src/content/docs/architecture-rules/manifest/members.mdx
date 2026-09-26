@@ -1,20 +1,15 @@
 ---
 title: Members
-description: Constraining the names a file may declare on a type, or call.
+description: Restrict the names a file declares on a type or class, or calls.
 ---
 
-`members` restricts the names appearing inside a file, in one of two positions: the names
-written in a declaration, and the names called. It is how a policy states a _vocabulary_ — a
-set of names a stereotype is allowed to use — where the constraint is not about which modules
-are reached at all.
+`members` restricts the names a file declares on a type, interface or class, or the names it
+calls. Use it for rules like "a repository port has no `find*` queries".
 
 ```yaml
 "*.repository.ts":
   members:
-    - message: >-
-        A repository port method named "{name}" is a query in disguise. A port
-        loads and saves an aggregate by identity; anything keyed on another
-        column is a read model, and belongs in queries/.
+    - message: 'Port method "{name}" is a query. Put it in queries/.'
       subject: members
       declares: [type, interface]
       in: "*RepositoryShape"
@@ -22,52 +17,40 @@ are reached at all.
       matchNot: [findOneById, findManyByIds]
 ```
 
-| Field      | Meaning                                                              |
-| ---------- | -------------------------------------------------------------------- |
-| `subject`  | `members` or `calls`                                                 |
-| `declares` | for `members`, which declaration kinds: `type`, `interface`, `class` |
-| `in`       | for `members`, globs against the declaration's own name              |
-| `match`    | names the rule is about. Omit to mean every name in that position    |
-| `matchNot` | names carved back out of `match`                                     |
-| `allow`    | names permitted; anything matched and not allowed is the violation   |
-| `message`  | why. `{name}` is substituted with the offending name                 |
-| `probe`    | `{ source, name }` — a snippet the rule must report `name` out of    |
-
-`match`/`matchNot` narrow _what the rule is about_; `allow` says which of those are fine.
-Either side can carry the exemption — the `find*` example above uses `matchNot`, and a hook
-allowlist below uses `allow` — and which reads better depends on whether the exceptions are
-the interesting part.
-
-## `members`
-
-The names written in a declaration — a type alias, an interface or a class body — with `in`
-selecting the declaration by name and `declares` by kind:
-
 ```ts
 type UserRepositoryShape = {
   readonly findOneById: (id: UserId) => Effect<UserRoot>;
-  readonly findOneByEmail: (email: string) => Effect<UserRoot>; // ← reported
+  readonly findOneByEmail: (email: string) => Effect<UserRoot>; // reported
 };
 ```
 
-A computed key is skipped: it is not a name a vocabulary rule can speak about. Neither is a
-class's constructor or a private `#name`.
+## Fields
 
-`declares` is what separates a rule about a port from a rule about the adapter that
-implements it. `["type", "interface"]` is the port's vocabulary; `["class"]` reaches the
-class body; omitting it speaks to every declaration in the file.
+`members` is a list. Each entry is its own rule, so a violation names the one that fired.
 
-:::note[Deprecated spelling]
-`subject: "type-members"` still loads for the rest of the beta and is read as
-`subject: "members", declares: ["type", "interface"]`, with a notice. The old name carried
-one language's split between types and values into the vocabulary; `declares` says the same
-thing without it.
+| Field      | Meaning                                                                                |
+| ---------- | -------------------------------------------------------------------------------------- |
+| `message`  | Why. `{name}` is replaced with the offending name. Required.                           |
+| `subject`  | `members` (declared names) or `calls` (called names). Required.                        |
+| `declares` | `members` only: declaration kinds to read, `type`, `interface`, `class`. Omit for all. |
+| `in`       | `members` only: globs against the declaration's own name.                              |
+| `match`    | Names the rule is about. Omit for every name.                                          |
+| `matchNot` | Names removed from `match`.                                                            |
+| `allow`    | Names that are fine. Anything matched and not allowed is a violation.                  |
+| `probe`    | `{ source, name }`. See [Authored probes](#authored-probes).                           |
+
+Written on a folder, a rule covers the subtree. `declares: [class]` reaches an adapter
+class rather than the port type it implements.
+
+:::note
+`subject: "type-members"` still loads during the beta, with a notice. It means
+`subject: members, declares: [type, interface]`.
 :::
 
-## `calls`
+## Calls
 
-Called identifiers and called members — `useState(0)` and `React.useEffect(fn)` both
-produce a site named for the callee:
+`subject: calls` checks callee names, such as `useState` in `useState(0)` or `useEffect` in
+`React.useEffect(fn)`. It can't tell React's `useState` from a local function of the same name.
 
 ```yaml
 "*.view.tsx":
@@ -75,52 +58,31 @@ produce a site named for the callee:
     - message: "`{name}` puts state in the View. It belongs in the ViewModel."
       subject: calls
       match: "use[A-Z]*"
-      allow: [useAtomValue, useAtomSet, useAtomSuspense, useId, useCallback]
+      allow: [useAtomValue, useAtomSet, useId, useCallback]
 ```
 
-The `use[A-Z]*` pattern is the reason [character classes](/goodbones/architecture-rules/manifest/patterns/)
-exist in the glob language: it means _a hook_, without also matching `user` or `useful`.
-
-:::note
-`calls` is a syntactic check on the callee's name, not a type-directed one. It cannot tell
-`useState` imported from React apart from a local function of the same name — which is the
-right trade for a rule about a naming convention, since the convention is what it is
-policing.
-:::
+`use[A-Z]*` matches hooks but not `user`. See
+[Patterns](/goodbones/architecture-rules/manifest/patterns/).
 
 ## Which declarations are read
 
-`members` reads the members **written in** a named declaration, under that declaration's
-name — a `type` alias, an `interface`, or a `class`, and inside an alias, through
-intersections, unions and parentheses:
+A rule reads the members written in a named `type` alias (including through intersections,
+unions and parentheses), `interface` or `class`, under that declaration's name:
 
 ```ts
 type Base = { save(): void };
-type Port = Base & { findOneById(): void }; // Port.findOneById — and Base.save, under Base
-interface Other extends Base {
-  findMany(): void;
-} // Other.findMany
-class Live implements Port {
-  findOneById() {} // Live.findOneById, declared as `class`
-}
+type Port = Base & { findOneById(): void }; // Port.findOneById; save is read as Base.save
 ```
 
-A reference is not followed. `Base`'s members are declared where `Base` is and are reported
-there under its own name; following the reference would report every member twice, under
-two names. So an `in` pattern must name the declaration where the member is actually
-written.
+References aren't followed, so `in` must name the declaration where the member is written.
 
-Not read: an anonymous class (`export default class {}`) or a class expression, a
-constructor, a private `#name`, index, call and construct signatures, mapped types, and
-computed keys.
+Not read: anonymous classes and class expressions, constructors, private `#names`, index,
+call and construct signatures, mapped types, and computed keys.
 
-## Proving the rule reads your shape
+## Authored probes
 
-A rule about a shape the extractor does not read would pass its generated probe while
-reporting nothing.
-
-An authored `probe` closes that: the snippet is parsed at load, and the rule must report
-`name` out of what the parser read, or the policy refuses to load.
+An authored `probe` proves the rule reads your code's shape: `source` is parsed at load and
+the rule must report `name`, or the policy fails to load.
 
 ```yaml
 probe:
@@ -128,11 +90,4 @@ probe:
   name: findOneByEmail
 ```
 
-Write it in the shape your real ports take. See
-[Probes](/goodbones/architecture-rules/enforcement/probes/#writing-the-probe-yourself).
-
-## Several rules on one node
-
-`members` is an array, and each entry is compiled to its own rule with its own probe. A
-node that constrains both what it declares and what it calls states both, and a violation
-names which one fired.
+See [Probes](/goodbones/architecture-rules/enforcement/probes/).

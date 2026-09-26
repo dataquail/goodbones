@@ -1,110 +1,77 @@
 ---
 title: Patterns
-description: The glob language — wildcards, captures, character classes, and multi-pattern keys.
+description: The glob syntax used in every manifest key and pattern field.
 ---
 
-Every pattern in a manifest is a glob over a repository-relative path, compiled to a
-regular expression. Globs rather than regexes because the manifest is meant to read like a
-filesystem; everything not listed below is literal, including the dots that make up a
-compound file suffix.
+Every pattern in a manifest is a glob over a repository-relative path. Anything not in this
+table is literal, including dots.
 
-| Token    | Matches                                                           |
-| -------- | ----------------------------------------------------------------- |
-| `*`      | part of one path segment                                          |
-| `**`     | any number of segments                                            |
-| `?`      | one character other than `/`                                      |
-| `{name}` | one segment — a capture in a tree key, a back-reference elsewhere |
-| `[A-Z]`  | a character class, passed through as written                      |
-| `a \| b` | several patterns sharing one node (tree keys only)                |
+| Token    | Matches                                                          |
+| -------- | ---------------------------------------------------------------- |
+| `*`      | part of one path segment                                         |
+| `**`     | any number of segments                                           |
+| `?`      | one character other than `/`                                     |
+| `{name}` | one segment: a capture in a tree key, a back-reference elsewhere |
+| `[A-Z]`  | a character class, passed through as written                     |
+| `a \| b` | several patterns sharing one node (tree keys only)               |
 
-## `a/**` matches `a` itself
-
-A trailing `/**` means _"…or nothing"_, so `@/domain/**` matches the folder `@/domain` as
-well as everything under it. This is what makes an allowlist entry for a folder read the
-way you expect rather than silently excluding the folder's own index file.
+A trailing `/**` also matches the folder itself: `@/domain/**` matches `@/domain`.
 
 ## Captures
 
-A `{name}` in a **tree key** declares a capture of one segment. Anywhere below that node it
-is a back-reference to what the key captured:
+A `{name}` in a tree key captures one segment. Below that node, `{name}` refers back to the
+captured value:
 
 ```yaml
 "@/modules/{module}/domain/":
   imports:
-    # …the SAME module's domain, not any module's.
-    allow: ["@/modules/{module}/domain/**"]
+    allow: ["@/modules/{module}/domain/**"] # the same module's domain only
 ```
 
-Without the capture you would have to write one node per module, or write a rule that lets
-every module reach every other module's internals — the two failure modes a capture exists
-to avoid.
-
-### Captures are refused in `importedBy.allow`
-
-`importedBy.allow` is matched against the **importing** file, while the capture was
-declared by _this_ file's path. There is no coherent binding between them, so a capture
-there would compile to an exemption that silently never matched. The compiler rejects it
-rather than emit it.
+Captures are refused in `importedBy.allow`. See
+[Imports](/goodbones/architecture-rules/manifest/imports/#importedby).
 
 ## Character classes
-
-The one place a pattern says something about a single character, and the reason is React:
 
 ```yaml
 members:
   - subject: calls
     match: "use[A-Z]*"
-    allow: [useAtomValue, useAtomSet, useAtomSuspense, useId, useCallback]
-    message: "`{name}` puts state in the View. It belongs in the ViewModel."
+    message: "`{name}` puts state in the View."
 ```
 
-`use[A-Z]*` is _"a hook"_ — `useState`, `useEffect` — without also matching `user` or
-`useful`. Classes pass through to the regular expression as written.
+`use[A-Z]*` matches `useState` but not `user`.
 
 ## Multi-pattern keys
 
-A tree key may hold several patterns separated by `|`, which is how several file
-stereotypes share one node without repeating its body:
+A tree key may join patterns with `|` to share one node:
 
 ```yaml
 children:
-  "*.aggregate-ops.ts | *.entity-ops.ts | *.value-object-ops.ts": { use: constituent-ops }
+  "*.aggregate-ops.ts | *.entity-ops.ts": { use: constituent-ops }
 ```
 
-This is a **tree-key** feature. Inside a pattern used as a value — a `match`, an `allow`
-entry — `|` is a literal character. Where a value needs several patterns, every field that
-takes a glob also takes an array of them:
+In a value such as `match` or `allow`, `|` is literal. Use an array instead:
 
 ```yaml
-# wrong — matches a file literally named "a.ts | b.ts"
-match: "**/*.test.ts | **/*.test.tsx"
-
-# right
-match: ["**/*.test.ts", "**/*.test.tsx"]
+match: ["**/*.test.ts", "**/*.test.tsx"] # not "**/*.test.ts | **/*.test.tsx"
 ```
 
 ## Quoting in YAML
 
-Every glob in a YAML manifest is quoted. A bare `*` opens an alias, a bare `@` or backtick
-is reserved, a bare `{` opens a flow mapping, and ` #` starts a comment — so a pattern left
-unquoted either fails to parse or means something else. Messages are quoted for the same
-reason: most start with a backtick or contain a colon.
+Quote every glob and every message. Unquoted, `*`, `@`, a backtick, `{` and ` #` all mean
+something else to YAML.
 
 ```yaml
-allow: ["@/domain/**", "**/*.test.ts"] # quoted: `@` and `*`
-match: "use[A-Z]*" # quoted: `*`
-name: { regex: "^(?:Database|[a-z0-9]+(?:-[a-z0-9]+)*)$" } # single quotes: nothing is escaped
+allow: ["@/domain/**", "**/*.test.ts"]
+name: { regex: "^(?:Database|[a-z0-9]+(?:-[a-z0-9]+)*)$" }
 ```
 
-Double quotes process backslash escapes, so a regex with `\d` or `\.` goes in single quotes,
-where nothing is. A capture `{name}` and a character class `[A-Z]` are literal in either.
-Bare words are fine where the value is a plain name — `subject: calls`, `kinds: [default]`,
-`convention: kebab-case` — and a bare `yes`, `no`, `on` or `off` reads as a string, since the
-loader speaks YAML 1.2; quote those anyway, for the sake of tools that still speak 1.1.
-
-A multi-line value is a block scalar — `|` keeps the line breaks, `>-` folds them — which is
-how a long message or a [probe source](/goodbones/architecture-rules/enforcement/probes/)
-avoids string concatenation:
+- Use single quotes for a regex containing `\`; double quotes process escapes.
+- Plain names can stay bare: `subject: calls`, `convention: kebab-case`.
+- Quote `yes`, `no`, `on` and `off` for tools that still read YAML 1.1.
+- For multi-line values, such as a [probe source](/goodbones/architecture-rules/enforcement/probes/),
+  use a block scalar (`|` keeps line breaks, `>-` folds them):
 
 ```yaml
 probe:
@@ -114,13 +81,9 @@ probe:
   name: readFileSync
 ```
 
-## Placeholders in messages and requirements
-
-Two substitutions are made outside the glob language itself:
+## Placeholders
 
 - `{name}` in a `members` message is the offending name.
-- `{base}` in a `requires` entry is the file's own name minus its final extension, so
+- `{base}` in a `requires` entry is the file's name minus its final extension:
   `"{base}.test.ts"` beside `user.root.ts` means `user.root.test.ts`.
-
-`requires` entries also resolve `../` against the node's own folder, which is how a port
-in one folder demands an adapter in another.
+- `requires` entries resolve `../` against the node's folder.

@@ -1,62 +1,35 @@
 ---
 title: Probes
-description: Why a vacuous rule is worse than no rule, and how every compiled rule proves it can still fire.
+description: Every rule is tested at load against a case it must reject.
 ---
 
-The failure mode that makes architectural linting worse than useless is a rule that has
-stopped matching anything. A folder gets renamed, an alias changes, a pattern loses a
-segment — and the rule keeps passing, forever, on every commit, indistinguishable from a
-rule that is working.
+A rule that stops matching anything keeps passing forever, and looks exactly like a rule that
+works. To catch that, every compiled rule carries a **probe**: a synthetic case, generated from the
+rule's own pattern, that the rule must reject. If any rule passes its probe, the policy refuses to
+load and the lint run fails.
 
-Nobody notices, because the signal for _"this rule is fine"_ and the signal for _"this rule
-is dead"_ are the same green check.
+| Family      | The probe                                                                                              |
+| ----------- | ------------------------------------------------------------------------------------------------------ |
+| `imports`   | a file the rule's `from` selects, importing a target it must refuse                                    |
+| `exports`   | an importer outside `except`, naming a restricted symbol                                               |
+| `members`   | a selected file declaring or calling a name the rule must reject                                       |
+| `surface`   | a selected file exporting a site the rule must reject, or (for `count`) a surface of the wrong size    |
+| `structure` | a filename the layout must reject; for parity, a sibling it must demand                                |
+| `graph`     | a small graph the rule must report: two files importing each other, a lone file, an edge outside `via` |
 
-## Every rule carries a probe
+A rule that admits everything by design, such as the layout of a
+[`layout: open`](/goodbones/architecture-rules/manifest/structure/) folder, has no probe.
 
-When the manifest is lowered, each compiled rule is given a **probe** generated from its own
-node in the tree: a synthetic path (and for `members`, `exports` and `surface`, a synthetic
-name; for `graph`, a small synthetic graph) that the rule _must_ reject. The probe is derived from the same glob the rule was compiled from,
-so it moves when the node moves.
+## What a probe can't check
 
-**The plugin refuses to load if any rule fails its own probe.** Not a warning, not a separate
-script someone remembers to run — a load-time error that stops the lint run.
-
-| Family      | The probe is                                                                                                          |
-| ----------- | --------------------------------------------------------------------------------------------------------------------- |
-| `imports`   | a path the rule's `from` must select, importing a target it must refuse                                               |
-| `exports`   | an importer outside `except`, naming a restricted symbol                                                              |
-| `members`   | a file the rule selects, declaring or calling a name it must reject                                                   |
-| `surface`   | a file the rule selects, exporting a site it must reject — or, for `count`, a surface of the wrong size               |
-| `structure` | a filename the layout must reject; for parity, a sibling it must demand                                               |
-| `graph`     | a synthetic graph the rule must report on: two files importing each other, a lone file, an edge that touches no `via` |
-
-A rule that admits everything by design — the layout rule emitted by
-[`layout: open`](/goodbones/architecture-rules/manifest/structure/) — has no path it must
-reject, and is skipped rather than given a probe it could not pass.
-
-Structure parity is checked _structurally_ — that the rule still selects its probe path and
-still renders a required sibling — rather than by consulting the real filesystem, so the
-guard does not depend on a fixture existing.
-
-## What a synthetic probe cannot check
-
-A generated probe proves a rule **can** fire. It does not prove the rule fires on the thing
-you meant, and it cannot, for two reasons.
-
-The first is that the probe is generated from the same pattern the rule was, so a pattern
-that is wrong in the same way in both places will pass.
-
-The second is sharper: **a synthetic probe never meets a parser.** It is a path and a name
-handed straight to the rule's patterns. Whether the adapter would ever _extract_ that name
-from real source — whether it reads members out of a class body, say — is a question the
-probe does not ask. A `members` rule about a declaration shape the extractor is blind to
-passes its synthetic probe and enforces nothing, which is precisely the failure probes
-exist to prevent.
+A generated probe proves a rule **can** fire, not that it fires on the code you meant. It never
+meets a parser: a `members` rule about a declaration shape the parser doesn't read passes its probe
+and enforces nothing. For that, write the probe yourself.
 
 ## Writing the probe yourself
 
-For `members`, `exports` and `surface`, a rule may carry its own probe: a source snippet and the name
-the rule must report out of it.
+A `members`, `exports` or `surface` rule may carry `probe: { source, … }`. At load, the snippet is
+parsed like real code and the rule must report the named site. If it doesn't, the rule is refused.
 
 ```yaml
 "*.repository.ts":
@@ -71,18 +44,13 @@ the rule must report out of it.
         name: findOneByEmail
 ```
 
-At load, the snippet is **parsed** — by the same extractor the CLI reads every file through —
-and the rule must report a site named `findOneByEmail` out of what the parser read. If the
-parser reads no such site, the rule is refused at load with the same error a drifted pattern
-gets, and `architecture facts` shows what the parser does read.
+Write the snippet in the shape your real code takes. Members are read from type aliases and
+interfaces, through intersections and unions, but not from a class body, so a rule probed with a
+class refuses to load. Run [`architecture facts`](/goodbones/architecture-rules/enforcement/cli/)
+to see what the parser reads.
 
-Write the snippet in the shape your real code takes. If your ports are interfaces, write an
-interface; if they are intersections, write one. The extractor reads members written in an
-alias or an interface, through intersections and unions — and not, say, a class body, so a
-rule probed with a class refuses to load. That refusal is the point. It is the difference
-between a rule you _believe_ covers your ports and one that has been shown to.
-
-For `exports`, the snippet is an import statement and the name is the binding:
+For `exports`, the snippet is an import and `symbol` is the binding. Every edge in the snippet is
+taken to reach `module`. Use `symbol: "default"` for a default import and `"*"` for a namespace one.
 
 ```yaml
 exports:
@@ -95,36 +63,15 @@ exports:
       symbol: makeCommandBus
 ```
 
-Every edge in the snippet is taken to reach `module`, so the probe is about the binding form
-and not about resolution. `symbol` is `"default"` for a default import and `"*"` for a
-namespace one — which makes this the way to prove a rule with `kinds: ["default"]` actually
-sees a default import.
-
-`imports` rules have no authored form. What an import probe would prove — that a given
-syntax is an edge at all — is pinned for every rule at once by the package's own parity
-suite, which parses every edge form through both adapters and holds them to one answer.
+`imports` rules have no authored probe.
 
 ## Two more habits
 
-Beyond the probe, two practices close the gap between _can fire_ and _fires on what you
-meant_, and both are worth building into a repository that takes this seriously:
+- **Plant the violation.** Before trusting a new rule, create the file it exists to catch and
+  watch the check fail.
+- **Keep an edge table.** Check a list of `(importer, specifier, expected verdict)` rows on every
+  run. Include allowed rows: only those catch a rule that got too strict.
 
-**An edge table.** A list of `(importer, specifier, expected verdict)` rows checked on every
-run. The _allowed_ rows matter as much as the refused ones — a policy that refuses everything
-is as broken as one that refuses nothing, and only an allowed row catches an over-tightened
-rule. When migrating off an existing enforcement tool, generate the table against the old
-tool while both still run: the verdicts are then inherited evidence rather than assertions
-written to match whatever the new code happens to do.
-
-**Plant the violation.** Before trusting a rule you just wrote, create the file it exists to
-catch and watch it fail. It takes twenty seconds and it is the only check that tests the rule
-against your intent rather than against itself.
-
-## Related failure modes
-
-Two more ways a policy can be quietly not enforcing anything, both closed elsewhere:
-
-- **An unresolved import** — no rule can police an edge that does not resolve, so
-  [resolution failure is an error](/goodbones/architecture-rules/enforcement/resolution/).
-- **A stale build** — oxlint imports compiled JavaScript, so a stale build directory enforces
-  a stale policy and still lints green. Make the build a `prelint` step, not a convention.
+Two other ways a policy silently stops enforcing are handled elsewhere: an
+[unresolved import is an error](/goodbones/architecture-rules/enforcement/resolution/), and a stale
+plugin build enforces a stale policy, so build before you lint.

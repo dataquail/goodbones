@@ -1,21 +1,17 @@
 ---
 title: Resolution
-description: How a specifier becomes a file, why scopes exist, and why an unresolved import is an error.
+description: How import specifiers become files, and what happens when one does not resolve.
 ---
 
-Every pattern in a manifest is matched against a **resolved** path. This is the property the
-rest of the package rests on: a rule about `@/modules/user/domain` is a rule about the file
-that specifier actually names, not about the eleven characters someone typed.
+Every rule is matched against the file an import **resolves** to, not the text of the specifier.
+The `resolve` block tells the tools how to resolve, per part of the repository.
 
 ```yaml
 resolve:
   scopes:
-    - files: "^packages/(web|components)/"
+    - files: "^packages/web/"
       language: typescript
       options: { tsconfig: tsconfig.resolve-web.json }
-    - files: "^packages/acceptance/"
-      language: typescript
-      options: { tsconfig: packages/acceptance/tsconfig.json }
     - files: ""
       language: typescript
       options: { tsconfig: tsconfig.resolve.json }
@@ -25,89 +21,54 @@ resolve:
 
 ## Scopes
 
-A scope says which **language** resolves and parses the files it covers, and hands that
-language its options. A monorepo rarely has one `tsconfig` whose `paths` are correct for every
-file, so it has several TypeScript scopes; a second language is one more scope. The first
-matching scope wins, so the **catch-all goes last** — `files: ""` matches everything.
+A scope sets the language and options for the files it covers. Use several when one tsconfig's
+`paths` don't fit every package.
 
-`files` here is a **regular-expression source string**, not a glob. It is the one place in a
-manifest that is not glob-shaped, because it is matched against the importing file's path
-before any of the glob machinery is involved.
+| Field      | Meaning                                                                          |
+| ---------- | -------------------------------------------------------------------------------- |
+| `files`    | A **regular expression** (not a glob) matched against the importing file's path. |
+| `language` | The language pack, e.g. `typescript`.                                            |
+| `options`  | The language's options. An unknown key is an error at load.                      |
 
-`options` are opaque to the manifest and belong to the language: the TypeScript pack
-validates them at load and refuses a key it does not know, so a misspelled option is an error
-rather than a resolver quietly built on defaults.
+The first matching scope wins, so put the catch-all `files: ""` last.
 
 :::note[Deprecated shape]
-A scope written as `{ files, tsconfig }`, with no `language`, still loads for the rest of the
-beta and is read as `{ files, language: "typescript", options: { tsconfig } }`. Resolver
-options written on `resolve` itself (`extensions`, `conditionNames`, `mainFields`) are folded
-into every TypeScript scope the same way. Both print a deprecation notice; move them.
+`{ files, tsconfig }` with no `language` still loads, read as
+`{ files, language: "typescript", options: { tsconfig } }`. So do `extensions`, `conditionNames`
+and `mainFields` written on `resolve` itself, which apply to every TypeScript scope. Both print a
+deprecation notice.
 :::
 
-## TypeScript
+## TypeScript options
 
-Resolution is [`unrs-resolver`](https://www.npmjs.com/package/unrs-resolver) — oxc's native
-resolver, run synchronously — so `paths`, workspace links, package `exports` and conditions
-all behave the way your bundler and `tsc` make them behave.
+| Option           | Meaning                                                                           |
+| ---------------- | --------------------------------------------------------------------------------- |
+| `tsconfig`       | Repo-relative tsconfig whose `paths` and `baseUrl` apply. Required.               |
+| `extensions`     | Tried on an extensionless specifier. Default `.ts .tsx .js .jsx .mjs .cjs .json`. |
+| `conditionNames` | Package `exports` conditions. Default `import require node default`.              |
+| `mainFields`     | `package.json` fields tried for a bare package. Default `main types`.             |
 
-| Option           | Meaning                                                                                      |
-| ---------------- | -------------------------------------------------------------------------------------------- |
-| `tsconfig`       | repo-relative path to the tsconfig whose `paths` and `baseUrl` apply. Required.              |
-| `extensions`     | extensions tried on an extensionless specifier. Default `.ts .tsx .js .jsx .mjs .cjs .json`. |
-| `conditionNames` | package `exports` conditions. Default `import require node default`.                         |
-| `mainFields`     | `package.json` fields tried for a bare package. Default `main types`.                        |
+:::caution[Keep `paths` targets extensionless]
+A mapped target is a template, so a `.js`-suffixed mapping turns `@/x/y.js` into a lookup for
+`y.js.js`. The resolver already maps a `.js` specifier to `.ts`/`.tsx`/`.js` (`.mjs` → `.mts`/`.mjs`,
+`.cjs` → `.cts`/`.cjs`).
+:::
 
-One `ResolverFactory` is built per scope, once per run, and results are memoised on
-`(directory, specifier)`. Resolution is the expensive part of linting an architecture, and
-rebuilding a resolver per file is the difference between a fast run and an unusable one.
+## Kinds of target
 
-### Extensionless path targets
+| Kind       | What it is                            | Governed by             |
+| ---------- | ------------------------------------- | ----------------------- |
+| `local`    | a file inside the repository          | `imports.allow`, `deny` |
+| `external` | a third-party package                 | `imports.external`      |
+| `builtin`  | a runtime builtin, e.g. `node:crypto` | neither                 |
 
-`paths` targets in the tsconfigs a scope names should be **extensionless**. A mapped target
-is a template, so a `.js`-suffixed mapping turns `@/x/y.js` into a lookup for `y.js.js`. The
-resolver handles the `.js` → `.ts` rewrite on the _specifier_ instead:
+`imports.external` matches the **package name** (`effect`, `@scope/name`). `allow` and `deny` match
+the resolved path, so to forbid one subpath of a package, match where it resolves.
 
-```
-.js  → .ts, .tsx, .js
-.mjs → .mts, .mjs
-.cjs → .cts, .cjs
-```
+## Unresolved imports
 
-Without that mapping every relative import in a NodeNext codebase resolves to nothing, and
-every path rule about it goes silently vacuous — which is the failure the whole package
-exists to make impossible.
+`unresolved` defaults to `"error"`, because an unresolved import escapes every rule.
 
-## Three kinds of target
-
-| Kind       | What it is                                   | Which field governs it  |
-| ---------- | -------------------------------------------- | ----------------------- |
-| `local`    | a file inside the repository                 | `imports.allow`, `deny` |
-| `external` | a third-party package, named by the resolver | `imports.external`      |
-| `builtin`  | a runtime builtin — `node:crypto`            | neither                 |
-
-An external is judged by its **package name** — the resolver reports which package a
-resolved file belongs to (`effect`, `@scope/name`), and `imports.external` is matched
-against that. Where the package was found on disk is the resolver's business: a pnpm store
-path, a hoisted `node_modules/`, or a vendored copy all read as the same package. `deny`
-and `allow` patterns still see the resolved path, so a prohibition against one subpath of
-a package is written against where that subpath resolves to.
-
-Builtins are resolved and classified rather than treated as unresolved packages, so
-`node:crypto` does not need an entry in every tier's `external` list to avoid a false
-positive.
-
-## An unresolved import is an error
-
-`unresolved` defaults to `"error"`, and the reason is worth stating plainly: an edge nobody
-can resolve is an edge no rule can police. If unresolved imports were skipped, one
-misconfigured `paths` entry would disarm every rule about a whole package at once — quietly,
-with a green build, and without changing a line of policy. That is precisely the
-indistinguishable-from-passing failure the package is built to refuse.
-
-`ignoreUnresolved` takes regexes matched against the **specifier**, for the genuine cases —
-a virtual module a bundler synthesises, a generated file that does not exist at lint time.
-Every entry there deserves a comment saying why, because each one is a hole in the policy.
-
-Setting `unresolved: "off"` is available for a first-day adoption spike. It should not
-survive the week.
+- `ignoreUnresolved` — regexes matched against the **specifier**, for virtual modules or files
+  generated after lint time. Comment each entry.
+- `unresolved: "off"` — for a first-day adoption spike only.

@@ -1,90 +1,63 @@
 ---
 title: Introduction
-description: What the manifest is, the problem it replaces, and the two properties everything else rests on.
+description: What the manifest is, what it checks, and the two guarantees behind it.
 ---
 
-Most repositories that take architecture seriously end up with three enforcement systems
-that do not talk to each other: a dependency-graph tool with its own binary and its own
-resolution config, a folder-structure linter with its own config language, and a drawer
-of hand-rolled lint rules for the checks neither can express.
+import ArchitectureTree from "../../../../components/ArchitectureTree.astro";
 
-They are the same mechanism. Each one matches a fact about a file — its path, the modules
-it imports, the names it declares or calls, the siblings beside it on disk — against a
-policy, and reports a message. Only the fact-gathering differs.
-
-This package is that mechanism, once. One config file, one oxlint plugin, one CLI, six rule
-families.
+Architecture Rules lets you write your repository's architecture in one file, `architecture.yaml`,
+and enforce it with an oxlint plugin and a CLI. Reach for it when you want import boundaries,
+folder layouts and naming rules checked on every change instead of in code review.
 
 ## What it enforces
 
-| Question                                       | Family      |
-| ---------------------------------------------- | ----------- |
-| What may this part of the repository reach?    | `imports`   |
-| Who may reach it?                              | `imports`   |
-| Which importers may name this exported symbol? | `exports`   |
-| Which names may this file declare or call?     | `members`   |
-| What may this file export?                     | `surface`   |
-| Which files may live in this folder?           | `structure` |
-| What may they be called?                       | `structure` |
-| Which siblings does this file owe?             | `structure` |
-| Do any files import each other?                | `graph`     |
-| Does anything import this file?                | `graph`     |
-| Can this tier reach that one, by any route?    | `graph`     |
+Each question below is answered by one family of rules, each with its own page.
 
-The first five are evaluated by the oxlint plugin and the CLI alike. `graph` is a question
-about the whole repository, and only the [CLI](/goodbones/architecture-rules/enforcement/cli/)
-sees every file at once. Above the families sit two ratchets on the policy itself — the
-[baseline](/goodbones/architecture-rules/enforcement/baseline/) on the violations the code
-carries, and [`limits`](/goodbones/architecture-rules/enforcement/adoption/) on how much of
-the tree the rules reach.
+| Question                                      | Family                                                           |
+| --------------------------------------------- | ---------------------------------------------------------------- |
+| What may this folder import?                  | [`imports`](/goodbones/architecture-rules/manifest/imports/)     |
+| Who may import it?                            | [`importedBy`](/goodbones/architecture-rules/manifest/imports/)  |
+| Which importers may use this exported symbol? | [`exports`](/goodbones/architecture-rules/manifest/exports/)     |
+| Which names may this file declare or call?    | [`members`](/goodbones/architecture-rules/manifest/members/)     |
+| What may this file export?                    | [`surface`](/goodbones/architecture-rules/manifest/surface/)     |
+| Which files may live in this folder?          | [`structure`](/goodbones/architecture-rules/manifest/structure/) |
+| What may they be called?                      | [`structure`](/goodbones/architecture-rules/manifest/structure/) |
+| Which sibling files does this file require?   | [`structure`](/goodbones/architecture-rules/manifest/structure/) |
+| Is there an import cycle?                     | [`graph`](/goodbones/architecture-rules/manifest/graph/)         |
+| Does anything import this file?               | [`graph`](/goodbones/architecture-rules/manifest/graph/)         |
+| Can this layer reach that one, by any route?  | [`graph`](/goodbones/architecture-rules/manifest/graph/)         |
 
-## The two properties everything rests on
+The oxlint plugin and the CLI both check the first five. `graph` needs the whole repository, so
+only the [CLI](/goodbones/architecture-rules/enforcement/cli/) checks it. To adopt rules on an
+existing codebase, see [adoption](/goodbones/architecture-rules/enforcement/adoption/).
 
-**Patterns are matched against resolved paths.** A specifier is turned into a real file
-through your `tsconfig` `paths`, your workspace links and npm's own resolution before any
-rule looks at it. A policy written against specifier text is a policy that a new alias
-silently disarms. An import that cannot be resolved is a hard error rather than a skip,
-because an edge nobody can resolve is an edge no rule can police — and failing open there
-would disarm every rule about a package at once, without changing a line of config.
+## A manifest is a tree
 
-**Every rule proves it can still fire.** The manifest compiles to flat rules, and each one
-carries a probe generated from its own node in the tree — or, for a rule about a declaration
-shape, a source snippet you write that the parser must read the violation out of. The plugin
-refuses to load if any rule fails its own probe. A vacuous rule — one whose pattern has drifted until it
-matches nothing — is the failure mode that makes architectural linting worse than no
-linting at all, because it is indistinguishable from a clean build.
-
-## Why a tree
-
-The obvious shape for this is a flat list of rules, and that is what most tools ship. It
-scales badly in a specific way: to understand what governs one folder you have to read the
-whole file, because any rule anywhere might name it, and rules accumulate exclusion lists
-on their `from` side as the repository grows.
-
-A manifest inverts that. It reads like a directory listing, and everything the architecture
-says about a folder is written at that folder:
+The manifest reads like a directory listing. Everything about a folder is written at that folder,
+and its subfolders inherit it:
 
 ```yaml
 "@/modules/{module}/domain/":
-  message: "domain/ holds the model — no framework, no persistence, no bus."
   imports:
     reset: true
     external: [effect]
-    allow: ["@/modules/{module}/domain/**", "@/platform/ddd/contracts/**"]
+    allow: ["@/modules/{module}/domain/**"]
   children:
     "*.root.ts": { requires: ["{base}.root.test.ts"] }
-    "*.repository.ts":
-      importedBy:
-        message: "A repository is reached from a command handler, not a query."
-        allow: ["@/modules/*/commands/**", "@/modules/*/event-handlers/**"]
 ```
 
-The trade is real and worth naming: a tree answers _"what governs this file?"_ well and
-_"which files does this rule govern?"_ badly. That is what
-[`architecture explain`](/goodbones/architecture-rules/enforcement/cli/) exists for.
+This says `domain/` may import only itself and `effect`, and every `*.root.ts` needs a test beside it.
 
-## What it does not do
+<ArchitectureTree />
 
-**Circularity.** Detecting an import cycle needs the whole dependency graph, which a
-per-file lint rule does not have. oxlint ships `import/no-cycle` natively; enable it
-alongside.
+To see every rule that governs one file, run
+[`architecture explain`](/goodbones/architecture-rules/enforcement/cli/).
+
+## Two guarantees
+
+- **Rules match resolved files.** An import is resolved through your `tsconfig` paths and workspace
+  links before any rule sees it. An import that cannot be resolved is an error, not a skip.
+  See [resolution](/goodbones/architecture-rules/enforcement/resolution/).
+- **Every rule proves it can fire.** Each rule is tested against a generated violation when it
+  loads, and the plugin refuses to load if one no longer matches anything.
+  See [probes](/goodbones/architecture-rules/enforcement/probes/).

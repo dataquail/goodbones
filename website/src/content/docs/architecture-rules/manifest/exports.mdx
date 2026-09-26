@@ -1,117 +1,66 @@
 ---
 title: Exports
-description: Restricting which importers may name a given exported symbol.
+description: Restrict which files may import a named symbol from a module.
 ---
 
-`exports` is the one family that is not about paths. It restricts which files may import a
-**named symbol** from a module.
+`exports` restricts which files may import a **named symbol** from a module. Use it when
+importers of the same file need different rules, such as a factory only a composition root may call.
 
 ```yaml
 exports:
   - name: bus-factories-at-composition-roots
-    message: >-
-      makeCommandBus / makeQueryBus fold module dispatch tables into one routing
-      table. Building a bus anywhere but a composition root gives you a second
-      application with a different set of handlers.
-    module: "**/node_modules/@effect-server-utils/cqrs/**"
-    symbols: [makeCommandBus, makeQueryBus, mergeDispatchTables]
-    except: ["@/server.ts", "@/platform/cqrs/**", "@/test-utils/test-server.ts"]
+    message: "Build a bus only at a composition root."
+    module: "**/node_modules/@org/cqrs/**"
+    symbols: [makeCommandBus, makeQueryBus]
+    except: ["@/server.ts", "@/platform/cqrs/**"]
 ```
 
-It lives at the top level of the manifest rather than on a node, because the thing it
-governs is a symbol in some other package — there is no node in your tree to hang it on.
-
-## Why a path rule cannot say this
-
-Every importer of a barrel resolves to the same file. If a module exports both a factory
-that only a composition root may call and a Tag that everything may import, no rule about
-the resolved path can separate them. The imported **name** is the only thing that does.
-
-The same shape covers a second case with no name at all: banning an import _form_. Omit
-`symbols` and the rule means _"any named import from this module"_, which is how you insist
-a package be reached by subpath rather than by destructuring its barrel.
+`exports` is a top-level manifest key, not a node field.
 
 ## Fields
 
-| Field     | Meaning                                                                                    |
-| --------- | ------------------------------------------------------------------------------------------ |
-| `name`    | the rule id, reported on a violation                                                       |
-| `message` | why                                                                                        |
-| `module`  | globs matched against the module's **resolved** path                                       |
-| `symbols` | exact exported names. Omit to mean _any named import from that module_                     |
-| `kinds`   | binding forms the rule speaks to: `named`, `default`, `namespace`. Defaults to `["named"]` |
-| `except`  | importers the restriction does not apply to                                                |
-| `fix`     | `"subpath-namespace-import"` — offer an autofix                                            |
-| `probe`   | `{ source, symbol }` — an import the rule must cover `symbol` out of                       |
+| Field     | Meaning                                                                                       |
+| --------- | --------------------------------------------------------------------------------------------- |
+| `name`    | Rule id, reported on a violation. Required.                                                   |
+| `message` | Why. Required.                                                                                |
+| `module`  | Globs matched against the module's **resolved** path. Required.                               |
+| `symbols` | Exact exported names. Omit to mean any import of the selected `kinds` from that module.       |
+| `kinds`   | Binding forms the rule applies to: `named`, `default`, `namespace`. Default `["named"]`.      |
+| `except`  | Importers the rule doesn't apply to.                                                          |
+| `fix`     | `"subpath-namespace-import"` offers an autofix (see below).                                   |
+| `probe`   | `{ source, symbol }`, an import the rule must cover. See [Authored probes](#authored-probes). |
 
-Names are read as they appear **in the source module**, not as the importer aliased them:
-`import { makeCommandBus as make }` is still `makeCommandBus`, and `export { a as b } from`
-is still `a`. Renaming at the import site is not an escape.
+Names are matched as the source module exports them, so aliasing doesn't escape a rule:
+`import { makeCommandBus as make }` is still `makeCommandBus`.
 
 ## Binding forms
 
-A rule is compared against bindings **by kind**, and speaks to `named` ones unless `kinds`
-says otherwise. That default is deliberate — it is the discriminating form for every rule of
-this shape — but it means a rule about a factory function says nothing about
-`import makeBus from "m"` until it lists `"default"`:
+A rule only sees `named` imports unless `kinds` says otherwise. A default import's symbol is
+`default` and a namespace import's is `*`, whatever the importer calls it.
 
-```yaml
-- name: bus-factories
-  module: "**/@org/cqrs/**"
-  symbols: [makeCommandBus]
-  kinds: [named, default]
-```
-
-The `namespace` kind is the one binding form with no name of its own — its symbol is always
-`*` — and it is carried by **every form that takes the whole module at once**:
-
-```ts
-import * as ns from "m";
-export * from "m";
-export * as ns from "m";
-import x = require("m");
-await import("m");
-require("m");
-```
-
-Each of those is the same way around a rule about a name: `export * from "./internal"`
-launders every symbol of `internal` through the barrel, and `const { makeBus } = await
-import("m")` names no binding. A rule with `kinds: ["namespace"]` and no `symbols` is how a
-policy forbids the form itself:
+`namespace` covers every form that takes the whole module: `import * as`, `export *`,
+`export * as`, `import x = require()`, `import()` and `require()`. With no `symbols`, it
+forbids those forms, for example to stop a barrel re-exporting an internal folder:
 
 ```yaml
 - name: no-barrel-laundering
+  message: "Re-export internal symbols by name."
   module: "src/**/internal/**"
   kinds: [namespace]
   except: ["src/**/index.ts"]
 ```
 
-Because a default binding is only ever named `default` and a namespace one `*`, a rule that
-lists `symbols` alongside either of those kinds could never fire on such a form — and is
-refused at load, by its own probe.
+:::caution
+A rule with `symbols` whose first kind is `default` or `namespace` fails to load: its symbols
+can never match those forms.
+:::
 
-A side-effect import (`import "m"`) carries no names, so the export family has nothing to
-judge there — the import family still sees the edge.
+`exports` ignores side-effect imports (`import "m"`).
 
-## Proving the rule sees the binding
+## Autofix
 
-A rule is compared against bindings by kind, and covers `named` ones unless `kinds` says
-otherwise. An authored `probe` is how to show it sees the form you mean: the snippet is
-parsed at load, every edge in it is taken to reach `module`, and a binding named `symbol`
-must come out covered — `"default"` for a default import, `"*"` for a namespace one.
-
-```yaml
-probe:
-  source: 'import { makeCommandBus } from "@org/cqrs";'
-  symbol: makeCommandBus
-```
-
-See [Probes](/goodbones/architecture-rules/enforcement/probes/#writing-the-probe-yourself).
-
-## The autofix
-
-`fix: "subpath-namespace-import"` rewrites a named import into a namespace import from the
-matching subpath:
+`fix: "subpath-namespace-import"` rewrites a named import into namespace imports from matching
+subpaths. It applies only to rules without `symbols`.
 
 ```ts
 // before
@@ -122,5 +71,16 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 ```
 
-It applies to the _no-`symbols`_ form of the rule — the one that bans a binding form rather
-than particular names — since that is the case where the correct rewrite is mechanical.
+## Authored probes
+
+An authored `probe` proves the rule catches the import form you mean. Every import in
+`source` is treated as reaching `module`, and the rule must cover `symbol` (`"default"` or `"*"`
+for those forms), or the policy fails to load.
+
+```yaml
+probe:
+  source: 'import { makeCommandBus } from "@org/cqrs";'
+  symbol: makeCommandBus
+```
+
+See [Probes](/goodbones/architecture-rules/enforcement/probes/).

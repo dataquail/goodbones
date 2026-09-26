@@ -1,38 +1,31 @@
 ---
 title: Conformance
-description: architecture conformance measures the distance between the tree and the manifest — residue, vacancy, violations and slack — and emits it as one snapshot document.
+description: Measure how far the tree is from the policy, in both directions.
 ---
 
-`check` answers one question: does the tree pass the policy? `conformance` answers a
-different one: how far is the tree from the policy, and in which direction? It is a
-measurement rather than a gate, so it never fails, and it can measure against a manifest
-the tree was never expected to satisfy yet. When the manifest states a ceiling on a
-measure in [`limits.conformance`](/goodbones/architecture-rules/enforcement/adoption/),
-it is `check` that holds the count to it; this report shows the ceiling beside the
-measure, and says when the count has fallen enough for the ceiling to come down.
+`check` tells you whether the tree passes. `conformance` tells you how far it is from the policy:
+files no rule reaches, rules no file reaches, violations, and allowances nothing uses. It is a
+measurement and never fails. To fail a build on a measure, set a ceiling in
+[`limits.conformance`](/goodbones/architecture-rules/enforcement/adoption/) and `check` enforces it.
 
 ```bash
-architecture conformance [roots…]                     # the report, as text
-architecture conformance --json [roots…]              # the snapshot document
-architecture conformance --against target.yaml [roots…]
+architecture conformance [roots…]                        # text report
+architecture conformance --json [roots…]                 # snapshot document
+architecture conformance --against target.yaml [roots…]  # measure against another manifest
 ```
 
-## The four parts
+## What it measures
 
-**Residue** is what the policy has nothing to say about: the files no family reaches, and
-the folders made only of them. `coverage` counts these; `conformance` names them. A file
-in a folder that is `layout: open`, under no import allowlist, selected by no `members`
-or `surface` rule and in no graph scope is claimed by the manifest and policed by
-nothing, and it is residue.
+| Part              | What it is                                                                                                                       |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| **Residue**       | Files no family reaches (no allowlist, open folder, no `members`/`surface` rule, no graph scope), and folders made only of them. |
+| **Vacancy**       | Nodes that state an import allowlist but select no file.                                                                         |
+| **Violations**    | What `check` reports, baselined or not, cheapest to fix first (edges to leaf modules before edges to widely imported ones).      |
+| **Slack**         | Entries in `imports.allow` or `imports.external` that no import uses.                                                            |
+| **Concentration** | Entries from a `defs` fragment used at some of the nodes granted them but not others.                                            |
 
-**Vacancy** is the same question from the other end: residue is files no node reaches,
-vacancy is nodes no file reaches. A node that states an import allowlist and selects no
-walked file grants permission to nothing, so every entry on it is unused by construction.
-That is not slack — there is no line to delete — and it is not counted as slack. It is
-either a tier declared ahead of its first file (an `event-handlers/` folder the second
-module will fill) or a pattern that no longer matches anything (`**/*.test.ts` in a
-package whose tests moved one folder deeper), and only a reader can say which, so the
-report names the node and how many entries it wrote and leaves the verdict to them:
+**Vacant nodes** are either a tier declared before its first file, or a pattern that no longer
+matches. The report can't tell which, so it names the node and leaves the call to you:
 
 ```
 vacant: 2 nodes select no file
@@ -40,47 +33,14 @@ vacant: 2 nodes select no file
   modules/{module}/event-handlers     10 allowances
 ```
 
-A node whose own rule steps aside for an overriding child is not vacant while the child
-has files: its allowlist is inherited there, and a node that grants permission to some
-file grants permission. A `children` entry with nothing under it and no allowlist is not
-vacant either; a taxonomy admitting a stereotype nobody has written yet is what a
-taxonomy is for.
+A node isn't vacant while an overriding child has files, and a `children` entry with no files and no
+allowlist isn't vacant either.
 
-**Violations** are what `check` reports, keyed by fingerprint and marked baselined or not,
-ordered so the ones cheapest to fix come first. A violation about an edge names a target,
-and the cost of fixing it is roughly how much of the import graph stands beneath that
-target: an edge to a leaf can be cut without moving anything else, while an edge to a
-module that half the repository imports through cannot. The list starts at the ground.
-
-**Slack** is the opposite of a violation: an entry in an `imports.allow` or
-`imports.external` list that no import in the tree uses. It is the number that tells an
-enforced manifest from a permissive one. A manifest [inferred from the tree](/goodbones/architecture-rules/getting-started/infer/)
-reaches every file and constrains nothing, so its coverage reads as complete; its slack
-is zero on the day it is written and grows with every entry a reader should have deleted.
-Slack is also the signature of an allowlist widened to make a build green — an agent, or a
-person in a hurry, adding a line rather than moving a file — because the widened entry is
-used by exactly the edge it was added for, and every other entry it dragged in is not.
-
-Each slack entry names the node that wrote it, so the line to delete is found by reading
-down the manifest to that node:
-
-```
-slack: 2 allowances nothing imports through
-  typescript: allow "packages/core/src/testing.ts"
-  cli: allow "packages/core/src/testing.ts"
-```
-
-An entry that arrived through [`use`](/goodbones/architecture-rules/manifest/#reuse-defs-and-use) was
-not written by the node that carries it — the node wrote one word, and the line is in
-`defs`. Such an entry is reported once, against the fragment, and only when no node
-granted it uses it: twenty-four test nodes that each say `use: test-file` and a `stripe`
-nothing imports is one line of slack, not twenty-four, and it says how many nodes were
-granted it. A fragment entry used at some of those nodes and not the rest is not slack —
-the line is needed somewhere — but it is a per-file permission written as a many-node
-allowance, which is what an allowlist widened to make one build green looks like, so it
-is reported beside the slack as **concentration**, with the count. The document carries
-every partly-used fragment entry; the text shows the ones used at fewer than half the
-nodes granted:
+**Slack** is what separates a strict manifest from a permissive one. It also flags an allowlist
+widened just to make a build pass. Each entry names the node that wrote it. An entry that came
+through [`use`](/goodbones/architecture-rules/manifest/organizing/) is reported once, against the
+`defs` fragment, and only when no node granted it uses it. An entry used at only some of those nodes
+is **concentration**, not slack. The text report lists entries used at fewer than half:
 
 ```
 slack: 3 allowances nothing imports through
@@ -92,31 +52,23 @@ concentrated: 1 allowance used at fewer than half the nodes granted
   test-file: external "@effect/sql-pg"  used at 1 of 24 nodes
 ```
 
-A vacant node's entries are neither slack nor concentration, and a vacant node is not
-among the nodes a fragment entry counts. Only `imports.allow` and `imports.external` are
-measured. An `importedBy` allowlist is inbound, and an `importedBy` entry nothing uses is
-not yet reported.
+A vacant node's entries count as neither slack nor concentration. Only `imports.allow` and
+`imports.external` are measured; unused `importedBy` entries are not reported.
 
 ## `--against`
 
-The manifest in the repository is the policy the tree is held to today. `--against`
-names another — the architecture the team is moving toward — and measures the same tree
-against that instead. The report says how many violations stand between here and there,
-which ones are nearest the ground, and which allowances the target grants that nothing
-would use. The document's `manifest.path` names the file it was measured against, so a
-snapshot of the target is never mistaken for one of the policy.
-
-`--against` is a `conformance` flag only. `check` against a manifest nobody is held to
-yet would fail for no one's benefit.
+`--against <manifest>` measures the tree against a different manifest, such as the architecture
+you're moving toward. The report shows the violations between here and there and the allowances
+the target grants that nothing would use. The snapshot's `manifest.path` names that file. Only
+`conformance` takes this flag.
 
 ## The snapshot
 
-`--json` prints one document on stdout and nothing else there. It is the wire format
-everything downstream reads — a pull-request check comparing two of them, an agent reading
-one before it edits, a service keeping history — and it is defined by a schema before any
-of those exist, at
-[`/schema/conformance.schema.json`](/goodbones/schema/conformance.schema.json). Every field
-carries a description in the schema.
+`--json` prints one document to stdout, defined by
+[`/schema/conformance.schema.json`](/goodbones/schema/conformance.schema.json). It extends
+[`check --json`](/goodbones/architecture-rules/enforcement/cli/#check): `version`, `manifest`,
+`roots`, `files`, `ok`, `coverage`, `conformance`, `violations`, `unresolved`, `stale` and
+`adoption` mean the same there. `ok` is what `check` would exit with.
 
 ```json
 {
@@ -125,13 +77,7 @@ carries a description in the schema.
   "roots": ["packages"],
   "files": 94,
   "ok": true,
-  "coverage": {
-    "imports": { "covered": 94, "total": 94, "floor": 1 },
-    "structure": { "covered": 0, "total": 94 },
-    "members": { "covered": 58, "total": 94, "floor": 0.6 },
-    "surface": { "covered": 90, "total": 94, "floor": 0.95 },
-    "graph": { "covered": 55, "total": 94, "floor": 0.57 }
-  },
+  "coverage": { "imports": { "covered": 94, "total": 94, "floor": 1 } },
   "conformance": {
     "residue": { "count": 0, "ceiling": 0 },
     "vacant": { "count": 0, "ceiling": 0 },
@@ -145,101 +91,25 @@ carries a description in the schema.
   "stale": [],
   "baseline": { "size": 0 },
   "cycles": 0,
-  "slack": [
-    { "node": "typescript", "kind": "allow", "entry": "packages/core/src/testing.ts" },
-    { "node": "cli", "kind": "allow", "entry": "packages/core/src/testing.ts" }
-  ],
+  "slack": [{ "node": "typescript", "kind": "allow", "entry": "packages/core/src/testing.ts" }],
   "concentration": [],
   "adoption": { "unrestricted": [], "partial": [] },
-  "campaigns": [
-    {
-      "id": "lowering-reports-not-throws",
-      "title": "Lowering reports through Result, not by throwing",
-      "owner": "@dataquail",
-      "count": 15,
-      "progress": 0.21,
-      "objectives": [
-        {
-          "id": "throws-in-lowering",
-          "phase": null,
-          "initial": 17,
-          "allowed": 2,
-          "count": 15,
-          "cleared": 4,
-          "closed": 0,
-          "progress": 0.21,
-          "lastCleared": "2026-09-21T14:32:45.111Z",
-          "concessions": 1,
-          "complete": false,
-          "ledgered": true
-        }
-      ],
-      "phases": [],
-      "sectors": [
-        {
-          "name": "scope",
-          "phase": null,
-          "reached": null,
-          "files": 15,
-          "residue": { "throws-in-lowering": 15 },
-          "stalled": false
-        }
-      ],
-      "legacy": { "files": 0, "holdouts": 0 },
-      "plan": { "refined": [], "changed": [], "unreceipted": [] },
-      "stalled": false,
-      "complete": false,
-      "onComplete": "keep",
-      "ledgered": true
-    }
-  ]
+  "campaigns": []
 }
 ```
 
-It grows the [`check --json`](/goodbones/architecture-rules/enforcement/cli/#check---json)
-shape: `version`, `manifest`, `roots`, `files`, `ok`, `coverage`, `conformance`,
-`violations`, `unresolved`, `stale` and `adoption` mean what they mean there, and `ok` is
-what `check` would have exited with. `conformance` is the four measures as counts, each
-beside the ceiling `limits.conformance` states for it, when it states one. The rest is the
-measurement those counts summarise:
+| Field           | Contents                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `conformance`   | The four measures as counts, each with its `ceiling` when `limits.conformance` sets one.                                                                                                                                                                                                                                                                                                                                     |
+| `residue`       | Unreached files, sorted, and the topmost folders made only of them.                                                                                                                                                                                                                                                                                                                                                          |
+| `vacant`        | Vacant nodes with how many entries each wrote, in manifest order.                                                                                                                                                                                                                                                                                                                                                            |
+| `violations`    | Every finding, baselined included, cheapest first.                                                                                                                                                                                                                                                                                                                                                                           |
+| `baseline.size` | Entries in the baseline file.                                                                                                                                                                                                                                                                                                                                                                                                |
+| `cycles`        | Every cycle in the walked graph, in a `cycles` rule's scope or not.                                                                                                                                                                                                                                                                                                                                                          |
+| `slack`         | Unused allowances in manifest order. An entry from `use` carries `fragment` and `of`, and its `node` is the fragment name.                                                                                                                                                                                                                                                                                                   |
+| `concentration` | Partly used fragment entries, with `usedAt` and `of`.                                                                                                                                                                                                                                                                                                                                                                        |
+| `campaigns`     | Each [campaign](/goodbones/campaigns/getting-started/introduction/): `objectives` (ledger totals: `initial`, `allowed`, `count`, `cleared`, `closed`, `progress`, `lastCleared`, `concessions`, `phase`), `phases`, `sectors` (`phase`, `reached`, `files`, `residue` per objective), `legacy`, `plan` (`refined`, `changed`, `unreceipted`), `stalled`, `complete`. See [The ledger](/goodbones/campaigns/running/ledger/). |
 
-- `residue` — the files no family reaches, sorted, and the topmost folders wholly made of
-  them.
-- `vacant` — the nodes with an import allowlist and no walked file under them, each with
-  how many entries it wrote, in manifest order.
-- `violations` — every finding, baselined ones included, in the order above rather than
-  the order they were found.
-- `baseline.size` — the entries in the baseline file: the debt the policy is carrying.
-- `cycles` — every cycle in the walked graph, inside a `cycles` rule's scope or not.
-- `slack` — every allowance nothing uses, in manifest order, vacant nodes excluded. An
-  entry that came through `use` carries `fragment` and `of`, and its `node` is the
-  fragment's name.
-- `concentration` — every fragment entry used at some of the nodes granted it and not
-  the rest, with `usedAt` and `of`. Not counted as slack.
-- `campaigns` — every [campaign](/goodbones/campaigns/getting-started/introduction/) the
-  manifest declares: each `objectives` entry's
-  [ledger](/goodbones/campaigns/running/ledger/) burn-down summed over its
-  sectors (`initial`, `allowed`, `count`, `cleared`, `closed`, `progress`, `lastCleared`,
-  how many `concessions`, and the `phase` naming it); the `phases` in order with how many
-  sectors stand at each; every sector with its derived `phase`, its `reached`, its file
-  count and its `residue` — one dimension per objective in window, never summed; the
-  `legacy` remainder's files and holdouts; and the `plan` flags, `refined` (an open phase
-  gained criteria, or a new phase — free) apart from `changed` (a defined phase's definition
-  moved) and `unreceipted` (changed with no concession — what fails `check`). `stalled` and
-  `complete` are the campaign's as a whole. The text report leads its campaigns section
-  with the stalled and the complete ones — a migration nobody is working on, and one that is
-  finished and still declared, are the two things a reader of this report most needs told —
-  and shows the phase distribution beneath each campaign that has phases.
-
-Two things make a snapshot comparable across commits. `manifest.sha256` says whether the
-policy changed between them, so a coverage drop is attributable to the tree or to the
-manifest. And every violation is named by its fingerprint, which excludes line and column,
-so the same violation is the same entry after any edit that does not fix it. A snapshot
-some other run wrote is decoded by `decodeSnapshot` in `@goodbones/core`, which refuses a
-key the shape does not declare.
-
-## Done when
-
-The repository's own policy holds itself to this report: its residue is empty, no node is
-vacant, and the two slack entries above are real. `pnpm run architecture:conformance`
-prints it.
+To compare snapshots across commits: `manifest.sha256` tells you whether the policy changed, and
+violations are keyed by line-independent fingerprints. `decodeSnapshot` in `@goodbones/core` reads a
+snapshot back and refuses unknown keys.

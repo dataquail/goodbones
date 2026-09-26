@@ -1,15 +1,11 @@
 ---
 title: Ledger
-description: An objective's record of every place the pattern still occurs, per sector, and of every time a count was allowed to go up — with the sector's own record beside it.
+description: The committed file that records where each objective's pattern still occurs.
 ---
 
-Each objective of a [campaign](/goodbones/campaigns/getting-started/introduction/) has a ledger:
-one JSON file under the manifest's `ledger` directory (default `.architecture-campaigns/`),
-at `<campaign>/<objective>.json`. It is the
-[baseline](/goodbones/architecture-rules/enforcement/baseline/)'s cousin and not the baseline —
-same fingerprint, different file, different semantics. A baseline records violations a
-repository is carrying; a ledger records debt an objective is paying down, per sector, and
-the file is where the burn-down lives.
+A ledger is a committed JSON file, one per objective, listing every place the pattern still occurs
+in each sector. It only shrinks on its own. It lives at `<ledger>/<campaign>/<objective>.json`;
+`ledger` is a top-level manifest key (default `.architecture-campaigns/`).
 
 ```json
 {
@@ -40,54 +36,49 @@ the file is where the burn-down lives.
 }
 ```
 
-Holdouts are `file` or `file#subject`, written relative to the sector's root — the marker's
-folder, the matched glob, the file's own folder, or the repository for the implicit sector
-and the legacy — deduplicated and sorted, one per line, so a pull request that fixes three of
-them is a three-line deletion a reviewer can read. A sector's own holdout (a `sector` term
-that fails) is `~`. Every counter and the holdout list are per sector inside one file per
-objective, so two pull requests paying down the same objective in `billing` and `orders` edit
-different regions of the file and merge cleanly; finishing a campaign is deleting its folder.
+Holdouts are `file` or `file#subject`, relative to the sector's root, one per line. A sector's own
+holdout (a failed `sector` term) is `~`.
 
 ## The arithmetic
 
-The count is not stored; it is `holdouts.length`, per sector, and `check` verifies that
+`check` verifies, per sector:
 
 ```
 holdouts.length === initial + Σ concessions.delta − cleared − closed
 ```
 
-`initial` is the count the day the sector entered the objective's window; `cleared` the
-holdouts that stopped firing and were cleared since; `closed` the holdouts still firing when
-the sector left the window — not progress, and never counted as such. A re-baseline
-concession (`{ from, to }`) counts as `to − from`. A holdout added by hand, with no
-concession, fails the build — with no git history in the loop. That is what keeps the file
-honest: every number in it is derivable from the others, and the only way a count rises is
-through a record of why.
+A re-baseline concession `{ from, to }` counts as `to − from`. In the example, 212 + 2 − 187 − 0 =
+27, so the `holdouts` list (shortened above) holds 27 entries. A holdout added by hand breaks the
+equation and fails `check`.
 
-## The two verbs
+| Field     | Meaning                                                             |
+| --------- | ------------------------------------------------------------------- |
+| `initial` | the count when the sector entered the objective's window            |
+| `cleared` | holdouts that stopped firing and were cleared                       |
+| `closed`  | holdouts still firing when the sector left the window; not progress |
+
+## Update the ledger
 
 ```bash
-architecture objectives clear [<campaign>[/<objective>]]                    # reconcile with the code
-architecture objectives concede <campaign>[/<objective>] --reason "<why>"   # record why a count may rise
+architecture objectives clear [<campaign>[/<objective>]]
+architecture objectives concede <campaign>[/<objective>] --reason "<why>"
 ```
 
-**`clear`** reconciles the ledger with the code wherever that is not a regression. A holdout
-that no longer fires leaves, and `cleared` rises by one; a `match` holdout whose hash moved
-under a still-present declaration — a `syntax` match edited, a `report` diagnostic reworded —
-is rewritten in place and counts as neither; `lastCleared` moves only when something left. A
-sector newly inside an objective's window is recorded with its `initial`, which is how a
-first ledger is written; a sector past a window has what still fires `closed`; a sector the
-code no longer births is closed the same way. A defined phase changed with a
-[concession](/goodbones/campaigns/manifest/phases/#changing-a-defined-phase) has
-its sectors re-baselined, each recording `{ from, to }` with the phase concession's reason.
-Unrecorded growth is left where it is: `clear` never adds a holdout. Alongside the ledgers it
-writes each sector's record and the campaign's plan, below. Until a sector in a window has an
-entry, `check` fails and names this command.
+**`clear`** reconciles the ledger with the code, never adding a holdout:
 
-**`concede`** is the only verb that adds holdouts, and it always appends a concession: the
-sector, the holdouts, a reason, a timestamp, and an author — `--by`, else git's
-`user.email`, else `GIT_AUTHOR_EMAIL`, and refused without one. A hit the ledger does not
-carry is unrecorded growth, and `check` fails on it with the objective's `how`:
+- Holdouts that no longer fire are removed; `cleared` and `lastCleared` move.
+- A `match` holdout whose hash changed in the same declaration is rewritten in place.
+- A sector entering a window gets its `initial`. This writes the first ledger; `check` fails until
+  it exists.
+- A sector leaving a window, or gone, has its remaining holdouts `closed`.
+- After a [phase concession](/goodbones/campaigns/manifest/phases/#changing-a-defined-phase),
+  sectors are re-baselined with `{ from, to }`.
+- It also writes each sector's record and the plan.
+
+**`concede`** is the only way to add holdouts. It appends a concession with the sector, holdouts,
+reason, time and author. See [Commands](/goodbones/campaigns/running/cli/) for its flags.
+
+A hit the ledger doesn't carry fails `check` with the objective's `how`:
 
 ```
 campaign billing-ddd: 1 new hit the ledger does not carry. Fix them, or record why the count may rise:
@@ -97,14 +88,10 @@ campaign billing-ddd: 1 new hit the ledger does not carry. Fix them, or record w
   architecture objectives concede billing-ddd --reason "<why>"
 ```
 
-`--holdouts a,b` concedes a subset and leaves the rest failing, for a pull request that
-legitimately adds one hit while another is an accident; `--sector <name>` narrows to one
-sector. `campaigns clear` and `campaigns concede` are accepted as the same verbs.
-
 ## Scalar objectives
 
-A [scalar objective](/goodbones/campaigns/manifest/scalars/)'s
-ledger is the same file with a second schema, told apart by `kind`:
+A [scalar objective](/goodbones/campaigns/manifest/scalars/)'s ledger has `"kind": "measure"`
+and a `direction`, and stores numbers instead of holdouts:
 
 ```json
 {
@@ -125,32 +112,23 @@ ledger is the same file with a second schema, told apart by `kind`:
     }
   },
   "concessions": [
-    { "sector": "billing", "at": "…", "by": "…", "from": 9.8, "to": 11, "reason": "…" }
+    { "sector": "billing", "from": 9.8, "to": 11, "reason": "…", "at": "…", "by": "…" }
   ]
 }
 ```
 
-`recorded` is what `check` holds the sector to, within the objective's `tolerance`. `clear`
-moves it when the value has improved past the tolerance, adding the difference to
-`improved` and moving `lastImproved`, the stall clock's reading; `concede` moves it when the
-value has risen past the tolerance, appending `{ from, to }` with a reason. `closed` is the
-value a sector left the window with, and nothing after it counts. The arithmetic, in the
-direction that is worse, is
+`check` holds each sector to `recorded`, within the objective's `tolerance`, and verifies
+`recorded = initial + Σ (to − from) − improved` (in the worse direction).
 
-```
-recorded = initial + Σ (to − from) − improved
-```
-
-so a record edited by hand fails the build as a hand-added holdout does. Values are measured
-to six decimals, so a ratio reads the same on every run. A ledger of either kind where the
-manifest declares the other is refused by name, and so is a scalar's ledger whose
-`direction` the manifest has since reversed: that is a new objective.
+- `clear` moves `recorded` when the value improves past the tolerance, adding to `improved`.
+- `concede` moves it when the value worsens past the tolerance, recording `{ from, to }`.
+- `closed` is the value when the sector left the window. Values are rounded to six decimals.
+- A ledger whose `kind` or `direction` no longer matches the manifest is refused.
 
 ## The sector's record
 
-What derivation cannot say about a sector lives in its own file,
-`<campaign>/sectors/<sector>.json`, written by `clear`, `campaigns attest` and
-`campaigns note`, and never edited by hand:
+`<campaign>/sectors/<sector>.json` is written by `clear`, `campaigns attest` and `campaigns note`.
+Don't edit it by hand.
 
 ```json
 {
@@ -162,56 +140,38 @@ What derivation cannot say about a sector lives in its own file,
   "attested": [
     {
       "phase": "backfilled",
-      "reason": "backfill ran against production",
+      "reason": "backfill ran",
       "evidence": "https://ci/runs/4812",
-      "at": "2026-10-01T15:10:00.000Z",
-      "by": "someone@example.com"
+      "at": "…",
+      "by": "…"
     }
   ],
-  "notes": [
-    {
-      "at": "2026-10-04T09:00:00.000Z",
-      "by": "someone@example.com",
-      "phase": "aggregates",
-      "text": "refunds read invoices but never write them"
-    }
-  ]
+  "notes": [{ "at": "…", "by": "…", "phase": "aggregates", "text": "refunds never write invoices" }]
 }
 ```
 
-`reached` is the furthest phase the sector has ever been derived at; it only advances, and it
-exists for one rule — a window the sector has passed never reopens for it. `since` is when it
-last advanced, and with the latest attestation and note it is the sector's own clock: the
-campaign's stall reads the later of an objective's `lastCleared` and that, so a sector standing
-in an attested or open phase is stalled only when nothing has been said about it either.
-Notes are capped — the last twenty, each at most five hundred characters — and the nudge shows
-only those left at the sector's current phase, marked as data, because free text shown to the
-next agent is an instruction channel whether or not anyone meant it as one.
+| Field      | Meaning                                                                                 |
+| ---------- | --------------------------------------------------------------------------------------- |
+| `reached`  | the furthest phase the sector has been at; only advances. A passed window never reopens |
+| `since`    | when `reached` last advanced                                                            |
+| `attested` | entries from `campaigns attest`                                                         |
+| `notes`    | entries from `campaigns note`; the last 20 kept, each at most 500 characters            |
 
 ## The plan
 
-`<campaign>/plan.json` is what `clear` last saw of the campaign's phases — each phase's id,
-a digest of its definition, whether it was defined, and how many concessions it carried.
-`check` compares the manifest against it: an open phase that gained criteria, or a new phase,
-is **plan refined** and free; a defined phase whose definition changed, or was removed, is
-**plan changed** and fails `check` until the phase carries a new `concessions` entry. Both are
-reported apart in [`conformance`](/goodbones/architecture-rules/enforcement/conformance/),
-so the one a reviewer must read every time stays readable.
+`<campaign>/plan.json` is the phase list `clear` last saw. `check` compares the manifest to it: a
+new phase, or an open phase gaining objectives, is **plan refined** and allowed. A defined phase
+changed or removed is **plan changed** and fails until the phase has a new `concessions` entry.
 
-## What a reviewer looks for
+## Reviewing a ledger diff
 
-The ledger is designed to be read in a diff. A line deleted from a sector's `holdouts` and its
-`cleared` going up by one is progress. A line added must come with a new object under
-`concessions` naming it, with a reason the reviewer agrees with; a line added without one does
-not pass `check`, so it will not be in a green pull request. `closed` going up is a sector
-moving past a window, not paying anything down. A sector appearing under `sectors` with a
-large `initial` is code that just declared itself — a folder that grew a marker — and the
-legacy line in the conformance report shrank by the same amount; the report never collapses
-the two. A `{ from, to }` concession is a plan change landing, and the phase's own
-`concessions` entry in the manifest is where its reason is.
+- [ ] Removed holdout, `cleared` +1: progress.
+- [ ] Added holdout: has a new `concessions` entry with a reason you accept.
+- [ ] `closed` rose: a sector left a window; no debt was paid.
+- [ ] New sector with a large `initial`: code just joined the campaign, and legacy shrank to match.
+- [ ] `{ from, to }` concession: a phase change; the reason is in the manifest.
 
-Because the files are per campaign and the records name their author, `CODEOWNERS` on the
-ledger directory puts the campaign's owner on every change to its counts:
+Use `CODEOWNERS` to put the campaign's owner on every ledger change:
 
 ```
 .architecture-campaigns/billing-ddd/  @dataquail/billing
@@ -219,26 +179,15 @@ ledger directory puts the campaign's owner on every change to its counts:
 
 ## Stalls and completion
 
-A campaign may state `staleAfter`. One with holdouts left whose objectives' `lastCleared`
-and sectors' clocks are all older than that is **stalled** — a notice in `check`, and the
-first thing [`conformance`](/goodbones/architecture-rules/enforcement/conformance/) prints
-in its campaigns section, since a migration nobody is working on is the failure the whole
-apparatus exists to make visible. A campaign with no `staleAfter` never stalls.
+- **Stalled.** A campaign with holdouts left is stalled when every `lastCleared`, and every
+  sector's latest `since`, attestation and note, is older than `staleAfter`. `check` prints a
+  notice. Without `staleAfter`, a campaign never stalls.
+- **Complete.** At zero everywhere, `onComplete: keep` leaves the campaign as a guard;
+  `onComplete: remove` fails `check` until you delete the campaign and its ledgers.
 
-A campaign at zero everywhere is **complete**. What happens next is its `onComplete`: `keep`
-leaves it in the manifest as a guard against recurrence — a new hit is unrecorded growth like
-any other — and `remove` makes `check` fail until the campaign and its ledgers are deleted, so
-a finished migration does not linger as a rule about nothing.
+Set `ARCHITECTURE_NOW` (ISO date or epoch milliseconds) to pin the clock for timestamps and stalls.
 
-`ARCHITECTURE_NOW` (an ISO date, or epoch milliseconds) pins the clock every timestamp and
-stall is judged by, for a CI that replays a day or a test that needs a stall to have
-happened.
+## History
 
-## The history
-
-Every change to a ledger, a record or the plan is a `clear`, `concede`, `attest`, `note` or a
-manifest edit — so `architecture campaigns history [<campaign>]` walks those files' git
-history and renders the series: one row per commit, the holdouts per objective as the
-ledgers stood after it, and whether the manifest changed in it. It is a step function of
-human actions, not the code's own trend; the code's trend is the residue vectors, which CI
-emits per run through `conformance --json`.
+`architecture campaigns history [<campaign>]` shows one row per commit: holdouts per objective,
+and whether the manifest changed.

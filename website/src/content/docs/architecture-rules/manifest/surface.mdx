@@ -1,17 +1,15 @@
 ---
 title: Surface
-description: Constraining what a file may export — no default exports, a barrel that only re-exports, a handler that exports one function.
+description: Restrict what a file may export, such as no default exports.
 ---
 
-`surface` restricts what a file **offers**: the names it exports, what they were declared as,
-and how many there are. It is the other half of [`exports`](/goodbones/architecture-rules/manifest/exports/),
-which says who may _import_ a name; this says what a file may _export_ in the first place. No
-module resolution is involved, so it is as cheap as `members`.
+`surface` restricts what a file exports: which names, declared as what, and how many. (To
+restrict who may import a name, use [`exports`](/goodbones/architecture-rules/manifest/exports/).)
 
 ```yaml
 "*.handler.ts":
   surface:
-    - message: "A handler exports exactly one function, and nothing else."
+    - message: "A handler exports exactly one function."
       declares: [function]
       count: { min: 1, max: 1 }
     - message: "A handler's name is camelCase: `{name}` is not."
@@ -19,56 +17,47 @@ module resolution is involved, so it is as cheap as `members`.
       convention: camelCase
 ```
 
-Each entry has two halves. The **selectors** say which export sites the sentence is about;
-the **demand** says what is required of them.
+## Fields
 
-| Selector   | Meaning                                                                                                            |
-| ---------- | ------------------------------------------------------------------------------------------------------------------ |
-| `kinds`    | `named`, `default`, `namespace` — the last is `export *` and `export * as`                                         |
-| `declares` | what the site was declared as: `function`, `class`, `variable`, `type`, `interface`, `enum`, `expression`, `other` |
-| `reexport` | `true` speaks only to `export … from "m"`; `false` only to what the file declares                                  |
-| `match`    | exported names the rule is about. Omit to mean every one                                                           |
-| `matchNot` | names carved back out of `match`                                                                                   |
-| `except`   | files under this node the rule does not apply to                                                                   |
+`surface` is a list. Each entry selects some exports, then makes **one** demand of them. An entry
+with two demands fails to load; write two entries. Written on a folder, a rule covers the subtree.
 
-| Demand       | Meaning                                                                                            |
-| ------------ | -------------------------------------------------------------------------------------------------- |
-| _(none)_     | **forbid** — any selected site is the violation. `forbid: true` says so explicitly                 |
-| `allow`      | names that are fine; a selected site named otherwise is the violation                              |
-| `convention` | `kebab-case`, `camelCase`, `PascalCase`, `snake_case` or `{ regex }` every selected name must have |
-| `count`      | `{ min, max }` — how many selected sites the file may have                                         |
+| Selector   | Meaning                                                                                                               |
+| ---------- | --------------------------------------------------------------------------------------------------------------------- |
+| `kinds`    | `named`, `default`, `namespace` (`export *` and `export * as`).                                                       |
+| `declares` | What the export was declared as: `function`, `class`, `variable`, `type`, `interface`, `enum`, `expression`, `other`. |
+| `reexport` | `true` selects only `export … from "m"`; `false` only what the file declares.                                         |
+| `match`    | Exported names to select. Omit for all.                                                                               |
+| `matchNot` | Names removed from `match`.                                                                                           |
+| `except`   | Files under this node the rule skips.                                                                                 |
 
-An entry makes **one** demand. Two demands are two entries, each compiled to its own rule with
-its own probe, so a violation names which one fired.
+| Demand       | Meaning                                                                            |
+| ------------ | ---------------------------------------------------------------------------------- |
+| _(none)_     | Forbid: any selected export is a violation. `forbid: true` says so explicitly.     |
+| `allow`      | Names that are fine. Any other selected name is a violation.                       |
+| `convention` | `kebab-case`, `camelCase`, `PascalCase`, `snake_case` or `{ regex }`.              |
+| `count`      | `{ min, max }` selected exports per file. At least one of `min`/`max` is required. |
 
-## What a site is
+`message` is required. `{name}` in it is replaced with the offending name. `probe` is
+covered [below](#authored-probes).
 
-A site is one name a file offers at its **top level**, in source order:
+## What counts as an export
+
+Each top-level exported name, using the **exported** name, not the local one:
 
 ```ts
 export const a = 1,
-  b = 2; // named a, named b — variable
-export function f() {} // named f — function
-export default class Main {} // default — class
-const local = 1;
-export { local as renamed }; // named renamed — variable (looked up in the file)
-export { Todo } from "./todo.js"; // named Todo — re-export, declares `other`
-export * from "./ids.js"; // namespace * — re-export
-export * as ids from "./ids.js"; // namespace ids — re-export
+  b = 2; // named a, named b (variable)
+export default class Main {} // default (class)
+export { Todo } from "./todo.js"; // named Todo, re-export (declares `other`)
+export * from "./ids.js"; // namespace *, re-export
 ```
 
-The name is the **exported** name, not the local one: `export { local as renamed }` is
-`renamed`. A default export is named `default`; `export *` is named `*`. A site declared in
-the file knows what it was declared as; a re-export's declaration is elsewhere, so it reads as
-`other`.
+Exports inside a `namespace` body and `export =` aren't counted.
 
-Not surface: an `export` inside a `namespace` body, which is that namespace's; and `export =`,
-which is a CommonJS surface.
+## Common rules
 
-## Shapes worth stating
-
-**No default exports.** A default export has no name to grep for, and two files can each call
-theirs something different.
+No default exports:
 
 ```yaml
 "src/":
@@ -77,8 +66,7 @@ theirs something different.
       kinds: [default]
 ```
 
-**A barrel re-exports and declares nothing.** The public surface of a module is what its
-`index.ts` forwards, and a helper declared in the barrel is a helper with no home.
+A barrel only re-exports:
 
 ```yaml
 "index.ts":
@@ -87,37 +75,17 @@ theirs something different.
       reexport: false
 ```
 
-**No `export *`.** A star re-export takes every export of the target at once, and is how a
-name restricted by [`exports`](/goodbones/architecture-rules/manifest/exports/) gets laundered
-through a barrel. That family can forbid it from the import side; this one forbids it where
-it is written, with no resolution needed.
+Other one-liners: `kinds: [namespace]` forbids `export *`; `count: { max: 0 }` on
+`"*.test.ts"` keeps tests from exporting.
 
-```yaml
-surface:
-  - message: "Re-export by name, so the barrel says what the module is."
-    kinds: [namespace]
-```
+## Authored probes
 
-**A test exports nothing.**
-
-```yaml
-"*.test.ts":
-  surface:
-    - message: "A test file exports nothing."
-      count: { max: 0 }
-```
-
-## Probes
-
-A `surface` rule's generated [probe](/goodbones/architecture-rules/enforcement/probes/) is a
-whole surface — one site the rule must reject, or for `count`, a surface of the wrong size.
-A `count` with neither `min` nor `max` is refused at load, since nothing could violate it.
-
-An authored probe is a source snippet the rule must report something out of:
+An authored `probe` is a source snippet the rule must report something out of, or the policy
+fails to load.
 
 ```yaml
 probe:
   source: "export default function main() {}"
 ```
 
-Written on a folder, `surface` covers the subtree, like `members`.
+See [Probes](/goodbones/architecture-rules/enforcement/probes/).

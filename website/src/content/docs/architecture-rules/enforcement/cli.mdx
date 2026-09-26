@@ -1,68 +1,54 @@
 ---
 title: The CLI
-description: check, conformance, baseline, coverage, explain, facts, init, infer and migrate — the same policy with no linter in the loop.
+description: Command reference for the architecture CLI.
 ---
 
-The package ships a second way to ask the same question.
+The `architecture` CLI checks the same manifest as the oxlint plugin, without a linter. Run it in
+CI next to oxlint: it also evaluates [`graph`](/goodbones/architecture-rules/manifest/graph/) rules
+and writes baselines, which the plugin can't.
 
-```bash
-architecture check [roots…]      # evaluate the policy
-architecture conformance [roots…] # how far the tree is from the policy: residue, vacancy, violations, slack
-architecture baseline [roots…]   # record what the repository currently violates
-architecture coverage [roots…]   # how much of the tree the policy reaches
-architecture explain <file>      # what governs this file, and why
-architecture facts <file>        # what the parser read out of this file
-architecture init                # write a starter architecture.yaml
-architecture infer               # describe what the tree does today, as a manifest
-architecture migrate             # rewrite a JavaScript manifest as architecture.yaml
-```
+| Command                       | What it does                                                                      |
+| ----------------------------- | --------------------------------------------------------------------------------- |
+| [`check`](#check)             | Evaluate the policy. The default when no command is given.                        |
+| [`conformance`](#conformance) | Measure how far the tree is from the policy.                                      |
+| [`baseline`](#baseline)       | Record the violations the repository has today.                                   |
+| [`coverage`](#coverage)       | Show how much of the tree each rule family reaches.                               |
+| [`explain`](#explain)         | Show every rule that governs a file.                                              |
+| [`facts`](#facts)             | Show what the parser read out of a file.                                          |
+| [`init`](#init)               | Write a starter `architecture.yaml`.                                              |
+| [`infer`](#infer)             | Write a manifest describing the tree as it is.                                    |
+| [`migrate`](#migrate)         | Convert a JavaScript manifest to `architecture.yaml`.                             |
+| `campaigns`, `objectives`     | Campaign commands; see [Campaigns → Commands](/goodbones/campaigns/running/cli/). |
 
-`roots` are directories to walk, defaulting to `packages`. The walker visits the source files
-of the languages the policy's scopes name — for TypeScript, `.ts`, `.tsx`, `.mts` and `.cts`,
-skipping declaration files — and steps over the folders no policy is written about:
-`node_modules`, `build`, `dist`, `.next`, `coverage`.
+**Roots.** Commands that take `[roots…]` walk those directories, defaulting to `packages`. For
+TypeScript the walk reads `.ts`, `.tsx`, `.mts` and `.cts` (not `.d.ts`) and skips `node_modules`,
+`build`, `dist`, `.next` and `coverage`.
 
-The manifest is found by name in the working directory — `architecture.yaml`, `.yml`,
-`.json`, or `architecture.config.mjs`, exactly one of which may be present — or named by
-`ARCHITECTURE_CONFIG`. See [Formats](/goodbones/architecture-rules/manifest/#formats).
+**Manifest.** Found in the working directory as `architecture.yaml`, `.yml`, `.json` or
+`architecture.config.mjs` (exactly one may exist), or named by the `ARCHITECTURE_CONFIG` environment
+variable.
 
-## Why a second adapter
-
-oxlint's JS plugin API is alpha. A policy that only one alpha host can evaluate has a single
-point of failure, and the policy is the valuable artefact — it should outlive any particular
-way of running it.
-
-The CLI covers **all five per-file families, and the graph.** Where the plugin reads the
-syntax tree oxlint hands it, the CLI parses each file itself with
-[oxc-parser](https://www.npmjs.com/package/oxc-parser) — the same parser oxlint is built on,
-emitting the same tree — and one reader in the TypeScript pack turns either tree into the
-same vocabulary: a specifier, a binding, a member site. Both hosts answer to the same core
-rather than to each other, and that shared core is what makes the second adapter a check on
-the first rather than a second implementation to keep in sync.
-
-It is also the only way to write a baseline, which needs every finding at once rather than
-one file at a time.
+**Exit codes.** `0` on success, `1` on failure, with the reason on stderr. Unknown commands and a
+manifest that fails to load exit `1`.
 
 ## Graph rules
 
-The [`graph`](/goodbones/architecture-rules/manifest/graph/) family — cycles, orphans, what a
-tier may reach through any number of hops — is **evaluated by the CLI only**. The plugin sees
-one file at a time and has no view of the others; "does anything import this?" is not a
-question it can ask. Both adapters still compile and probe graph rules at load, so a vacuous
-one fails the lint run too, but only `check` has the graph to evaluate them against.
-
-That makes the CLI a **superset** of the plugin rather than a mirror of it, and it is the one
-deliberate asymmetry between them. Run both: oxlint for the per-file families at editor
-speed, `check` in CI for those plus the graph. The graph is built only when a rule needs it,
-and every file is parsed once whether the per-file families or the graph pass asks first.
-
-:::note
-Parsing rather than pattern-matching is not incidental. A side-effect import — `import
-"server-only"` — carries no names and matches no plausible regex for an import statement, and
-a survey harness that missed eleven of them is why the CLI uses a real parser.
-:::
+Only `check` (and `conformance`) evaluate `graph` rules: the plugin sees one file at a time. Both the
+plugin and the CLI still probe graph rules at load, so a rule that can't fire fails either one.
 
 ## `check`
+
+```bash
+architecture check [--json] [roots…]
+```
+
+| Flag     | Meaning                                                                   |
+| -------- | ------------------------------------------------------------------------- |
+| `--json` | Print one JSON object on stdout. The failure reason still goes to stderr. |
+
+Exits `1` on any unbaselined violation, unresolved import, stale baseline entry, coverage below a
+floor, conformance measure above a ceiling, or failing campaign. Each finding names its rule by its
+node path in the manifest.
 
 ```
   packages/server/src/modules/user/domain/user/user.root.ts
@@ -72,15 +58,7 @@ a survey harness that missed eleven of them is why the CLI uses a real parser.
   1284 files, 1 violations, 37 carried by the baseline
 ```
 
-Exits non-zero on any reportable violation, any unresolved import, or any stale baseline
-entry. Each finding names the rule that produced it, and the rule name is the node path in
-the manifest — so the sentence that caused it is found by reading down the same path.
-
-### `check --json`
-
-The same run as one JSON object on stdout and nothing else there; the exit code is
-unchanged, and the sentence saying why it failed goes to stderr. Assert on this in a
-script rather than on the prose, which is free to improve.
+In scripts, assert on `--json` output, not the text:
 
 ```json
 {
@@ -102,78 +80,74 @@ script rather than on the prose, which is free to improve.
   ],
   "unresolved": [{ "file": "…", "specifier": "…", "detail": "…" }],
   "stale": ["<fingerprint>"],
-  "coverage": {
-    "imports": { "covered": 90, "total": 90, "floor": 1 },
-    "structure": { "covered": 0, "total": 90 },
-    "members": { "covered": 54, "total": 90, "floor": 0.6 },
-    "surface": { "covered": 86, "total": 90, "floor": 0.95 },
-    "graph": { "covered": 53, "total": 90, "floor": 0.58 }
-  },
-  "conformance": {
-    "residue": { "count": 0, "ceiling": 0 },
-    "vacant": { "count": 1 },
-    "slack": { "count": 4, "ceiling": 5 },
-    "concentration": { "count": 0 }
-  },
+  "coverage": { "imports": { "covered": 90, "total": 90, "floor": 1 } },
+  "conformance": { "slack": { "count": 4, "ceiling": 5 } },
   "adoption": { "unrestricted": [], "partial": [] }
 }
 ```
 
-`violations` carries every finding, baselined ones included, and `baselined` says which;
-`fingerprint` is the baseline's key. `stale` lists baseline entries the code no longer
-produces. `coverage` is what [`coverage`](#coverage) prints, with a `floor` beside each
-family the manifest states one for. `conformance` is what [`conformance`](#conformance)
-measures, as counts, with a `ceiling` beside each measure the manifest states one for in
-`limits.conformance`. `ok` is true only when nothing above would fail the run. `manifest.sha256` hashes the file the policy was read from — the root file only, when
-it is split with `include`. `version` names this shape, so a document that grows it can say
-which one it grew.
+| Field         | Meaning                                                                             |
+| ------------- | ----------------------------------------------------------------------------------- |
+| `ok`          | `true` only when nothing would fail the run.                                        |
+| `manifest`    | The manifest path and a hash of it (the root file only, when split with `include`). |
+| `violations`  | Every finding, baselined included. `fingerprint` is the baseline key.               |
+| `stale`       | Baseline entries the code no longer produces.                                       |
+| `coverage`    | Per family, as [`coverage`](#coverage) prints, with `floor` when one is set.        |
+| `conformance` | Per measure, with `ceiling` when `limits.conformance` sets one.                     |
+| `version`     | The shape's version.                                                                |
 
 ## `conformance`
 
-The distance between the tree and the manifest, as one report: the residue no family
-reaches, the vacant nodes no file is under, the violations ordered leaf-first, and the
-slack — allowances nothing imports through, attributed to the `defs` fragment when they
-came through `use`. `--json` emits the snapshot document, and `--against <manifest>` measures the
-same tree against a target manifest instead of the repository's own. It never fails; it
-is a measurement, and `check` is what holds it to any ceiling the manifest states in
-`limits.conformance`. See [Conformance](/goodbones/architecture-rules/enforcement/conformance/).
+```bash
+architecture conformance [--json] [--against <manifest>] [roots…]
+```
 
-## `campaigns` and `objectives`
+| Flag                   | Meaning                                                        |
+| ---------------------- | -------------------------------------------------------------- |
+| `--json`               | Print the snapshot document.                                   |
+| `--against <manifest>` | Measure against another manifest. Only `conformance` takes it. |
 
-The campaign verbs — the status table, the nudge, `attest`, `note`, `history`, and the ledger
-verbs `objectives clear` and `objectives concede` — are documented with the family, under
-[Campaigns → Commands](/goodbones/campaigns/running/cli/).
+Always exits `0` once the policy loads. See [Conformance](/goodbones/architecture-rules/enforcement/conformance/).
+
+## `baseline`
+
+```bash
+architecture baseline [roots…]
+```
+
+Rewrites the file named by the manifest's `baseline` key from every current violation. Exits `1` if
+the manifest declares no `baseline`. See [Adoption](/goodbones/architecture-rules/enforcement/adoption/).
 
 ## `coverage`
 
-How much of the tree the policy reaches, per family, with the tiers that said "not tightened
-yet" beneath. `check` compares the same numbers against any floors the manifest states in
-`limits.coverage`. See [Adoption](/goodbones/architecture-rules/enforcement/adoption/).
-`conformance` names the files this counts.
+```bash
+architecture coverage [roots…]
+```
+
+Prints each family's reach, plus the `unrestricted` and `partial` tiers. Doesn't fail on floors;
+`check` does. See [Adoption](/goodbones/architecture-rules/enforcement/adoption/#coverage).
 
 ## `explain`
 
-A tree answers _"what governs this file?"_ well and _"which files does this rule govern?"_
-badly — the exact inverse of a flat rule list. `explain` is the answer to the second
-question, asked one file at a time:
+```bash
+architecture explain <file> [roots…]
+```
+
+Shows the rules that govern one file: the import allowlist in force after inheritance, every
+prohibition that reaches it, the folder rule that admits it, the siblings it owes, and any
+`exports`, `members`, `surface`, `graph` and campaign rules that select it. Run it first when a rule
+fires too much or not at all.
 
 ```
 $ architecture explain packages/server/src/modules/todos/commands/create-todo.handler.ts
-
-packages/server/src/modules/todos/commands/create-todo.handler.ts
 
   may import:
     — modules-module/commands/imports
         ^node:.*
         ^packages/server/src/modules/$1/domain(/.*)?
-        ^packages/server/src/modules/$1/commands(/.*)?
-        ^packages/server/src/platform/ddd(/.*)?
         /node_modules/effect/
-        /node_modules/@effect-server-utils/cqrs/
 
   may not import:
-    repo/deny-2 — The SQL driver is an implementation detail of @org/database.
-    modules-module/deny-0 — A Live is wired at a composition root, never named by a use case.
     modules-module/deny-1 — A module may only import another module through its index.ts barrel.
 
   lives in: modules-module/commands/layout
@@ -181,184 +155,105 @@ packages/server/src/modules/todos/commands/create-todo.handler.ts
     packages/server/src/modules/todos/commands/create-todo.handler.test.ts
 ```
 
-It prints the allowlist actually in force after inheritance, every prohibition that reaches
-the file with the first sentence of its reason, the folder rule that admits it, the siblings
-it owes — and then, one section per family that has something to say about the file, the
-`exports` restrictions, `members` vocabularies, `surface` rules and `graph` scopes that
-select it. `facts` is the other half: what those rules are evaluated against.
+The allowlist shows compiled regular expressions. `$1` is a
+[capture](/goodbones/architecture-rules/manifest/patterns/) filled from this file's path.
 
-A campaign selecting the file is printed with the sector the file is in, its phase and
-definedness, the objectives in window for that sector (✗ marks one firing on this file) and
-the nearest remaining holdouts in the file — then each objective's **truth table**: one line
-per leaf term of its detector and what that term answered for this file, every term evaluated
-with no short-circuit, so a detector that "should fire" and does not shows which term is not
-saying what its author thinks:
-
-```
-  campaigns:
-    campaign/lowering-reports-not-throws: sector scope
-      in window: throws-in-lowering ✗
-      nearest holdouts in this file:
-        :208  throws-in-lowering  violatingSampleFor#a0afd25d
-      campaign/lowering-reports-not-throws/throws-in-lowering — `loadPolicy` returns a `Result`, but … (match; fires here)
-          ✓ path /\.ts$/
-          ✓ syntax {"pattern":"throw new Error($$$)"} (11)
-```
-
-The allowlist is shown as compiled regular expressions rather than as the globs you wrote,
-because what is in force after inheritance is not any single line of the manifest. `$1` is a
-[capture](/goodbones/architecture-rules/manifest/patterns/) resolved from this file's own path —
-the rule says _this module's own domain_, not any module's.
-
-When a rule seems to be firing too much or not at all, this is the first thing to run.
+For a campaign, it prints the file's sector and phase, the objectives in window (✗ marks one firing
+here), the nearest holdouts, and a truth table: every leaf term of each detector and what it answered
+for this file.
 
 ## `facts`
 
-`explain` says which rules select a file. `facts` says what those rules are evaluated
-against: every edge the parser found, the names carried across each, every declared member,
-every called name, and every export site.
+```bash
+architecture facts <file> [--json]
+```
+
+| Flag     | Meaning                             |
+| -------- | ----------------------------------- |
+| `--json` | Print the facts as one JSON object. |
+
+Shows what rules are evaluated against: import edges and bindings, members, calls, and exports.
 
 ```
 $ architecture facts packages/server/src/modules/todos/commands/create-todo.handler.ts
-
-packages/server/src/modules/todos/commands/create-todo.handler.ts
 
   edges:
     effect
         namespace *
     ../domain/todo/todo.root.ts
         named     Todo
-        named     TodoId
     server-only
         (no bindings)
-
   members:
     CreateTodoDeps.todos  (type)
-    CreateTodoDeps.clock  (type)
-
   calls:
     makeCommandHandler
-    Effect.gen
-
   exports:
     named     createTodo  (variable)
-    named     CreateTodoDeps  (type)
 ```
 
-A rule that "should fire" and does not is one of two mistakes, and this is how to tell them
-apart. If the site is listed here, the rule's pattern does not select it — go back to
-`explain`. If it is not listed, the adapter does not extract that fact from that syntax —
-a `members` rule reads the members written in an alias, an interface or a class body, and
-not a referenced type or an object literal.
+If a rule should fire and doesn't: when the site is listed here, the rule's pattern doesn't select
+it (check `explain`); when it isn't, the parser doesn't read that syntax.
 
-`--json` prints the same facts as one JSON object, for scripting.
+**What counts as an import edge:**
+
+```ts
+import "m"; // side-effect: no bindings
+import x, { a, b as c } from "m"; // default, named
+import * as ns from "m"; // namespace
+import type { T } from "m"; // type-only is still an edge
+export { a, b as c } from "m";
+export * from "m";
+export * as ns from "m";
+import x = require("m");
+await import("m"); // string literal argument only
+require("m"); // string literal argument only
+```
+
+A computed specifier is not an edge. Forms that take the whole module (`import * as`, `export *`,
+`export * as`, `import =`, `import()`, `require()`) carry one `namespace` binding named `*`.
+
+**Calls** are named by identifier or property: `f()` and `x.f()` are both `f`. Computed
+(`x[f]()`) and private (`x.#f()`) calls are not reported.
 
 ## `init`
 
-Writes a starter `architecture.yaml` for a repository that has none: the schema header, one
-open root that reaches itself and the runtime, both adoption ceilings at zero, and a comment
-per section naming the page that explains it. It refuses to overwrite a manifest in any of
-the four names. The starter is tight enough to fire on the first external import, which is
-the moment to run `check`, read what the tree reaches, and write that down by name.
+```bash
+architecture init
+```
+
+Writes a starter `architecture.yaml`: one open root, both adoption ceilings at zero, and comments
+linking to the docs. Exits `1` if any manifest file already exists.
 
 ## `infer`
-
-The other way to start: from the tree rather than from a blank page. `infer` walks the
-roots, resolves every import, and prints a manifest that describes what the repository does
-today — one open node per folder to a depth, every node `unrestricted: true`, each
-`imports.allow` filled from the edges its files actually have, externals and builtins listed
-from what is actually imported. `check` accepts it with zero violations, by construction;
-every entry a reader deletes is a decision. The walkthrough is
-[Starting from the tree](/goodbones/architecture-rules/getting-started/infer/).
 
 ```bash
 architecture infer [--depth N] [--root DIR]... [--tsconfig PATH] [--write]
                    [--yes | --exhaustive] [--collapse]
 ```
 
-- `--depth N` — how many folders below a package's source root become nodes of their own
-  (default 2). A folder holding a `package.json` is a package, and its `src/` is where
-  counting starts, so a monorepo is described one package at a time whatever its nesting.
-  Deeper folders are governed by the node above them and admitted by a `**/` catch-all.
-- `--root DIR` — a folder to walk and a top-level key of the tree; repeatable. With a
-  manifest present the roots are its top-level keys; without one, `src/` if it exists,
-  otherwise every top-level folder holding a source file.
-- `--tsconfig PATH` — the tsconfig to resolve through when there is no manifest to take a
-  `resolve` block from (default `tsconfig.json`). With a manifest present, its `resolve` block
-  and `aliases` are reused and carried into the output.
-- `--write` — save as `architecture.yaml` instead of printing. Refuses to overwrite a
-  manifest in any of the four names; leave it off to print beside an existing one.
-- `--yes` / `--exhaustive` — answer the questions below all yes, or do not ask them. Off a
-  terminal, `infer` asks nothing and says so.
-- `--collapse` — fold a node's children into it when every child reaches the same things.
+Prints a manifest that describes the tree as it is: `check` passes on it with zero violations. See
+[Starting from the tree](/goodbones/architecture-rules/getting-started/infer/).
 
-Sibling folders that share a shape — the same subfolders, or the same kinds of file — are
-offered as one wildcarded node, `modules/{module}/`, instead of one node each; and when every
-import between them lands on one place, such as `index.ts`, the tightening to
-`modules/*/index.ts` is offered next. Both are questions, each answered once; the default is
-to describe every folder on its own.
+| Flag              | Meaning                                                                                                                                         |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--depth N`       | Folder levels below each package's `src/` that become nodes. Default `2`. Deeper folders fall under a `**/` catch-all.                          |
+| `--root DIR`      | A folder to walk and a top-level key. Repeatable. Default: the manifest's top-level keys, else `src/`, else every top-level folder with source. |
+| `--tsconfig PATH` | Tsconfig to resolve through when there's no manifest. Default `tsconfig.json`. With a manifest, its `resolve` and `aliases` are reused.         |
+| `--write`         | Save as `architecture.yaml` instead of printing. Refuses to overwrite a manifest.                                                               |
+| `--yes`           | Answer every question yes.                                                                                                                      |
+| `--exhaustive`    | Ask nothing; describe every folder on its own. The default off a terminal.                                                                      |
+| `--collapse`      | Fold a node's children into it when every child reaches the same things.                                                                        |
 
-The output carries the floors `check` will hold it to: `limits.unrestricted` is the number of
-nodes nobody has reviewed, and `limits.coverage` is what the manifest reaches on the day it
-was written. An import nothing can resolve is in no allowlist, and is listed on stderr for the
-same reason `check` reports it.
+Sibling folders with the same shape are offered as one wildcarded node (`modules/{module}/`), one question each. The output sets `limits.unrestricted` and `limits.coverage` to today's numbers. Unresolved imports are listed on stderr. An unknown flag exits `1`.
 
 ## `migrate`
 
-Reads a JavaScript manifest — the one found by name, or the one `ARCHITECTURE_CONFIG`
-names — and writes the same policy as `architecture.yaml`, schema header included. It
-decodes the module first and writes nothing if that fails; it hoists nothing into `defs`,
-since which subtrees are worth naming is the author's call; and it cannot carry comments,
-which it says. Delete the module afterwards: a repository with two manifests is refused.
-See [Using a JavaScript manifest](/goodbones/architecture-rules/manifest/javascript/).
-
-## Which forms count
-
-Both adapters read the same forms out of their respective syntax trees, and a test suite in
-the package holds them to it — every form below is parsed by both and must yield the same
-facts.
-
-An **import edge** is any of:
-
-```ts
-import "m"; // side-effect
-import x, { a, b as c } from "m"; // default, named, renamed
-import * as ns from "m"; // namespace
-import type { T } from "m"; // type-only — still an edge
-export { a, b as c } from "m"; // re-export
-export * from "m"; // re-export everything
-export * as ns from "m";
-import x = require("m");
-await import("m"); // a literal argument only
-require("m"); // a literal argument only
+```bash
+architecture migrate
 ```
 
-A computed specifier — a template literal, a variable, anything but a string literal — is not an
-edge in either adapter: it is not a fact a static policy can speak about.
-
-Each edge carries **bindings**: a `named` one per name, a `default` one for a default import,
-and one `namespace` binding, named `*`, for every form that takes the whole module — `import
-
-- as`, `export _`, `export _ as`, `import =`, `import()`, `require()`. A side-effect import
-  carries none.
-
-A **call** is named by its identifier or property — `f()` and `x.f()` are both `f`. A
-computed property, `x[f]()` or `x["f"]()`, and a private one, `x.#f()`, have no name a
-vocabulary rule can speak about and are not reported.
-
-## Wiring it up
-
-```json
-{
-  "scripts": {
-    "lint:architecture": "architecture check packages",
-    "architecture:baseline": "architecture baseline packages",
-    "architecture:explain": "architecture explain",
-    "architecture:facts": "architecture facts"
-  }
-}
-```
-
-Run `check` in CI alongside `oxlint`. On the per-file families they evaluate the same manifest
-and should agree; if they ever disagree, one of the two adapters has a bug, and finding that
-out is worth the duplicated run. On the graph, only `check` has an answer.
+Rewrites the JavaScript manifest (found by name or via `ARCHITECTURE_CONFIG`) as
+`architecture.yaml`. Comments are lost. Exits `1` if the module fails to decode, if the manifest is
+already a data file, or if `architecture.yaml` exists. Delete the module afterwards: two manifests
+are refused. See [Organizing a manifest](/goodbones/architecture-rules/manifest/organizing/).

@@ -1,12 +1,10 @@
 ---
 title: Overview
-description: The shape of a manifest — nodes, the fields on one, and the repo-wide statements above the tree.
+description: The shape of a manifest — top-level keys, the fields on a node, and file formats.
 ---
 
-A manifest is a tree of nodes keyed by path pattern. A key ending in `/` is a folder;
-anything else is a file. Everything the architecture says about a part of the tree is
-written at that part of the tree. It is a YAML file, `architecture.yaml` at the repository
-root — see [Formats](#formats) for the others.
+A manifest is one file, `architecture.yaml` at the repository root, that describes your
+repository as a tree of path patterns. You write each rule at the part of the tree it governs.
 
 ```yaml
 # yaml-language-server: $schema=https://dataquail.github.io/goodbones/schema/architecture.schema.json
@@ -18,45 +16,37 @@ resolve:
   unresolved: error
 baseline: .architecture-baseline.json
 aliases: { "@": packages/server/src, "~": packages }
-deny: [] # prohibitions that hold everywhere
-exports: [] # who may name a given exported symbol
-graph: {} # cycles, orphans, reach — the whole repository at once
-limits: {} # ceilings on the adoption backlog, floors on coverage, ceilings on conformance
-defs: {} # fragments the tree below reuses
-tree: {} # the repository
+deny: []
+exports: []
+graph: {}
+limits: {}
+defs: {}
+tree: {}
 ```
 
-## Top level
+## Top-level keys
 
-| Field       | Meaning                                                                                                                                                                 |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `resolve`   | how an import specifier becomes a file — [Resolution](/goodbones/architecture-rules/enforcement/resolution/)                                                            |
-| `baseline`  | path to the ratchet file — [Baseline](/goodbones/architecture-rules/enforcement/baseline/)                                                                              |
-| `aliases`   | shorthands expanded in every glob, so a pattern reads the way your imports do                                                                                           |
-| `deny`      | prohibitions that hold everywhere, declared once                                                                                                                        |
-| `exports`   | which importers may name a given exported symbol                                                                                                                        |
-| `graph`     | cycles, orphans and transitive reach over the whole import graph — [Graph](/goodbones/architecture-rules/manifest/graph/)                                               |
-| `limits`    | ceilings on `unrestricted`/`partial` tiers, floors on coverage, ceilings on what conformance measures — [Adoption](/goodbones/architecture-rules/enforcement/adoption/) |
-| `campaigns` | refactors the repository is running, each with objectives, sectors and phases — [Campaigns](/goodbones/campaigns/getting-started/introduction/)                         |
-| `ledger`    | the directory the objectives' ledgers are written to — [Ledger](/goodbones/campaigns/running/ledger/)                                                                   |
-| `defs`      | named fragments, used anywhere below as `{ use: <name> }` — [Reuse](#reuse-defs-and-use)                                                                                |
-| `tree`      | the manifest proper                                                                                                                                                     |
+| Key         | Meaning                                                                                                                                |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `resolve`   | how an import specifier becomes a file — [Resolution](/goodbones/architecture-rules/enforcement/resolution/)                           |
+| `baseline`  | path to the baseline file — [Adoption](/goodbones/architecture-rules/enforcement/adoption/)                                            |
+| `aliases`   | text shorthands expanded in every glob before matching                                                                                 |
+| `deny`      | import prohibitions that hold everywhere                                                                                               |
+| `exports`   | which importers may name a given exported symbol — [Exports](/goodbones/architecture-rules/manifest/exports/)                          |
+| `graph`     | cycles, orphans and transitive reach over the whole import graph — [Graph](/goodbones/architecture-rules/manifest/graph/)              |
+| `limits`    | ceilings on the adoption backlog and conformance, floors on coverage — [Adoption](/goodbones/architecture-rules/enforcement/adoption/) |
+| `campaigns` | refactors in progress — [Campaigns](/goodbones/campaigns/getting-started/introduction/)                                                |
+| `ledger`    | the directory campaign ledgers are written to — [Ledger](/goodbones/campaigns/running/ledger/)                                         |
+| `defs`      | named fragments, reused as `{ use: <name> }` — [Reuse and splitting](/goodbones/architecture-rules/manifest/organizing/)               |
+| `tree`      | the nodes                                                                                                                              |
 
-Any of these, or any node or list inside them, may be `{ include: <path> }` — another file
-that holds it — so a monorepo's policy can live beside its packages:
-[Splitting the manifest](#splitting-the-manifest-include).
-
-`deny`, `exports`, `graph`, `limits` and `campaigns` sit above the tree because they are
-statements about the whole repository rather than about a tier. A rule like _"this SQL driver is imported from one
-package"_ put on every tree root would be six copies and a seventh forgotten.
-
-`aliases` are pure text substitution applied to every glob before compilation. With
-`{ "@": "packages/server/src" }`, the key `@/modules/{module}/domain/` is the pattern
-`packages/server/src/modules/{module}/domain/`. They exist so the manifest reads like the
-imports it governs, not so specifiers go unresolved — resolution is separate and always
-real.
+With `aliases: { "@": "packages/server/src" }`, the glob `@/modules/` means
+`packages/server/src/modules/`. Any key, node or list item may be `{ include: <path> }`
+instead, read from another file.
 
 ## A node
+
+A key ending in `/` is a folder; anything else is a file.
 
 ```yaml
 "@/modules/{module}/domain/{subdomain}/":
@@ -83,47 +73,36 @@ real.
 
 | Field         | Question it answers                             | Page                                                               |
 | ------------- | ----------------------------------------------- | ------------------------------------------------------------------ |
-| `message`     | what does this folder admit, and why            |                                                                    |
+| `message`     | what does this folder admit, and why?           |                                                                    |
 | `imports`     | what may this reach?                            | [Imports](/goodbones/architecture-rules/manifest/imports/)         |
-| `importedBy`  | who may reach this?                             | [Imported by](/goodbones/architecture-rules/manifest/imported-by/) |
+| `importedBy`  | who may reach this?                             | [Imports](/goodbones/architecture-rules/manifest/imports/)         |
 | `members`     | which names may it declare or call?             | [Members](/goodbones/architecture-rules/manifest/members/)         |
 | `surface`     | what may it export?                             | [Surface](/goodbones/architecture-rules/manifest/surface/)         |
 | `name`        | what may the variable part of a name look like? | [Structure](/goodbones/architecture-rules/manifest/structure/)     |
-| `requires`    | which siblings does this file owe?              | [Structure](/goodbones/architecture-rules/manifest/structure/)     |
-| `requiresNot` | which filenames does that obligation skip?      | [Structure](/goodbones/architecture-rules/manifest/structure/)     |
+| `requires`    | which sibling files does this file need?        | [Structure](/goodbones/architecture-rules/manifest/structure/)     |
+| `requiresNot` | which filenames skip that requirement?          | [Structure](/goodbones/architecture-rules/manifest/structure/)     |
 | `children`    | which files and folders does this folder admit? | [Structure](/goodbones/architecture-rules/manifest/structure/)     |
-| `partial`     | carry policy here without enumerating contents  | [Inheritance](/goodbones/architecture-rules/manifest/inheritance/) |
-| `layout`      | `open` — do not enumerate file names here       | [Structure](/goodbones/architecture-rules/manifest/structure/)     |
+| `partial`     | apply policy here without listing every file    | [Inheritance](/goodbones/architecture-rules/manifest/inheritance/) |
+| `layout`      | `open`: admit any file name here                | [Structure](/goodbones/architecture-rules/manifest/structure/)     |
 
-Every field is optional. An empty node — `"*.root.ts": {}` — is meaningful and common: it
-says the file is admitted here and inherits everything above it. That is how a folder's
-`children` doubles as its file taxonomy.
+Every field is optional. An empty node, `"*.root.ts": {}`, admits the file and inherits
+everything above it.
 
-## Formats
+## File formats
 
-A manifest is a data file: `architecture.yaml` (or `.yml`), or `architecture.json`, which the
-same parser reads. Both hosts look for one by name at the repository root, in that order,
-and then for `architecture.config.mjs`; exactly one may be present, and `ARCHITECTURE_CONFIG`
-names a file somewhere else. The JavaScript module is still read — see
-[Using a JavaScript manifest](/goodbones/architecture-rules/manifest/javascript/) for when that
-is worth it — but the data forms are what every page here is written in, and the only forms a
-host in another language could read.
+Both hosts look at the repository root for, in order, `architecture.yaml`, `architecture.yml`,
+`architecture.json` and `architecture.config.mjs`. Exactly one may exist. Set
+`ARCHITECTURE_CONFIG` to use a file somewhere else. For the `.mjs` form, see
+[Reuse and splitting](/goodbones/architecture-rules/manifest/organizing/#javascript-manifest).
 
-The first line of a YAML manifest names its schema, and the editor does the rest: completion
-on every key, and a misspelled one flagged before the loader runs.
+Put this first line in a YAML manifest to get completion and validation in your editor. A JSON
+manifest uses a `$schema` key instead.
 
 ```yaml
 # yaml-language-server: $schema=https://dataquail.github.io/goodbones/schema/architecture.schema.json
 ```
 
-A JSON manifest says the same with a `$schema` key, which the loader strips. The schema is
-generated from the codec that decodes the manifest, so the two cannot disagree, and it ships
-inside `@goodbones/core` as `schema/architecture.schema.json` for an editor that would rather
-not fetch it. A file the manifest [includes](#splitting-the-manifest-include) names
-`architecture-node.schema.json` instead, beside it.
-
-What the schema does not catch, the loader does, naming the file, the line and the column —
-and every issue, not the first:
+The loader reports every error with its file, line and column:
 
 ```
 architecture.yaml: the manifest does not decode:
@@ -131,112 +110,16 @@ architecture.yaml: the manifest does not decode:
   architecture.yaml:201:7  tree["~/cli/"].imports.alow: Unexpected key
 ```
 
-Quote every glob and every message: `*`, `@`, a backtick and `{` all mean something to YAML
-when bare. [Patterns](/goodbones/architecture-rules/manifest/patterns/#quoting-in-yaml) has the
-rules.
+Quote every glob and every message in YAML. See
+[Patterns](/goodbones/architecture-rules/manifest/patterns/#quoting-in-yaml).
 
-## Reuse: `defs` and `use`
+## Rule names
 
-A top-level `defs` map names fragments. Anywhere below it — a rule in `members`, `surface`,
-`exports`, `deny` or `graph`, a whole `imports` object, a whole node under `children` —
-`{ use: <name> }` is replaced by a copy of the fragment before the manifest is decoded:
-
-```yaml
-defs:
-  no-file-system-calls:
-    message: "`{name}` reads or writes the file system. This tier is given facts."
-    subject: calls
-    match: ["*Sync", readFile, writeFile]
-  package-floor:
-    external: [effect]
-    allow: ["node:**"]
-
-tree:
-  "packages/core/":
-    imports: { use: package-floor, message: "This import is not on the allowlist." }
-    children:
-      "src/domain/": { members: [{ use: no-file-system-calls }], children: {} }
-      "src/core/": { members: [{ use: no-file-system-calls }], children: {} }
-```
-
-A key written beside `use` overrides the fragment's key of the same name, shallowly: a list
-replaces the list rather than merging with it, and a fragment that needs partial override is
-two fragments. A fragment may itself contain `use`. A cycle is refused, naming the chain, and
-so is a name `defs` does not contain, listing the ones it does. The decode that follows judges
-the copy where it landed, so a fragment used where its shape does not fit is reported at the
-fragment, via the `use` that pulled it in.
-
-This is the manifest's own mechanism, so it works the same in YAML, in JSON, and in a
-JavaScript module. YAML anchors and merge keys (`&floor`, `<<: *floor`) work too, because the
-parser resolves them before the manifest is read; but JSON has no such thing, and an error
-inside a merged key cannot name its line, so `defs` is the one the docs use.
-
-There is no interpolation and no deep merge. A manifest that needs those needs a generator,
-and a generator can emit YAML.
-
-## Splitting the manifest: `include`
-
-A monorepo's manifest grows with the monorepo, and one file of two thousand lines is a file
-nobody reads. `{ include: <path> }` standing anywhere in the manifest — a node under `tree`, a
-whole section, one entry of a list — is replaced by the value of the file it names, so each
-package's node can live beside the package it governs:
-
-```yaml
-# architecture.yaml
-tree:
-  "packages/contracts/": { include: packages/contracts/architecture.yaml }
-  "packages/server/": { include: packages/server/architecture.yaml }
-graph: { include: architecture/graph.yaml }
-```
-
-```yaml
-# packages/server/architecture.yaml
-# yaml-language-server: $schema=https://dataquail.github.io/goodbones/schema/architecture-node.schema.json
-message: "The server is a hexagon: domain, ports, adapters."
-layout: open
-imports: { use: package-floor }
-children:
-  "src/domain/": { members: [{ use: no-file-system-calls }], children: {} }
-```
-
-The path is relative to the file that wrote it, so a package moves with its manifest, and the
-root stays the one index of the policy: read it and you have seen every file that takes part.
-An included file is YAML or JSON only — a module would leave the manifest readable by one
-runtime — and it is replaced whole: nothing may be written beside `include`, and there is no
-merge. A list item naming a file that holds a list is spliced in, so `exports` or a `graph`
-family can be split across files too.
-
-Patterns in an included file are what they are everywhere: repo-relative, with the `aliases`
-the root declares. `defs` are one namespace across every file — a fragment the root defines is
-there for every included file to `use`, an included file may carry a top-level `defs` of its
-own, and a name defined twice is refused, naming both files. A file that includes itself, at
-any distance, is refused with the chain.
-
-Every error names the file it is in. A decode issue inside an included file reports as
-`packages/server/architecture.yaml:12:5`, relative to the root manifest; a reference that
-names a missing file reports at the line that wrote it. The schema for a per-package file is
-`architecture-node.schema.json`, beside the manifest's: one node of the tree, with the
-`$schema` and `defs` keys a file of its own may carry at the top.
-
-This works the same in YAML, in JSON, and from a JavaScript module. Rules, probes, the
-baseline and `limits` are all computed on the assembled manifest, so a rule that has drifted
-into matching nothing fails at load whichever file it was written in.
-
-## What it compiles to
-
-The manifest is lowered to flat rules before anything is matched, one per family per node
-that states something. **Rule names are derived from node paths**: the top-level key is
-slugified and each child key is appended as written, so a violation reports something like
+A rule is named after its node's path: the top-level key slugified, then each child key as
+written. An `imports` rule at `"@/modules/{module}/"` → `"domain/{subdomain}/"` reports as:
 
 ```
 [modules-module/domain/{subdomain}/imports] domain/ holds the model for one subdomain.
 ```
 
-for a rule declared at `"@/modules/{module}/" → "domain/{subdomain}/"`. Repo-wide entries are
-named `repo/deny-0`, `repo/deny-1`, … in declaration order. Given a rule name you find the
-sentence that caused it by reading down the same path in the manifest.
-
-The lowering is where inheritance is resolved, where a folder's allowlist becomes a rule
-over its whole subtree, and where each rule's probe is generated. It is worth understanding
-if you are debugging a rule that fires more or less than you expected —
-[Inheritance](/goodbones/architecture-rules/manifest/inheritance/) covers it.
+Top-level `deny` entries are named `repo/deny-0`, `repo/deny-1`, … in order.

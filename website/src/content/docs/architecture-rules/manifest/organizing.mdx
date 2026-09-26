@@ -1,0 +1,107 @@
+---
+title: Reuse and splitting
+description: Reuse fragments with defs, split the manifest with include, or write it in JavaScript.
+---
+
+Use `defs` to write a repeated rule once, and `include` to split a large manifest into one file
+per package. Both work the same in YAML, JSON and JavaScript manifests.
+
+## Reuse: `defs` and `use`
+
+Name fragments under a top-level `defs`. Anywhere below, `{ use: <name> }` is replaced by a copy
+of the fragment: a rule in `members`, `surface`, `exports`, `deny` or `graph`, a whole `imports`
+object, or a whole node under `children`.
+
+```yaml
+defs:
+  no-file-system-calls:
+    message: "`{name}` reads or writes the file system."
+    subject: calls
+    match: ["*Sync", readFile, writeFile]
+  package-floor:
+    external: [effect]
+    allow: ["node:**"]
+
+tree:
+  "packages/core/":
+    imports: { use: package-floor, message: "This import is not on the allowlist." }
+    children:
+      "src/domain/": { members: [{ use: no-file-system-calls }], children: {} }
+```
+
+- A key written beside `use` replaces the fragment's key of the same name. The override is
+  shallow: a list replaces the list.
+- A fragment may contain `use`. A cycle, or a name `defs` does not define, is an error.
+- There is no interpolation and no deep merge.
+
+YAML anchors and merge keys also work, but errors inside them have no line number.
+
+## Split the manifest: `include`
+
+`{ include: <path> }` is replaced by the contents of the file it names. Use it for a node, a
+whole top-level section, or one list item.
+
+```yaml
+# architecture.yaml
+tree:
+  "packages/server/": { include: packages/server/architecture.yaml }
+graph: { include: architecture/graph.yaml }
+```
+
+```yaml
+# packages/server/architecture.yaml
+# yaml-language-server: $schema=https://dataquail.github.io/goodbones/schema/architecture-node.schema.json
+message: "The server is a hexagon: domain, ports, adapters."
+layout: open
+imports: { use: package-floor }
+children:
+  "src/domain/": { members: [{ use: no-file-system-calls }], children: {} }
+```
+
+- The path is relative to the file that wrote it.
+- An included file is YAML or JSON, never `.mjs`.
+- Nothing may stand beside `include`; there is no merge.
+- A list item that includes a file holding a list is spliced in, so `exports` or a `graph`
+  family can be split across files.
+- Patterns stay repo-relative and use the root's `aliases`.
+- `defs` share one namespace across all files. An included file may declare its own top-level
+  `defs`; a name defined twice is an error naming both files.
+- A file that includes itself, at any depth, is an error.
+- Errors name the included file and line, e.g. `packages/server/architecture.yaml:12:5`.
+- An included node file uses `architecture-node.schema.json`, which also allows top-level
+  `$schema` and `defs`.
+
+## JavaScript manifest
+
+`architecture.config.mjs` is read if no data manifest exists. Its default export (or else its
+module namespace) is decoded exactly like YAML, including `defs`, `use` and `include`.
+
+```js
+// architecture.config.mjs
+/** @type {import("@goodbones/core").Manifest} */
+export default {
+  resolve: {
+    scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.json" } }],
+    unresolved: "error",
+  },
+  tree: {
+    "src/domain/": {
+      message: "domain/ is the model. It reaches nothing but itself.",
+      imports: { message: "domain/ may not reach the framework.", allow: ["src/domain/**"] },
+      children: { "*.ts": {} },
+    },
+  },
+};
+```
+
+Use it only when code generates the manifest. Otherwise prefer YAML: a module's decode errors
+have no line number, it gets no schema validation beyond `@type`, only a Node host can read it,
+and it runs on every load. To convert one:
+
+```bash
+pnpm exec architecture migrate
+```
+
+It writes the same policy to `architecture.yaml` with the schema header, and writes nothing if
+the module fails to decode. It does not create `defs` and cannot carry comments over. Delete the
+module afterwards: two manifests is an error.

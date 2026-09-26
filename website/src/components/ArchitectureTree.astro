@@ -1,0 +1,422 @@
+---
+// The manifest's claim, drawn: the directory tree is the backbone. Import allowlists are written
+// on folders and inherited down it, a folder says which children it admits, and some files are
+// owed siblings — a test beside a file, adapters beside a port. Starlight's tokens, so it follows
+// the site's theme.
+
+type Row = {
+  name: string;
+  depth: number;
+  folder?: boolean;
+  admitted?: boolean; // ✓ or ✗ against the folder's `children`
+  note?: string;
+  refused?: boolean;
+};
+
+const rows: Row[] = [
+  { name: "src/", depth: 0, folder: true },
+  {
+    name: "modules/",
+    depth: 1,
+    folder: true,
+    note: "imports: platform/ddd/**  ↓ inherited below",
+  },
+  { name: "billing/", depth: 2, folder: true },
+  { name: "domain/", depth: 3, folder: true, note: "imports: domain/**, effect" },
+  { name: "invoice.root.ts", depth: 4, admitted: true, note: "*.root.ts" },
+  { name: "invoice.root.test.ts", depth: 4, admitted: true, note: "owed: {base}.test.ts" },
+  { name: "invoice.repository.ts", depth: 4, admitted: true, note: "*.repository.ts, a port" },
+  { name: "helpers.ts", depth: 4, admitted: false, refused: true, note: "no child domain/ admits" },
+  { name: "commands/", depth: 3, folder: true, note: "imports: commands/**, domain/**" },
+  { name: "void-invoice.handler.ts", depth: 4, admitted: true, note: "*.handler.ts" },
+  { name: "void-invoice.handler.test.ts", depth: 4, admitted: true, note: "owed: {base}.test.ts" },
+  { name: "queries/", depth: 3, folder: true, note: "imports: queries/**, domain/**" },
+  {
+    name: "invoice-summary.query.ts",
+    depth: 4,
+    admitted: true,
+    note: "*.query.ts · importedBy refuses",
+  },
+  { name: "infrastructure/", depth: 3, folder: true },
+  { name: "invoice.repository-live.ts", depth: 4, admitted: true, note: "owed by the port" },
+  { name: "invoice.repository-fake.ts", depth: 4, admitted: true, note: "owed by the port" },
+  { name: "platform/", depth: 1, folder: true },
+  { name: "ddd/", depth: 2, folder: true },
+];
+
+const TOP = 36;
+const STEP = 27;
+const y = (i: number) => TOP + i * STEP;
+const mid = (i: number) => y(i) - 4.5; // the vertical middle of a row's text
+const x = (depth: number) => 76 + depth * 20;
+const NOTE_X = 416;
+
+// Tree connectors: from each folder down to its last child, a tick to each child.
+const connectors: string[] = [];
+rows.forEach((row, i) => {
+  if (!row.folder) return;
+  const children: number[] = [];
+  for (let j = i + 1; j < rows.length && rows[j].depth > row.depth; j++) {
+    if (rows[j].depth === row.depth + 1) children.push(j);
+  }
+  if (children.length === 0) return;
+  const cx = x(row.depth) + 6;
+  const last = children[children.length - 1];
+  connectors.push(`M${cx} ${y(i) + 5}V${mid(last)}`);
+  for (const c of children) connectors.push(`M${cx} ${mid(c)}H${x(row.depth + 1) - 5}`);
+});
+
+// Owed siblings, as brackets in the left margin: [from, [to…], column].
+const siblings: Array<{ rows: number[]; gx: number }> = [
+  { rows: [4, 5], gx: 54 },
+  { rows: [9, 10], gx: 54 },
+  { rows: [6, 14, 15], gx: 34 },
+];
+const bracket = ({ rows: rs, gx }: { rows: number[]; gx: number }) => {
+  const top = mid(rs[0]);
+  const bottom = mid(rs[rs.length - 1]);
+  return `M${gx} ${top}V${bottom}${rs.map((r) => `M${gx} ${mid(r)}H64`).join("")}`;
+};
+
+// Imports, as arcs in the right margin. A handler may reach the port; a query may not, though its
+// own allowlist says domain/** — the port's `importedBy` refuses it, so both ends of an edge have a
+// say; and the domain may not reach the live adapter at all.
+const LANE = 668;
+const imports = [
+  { from: 9, to: 6, bulge: 712, allowed: true },
+  { from: 12, to: 6, bulge: 756, allowed: false },
+  { from: 4, to: 14, bulge: 806, allowed: false },
+];
+const arc = (a: { from: number; to: number; bulge: number }) =>
+  `M${LANE} ${mid(a.from)}C${a.bulge} ${mid(a.from)} ${a.bulge} ${mid(a.to)} ${LANE + 4} ${mid(a.to)}`;
+const markX = (a: { bulge: number }) => LANE + (a.bulge - LANE) * 0.75;
+const markY = (a: { from: number; to: number }) => (mid(a.from) + mid(a.to)) / 2;
+
+// Inside one file: the port's own names, held by `members` (what its type may declare) and
+// `surface` (what the file may export). Marked on the tree by the port's row.
+const PORT_ROW = 6;
+const INSET = { x: 150, top: y(rows.length) + 6, w: 640 };
+const code: Array<{ text: string; ok?: boolean; rule?: string; why?: string }> = [
+  {
+    text: "export type InvoiceRepositoryShape = {",
+    ok: true,
+    rule: "surface",
+    why: "named *RepositoryShape",
+  },
+  { text: "  readonly findOneById: (id) => …", ok: true, rule: "members", why: "load by identity" },
+  { text: "  readonly save: (invoice) => …", ok: true, rule: "members", why: "save the aggregate" },
+  {
+    text: "  readonly findByCustomer: (id) => …",
+    ok: false,
+    rule: "members",
+    why: "a query in disguise",
+  },
+  { text: "};" },
+  {
+    text: "export const makeRepo = () => …",
+    ok: false,
+    rule: "surface",
+    why: "not a *Repository name",
+  },
+];
+const CODE_Y = (i: number) => INSET.top + 46 + i * 19;
+const INSET_H = 46 + code.length * 19 + 8;
+const LEGEND_Y = INSET.top + INSET_H + 36;
+---
+
+<figure class="tree-figure">
+  <div class="scroll">
+    <svg
+      viewBox={`0 0 830 ${LEGEND_Y + 30}`}
+      role="img"
+      aria-labelledby="at-title at-desc"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <title id="at-title">The directory tree as the backbone of the policy</title>
+      <desc id="at-desc">
+        A directory listing of a billing module. Import allowlists are written on folders:
+        modules/ allows platform/ddd, inherited by every folder below; domain/ allows only itself
+        and effect; commands/ and queries/ each allow themselves and domain/. A command handler
+        importing the repository port is allowed. A query importing it is refused, because the
+        port's importedBy admits only command handlers. The domain importing the live adapter is
+        refused. The domain/
+        folder admits root and repository files, and refuses a stray helpers.ts. Brackets link
+        owed siblings: each file and its test, and the repository port with its live and fake
+        adapters in infrastructure/. Inside the repository port, its type may declare findOneById and
+        save but not findByCustomer, a query in disguise; and the file may export
+        InvoiceRepositoryShape but not makeRepo, which is not named as a repository.
+      </desc>
+      <defs>
+        <marker
+          id="at-arrow-ok"
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="7"
+          markerHeight="7"
+          orient="auto-start-reverse"
+        >
+          <path d="M0,0 L10,5 L0,10 z" class="head-ok"></path>
+        </marker>
+        <marker
+          id="at-arrow-no"
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="7"
+          markerHeight="7"
+          orient="auto-start-reverse"
+        >
+          <path d="M0,0 L10,5 L0,10 z" class="head-no"></path>
+        </marker>
+      </defs>
+
+      <!-- the backbone -->
+      <path d={connectors.join("")} class="branch"></path>
+
+      <!-- owed siblings -->
+      {siblings.map((s) => <path d={bracket(s)} class="sibling" />)}
+      {
+        siblings.flatMap((s) =>
+          s.rows.map((r) => <circle cx="64" cy={mid(r)} r="2.2" class="sibling-dot" />),
+        )
+      }
+
+      <!-- rows -->
+      {
+        rows.map((row, i) => (
+          <g>
+            <text
+              x={x(row.depth)}
+              y={y(i)}
+              class={`name ${row.folder ? "folder" : ""} ${row.refused ? "refused" : ""}`}
+            >
+              {row.name}
+            </text>
+            {row.admitted !== undefined && (
+              <text x={NOTE_X} y={y(i)} class={row.admitted ? "mark-ok" : "mark-no"}>
+                {row.admitted ? "✓" : "✗"}
+              </text>
+            )}
+            {row.note && (
+              <text
+                x={row.admitted !== undefined ? NOTE_X + 16 : NOTE_X}
+                y={y(i)}
+                class={`note ${row.folder ? "rule" : ""} ${row.refused ? "refused" : ""}`}
+              >
+                {row.note}
+              </text>
+            )}
+          </g>
+        ))
+      }
+
+      <!-- imports -->
+      {
+        imports.map((a) => (
+          <g>
+            <circle cx={LANE} cy={mid(a.from)} r="2.6" class={a.allowed ? "dot-ok" : "dot-no"} />
+            <path
+              d={arc(a)}
+              class={a.allowed ? "import-ok" : "import-no"}
+              marker-end={`url(#${a.allowed ? "at-arrow-ok" : "at-arrow-no"})`}
+            />
+            <circle cx={markX(a)} cy={markY(a)} r="9" class="badge" />
+            <text
+              x={markX(a)}
+              y={markY(a) + 4}
+              text-anchor="middle"
+              class={a.allowed ? "mark-ok" : "mark-no"}
+            >
+              {a.allowed ? "✓" : "✗"}
+            </text>
+          </g>
+        ))
+      }
+
+      <!-- inside the port -->
+      <circle cx="612" cy={mid(PORT_ROW)} r="8" class="callout"></circle>
+      <text x="612" y={mid(PORT_ROW) + 4} text-anchor="middle" class="callout-text">a</text>
+      <rect x={INSET.x} y={INSET.top} width={INSET.w} height={INSET_H} rx="6" class="inset"></rect>
+      <circle cx={INSET.x + 20} cy={INSET.top + 20} r="8" class="callout"></circle>
+      <text x={INSET.x + 20} y={INSET.top + 24} text-anchor="middle" class="callout-text">a</text>
+      <text x={INSET.x + 36} y={INSET.top + 24} class="inset-title">inside invoice.repository.ts</text>
+      {
+        code.map((line, i) => (
+          <g>
+            <text x={INSET.x + 20} y={CODE_Y(i)} class={`code ${line.ok === false ? "refused" : ""}`}>
+              {line.text}
+            </text>
+            {line.ok !== undefined && (
+              <text x={INSET.x + 330} y={CODE_Y(i)} class={line.ok ? "mark-ok" : "mark-no"}>
+                {line.ok ? "✓" : "✗"}
+              </text>
+            )}
+            {line.rule && (
+              <text x={INSET.x + 346} y={CODE_Y(i)} class={`note ${line.ok ? "" : "refused"}`}>
+                <tspan class="family">{line.rule}</tspan> {line.why}
+              </text>
+            )}
+          </g>
+        ))
+      }
+
+      <!-- legend -->
+      <line x1="20" y1={LEGEND_Y - 18} x2="790" y2={LEGEND_Y - 18} class="rule-line"></line>
+      <g class="legend">
+        <path d={`M20 ${LEGEND_Y - 4}h26`} class="import-ok"></path>
+        <text x="54" y={LEGEND_Y}>may import</text>
+        <path d={`M140 ${LEGEND_Y - 4}h26`} class="import-no"></path>
+        <text x="174" y={LEGEND_Y}>may not import</text>
+        <path d={`M290 ${LEGEND_Y - 10}v12M290 ${LEGEND_Y - 10}h6M290 ${LEGEND_Y + 2}h6`} class="sibling"
+        ></path>
+        <text x="306" y={LEGEND_Y}>owed sibling (requires)</text>
+        <text x="484" y={LEGEND_Y} class="mark-ok">✓</text>
+        <text x="496" y={LEGEND_Y} class="mark-no">✗</text>
+        <text x="512" y={LEGEND_Y}>child the folder admits / refuses</text>
+      </g>
+    </svg>
+  </div>
+  <figcaption>
+    Every rule hangs off the tree: a folder states what its files may import (and passes it down),
+    which children it admits, and which siblings a file owes — down to the names a file may declare
+    and export.
+  </figcaption>
+</figure>
+
+<style>
+  .tree-figure {
+    margin-block: 1.5rem;
+  }
+  .scroll {
+    overflow-x: auto;
+  }
+  svg {
+    display: block;
+    width: 100%;
+    min-width: 640px;
+    height: auto;
+    font-family: var(--__sl-font);
+  }
+  figcaption {
+    margin-top: 0.5rem;
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-3);
+  }
+  .name {
+    font-family: var(--__sl-font-mono);
+    font-size: 12.5px;
+    fill: var(--sl-color-gray-2);
+  }
+  .name.folder {
+    fill: var(--sl-color-white);
+    font-weight: 700;
+  }
+  .name.refused {
+    fill: var(--sl-color-red);
+    text-decoration: line-through;
+  }
+  .note {
+    font-family: var(--__sl-font-mono);
+    font-size: 11px;
+    fill: var(--sl-color-gray-3);
+  }
+  .note.rule {
+    fill: var(--sl-color-text-accent);
+  }
+  .note.refused {
+    fill: var(--sl-color-red);
+  }
+  .branch {
+    fill: none;
+    stroke: var(--sl-color-gray-4);
+    stroke-width: 1.25;
+  }
+  .sibling {
+    fill: none;
+    stroke: var(--sl-color-gray-2);
+    stroke-width: 1.5;
+  }
+  .sibling-dot {
+    fill: var(--sl-color-gray-2);
+  }
+  .mark-ok {
+    font-size: 12px;
+    font-weight: 700;
+    fill: var(--sl-color-green-high);
+  }
+  .mark-no {
+    font-size: 12px;
+    font-weight: 700;
+    fill: var(--sl-color-red);
+  }
+  .import-ok,
+  .import-no {
+    fill: none;
+    stroke-width: 1.75;
+  }
+  .import-ok {
+    stroke: var(--sl-color-accent);
+  }
+  .import-no {
+    stroke: var(--sl-color-red);
+    stroke-dasharray: 5 4;
+  }
+  .head-ok,
+  .dot-ok {
+    fill: var(--sl-color-accent);
+  }
+  .head-no,
+  .dot-no {
+    fill: var(--sl-color-red);
+  }
+  .badge {
+    fill: var(--sl-color-bg);
+    stroke: var(--sl-color-gray-5);
+  }
+  .callout {
+    fill: var(--sl-color-bg);
+    stroke: var(--sl-color-text-accent);
+    stroke-width: 1.25;
+  }
+  .callout-text {
+    font-size: 11px;
+    font-weight: 700;
+    fill: var(--sl-color-text-accent);
+  }
+  .inset {
+    fill: var(--sl-color-gray-6);
+    stroke: var(--sl-color-hairline);
+  }
+  .inset-title {
+    font-family: var(--__sl-font-mono);
+    font-size: 12px;
+    font-weight: 700;
+    fill: var(--sl-color-white);
+  }
+  .code {
+    white-space: pre;
+    font-family: var(--__sl-font-mono);
+    font-size: 11.5px;
+    fill: var(--sl-color-gray-2);
+  }
+  .code.refused {
+    fill: var(--sl-color-red);
+  }
+  .family {
+    font-weight: 700;
+  }
+  .rule-line {
+    stroke: var(--sl-color-hairline);
+  }
+  .legend text {
+    font-size: 12px;
+    fill: var(--sl-color-gray-3);
+  }
+  .legend text.mark-ok {
+    fill: var(--sl-color-green-high);
+  }
+  .legend text.mark-no {
+    fill: var(--sl-color-red);
+  }
+</style>

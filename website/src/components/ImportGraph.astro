@@ -1,0 +1,290 @@
+---
+// The three graph rules, one panel each: a small import graph showing what the rule reports and,
+// beside it, a case it does not. Starlight's tokens, so it follows the site's theme.
+
+type Node = {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  w?: number;
+  kind?: "bad" | "entry" | "via" | "outside";
+  tag?: string;
+  tagBelow?: boolean;
+};
+type Edge = { from: string; to: string; kind?: "bad" | "good" | "outside" };
+type Panel = { rule: string; title: string; nodes: Node[]; edges: Edge[]; caption: string[] };
+
+const W = 92; // node width
+const H = 26; // node height
+
+const panels: Panel[] = [
+  {
+    rule: "cycles",
+    title: "files that import each other",
+    nodes: [
+      { id: "index", label: "index.ts", x: 128, y: 78 },
+      { id: "order", label: "order.ts", x: 58, y: 150, kind: "bad" },
+      { id: "invoice", label: "invoice.ts", x: 198, y: 150, kind: "bad" },
+      { id: "customer", label: "customer.ts", x: 128, y: 226, kind: "bad" },
+    ],
+    edges: [
+      { from: "index", to: "order" },
+      { from: "order", to: "invoice", kind: "bad" },
+      { from: "invoice", to: "customer", kind: "bad" },
+      { from: "customer", to: "order", kind: "bad" },
+    ],
+    caption: ["One violation, named by the set", "{customer, invoice, order}."],
+  },
+  {
+    rule: "orphans",
+    title: "files nothing imports",
+    nodes: [
+      { id: "index", label: "index.ts", x: 58, y: 78, kind: "entry", tag: "entry" },
+      { id: "app", label: "app.ts", x: 58, y: 150 },
+      { id: "util", label: "util.ts", x: 58, y: 226 },
+      { id: "test", label: "repo.test.ts", x: 198, y: 78, kind: "outside", tag: "not in scope" },
+      { id: "fake", label: "repo.fake.ts", x: 198, y: 150 },
+      { id: "legacy", label: "legacy.ts", x: 198, y: 226, kind: "bad" },
+    ],
+    edges: [
+      { from: "index", to: "app" },
+      { from: "app", to: "util" },
+      { from: "test", to: "fake", kind: "outside" },
+    ],
+    caption: ["legacy.ts is an orphan. A test imports", "repo.fake.ts, so it is not."],
+  },
+  {
+    rule: "reach",
+    title: "tiers reached by any route",
+    nodes: [
+      { id: "http", label: "http.ts", x: 44, y: 120, w: 66, tag: "adapters" },
+      { id: "repo", label: "repo.ts", x: 128, y: 120, w: 66, kind: "via", tag: "ports · via" },
+      { id: "pg", label: "pg-live.ts", x: 213, y: 120, w: 76, tag: "infrastructure" },
+      { id: "cli", label: "cli.ts", x: 44, y: 226, w: 66, tag: "adapters" },
+      { id: "db", label: "db.ts", x: 128, y: 226, w: 66, tag: "shared", tagBelow: true },
+    ],
+    edges: [
+      { from: "http", to: "repo", kind: "good" },
+      { from: "repo", to: "pg", kind: "good" },
+      { from: "cli", to: "db", kind: "bad" },
+      { from: "db", to: "pg", kind: "bad" },
+    ],
+    caption: ["cli.ts reaches pg-live.ts without", "passing through a port: reported."],
+  },
+];
+
+const PANEL_W = 256;
+const GAP = 16;
+const px = (i: number) => i * (PANEL_W + GAP);
+const width = (n: Node) => n.w ?? W;
+
+// An edge runs from box edge to box edge, stopping short of the target for its arrowhead.
+const edgePath = (a: Node, b: Node) => {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const exit = (n: Node) => Math.min(width(n) / 2 / Math.abs(dx || 1e-9), H / 2 / Math.abs(dy || 1e-9));
+  const ta = exit(a);
+  const tb = exit(b);
+  const len = Math.hypot(dx, dy);
+  const gap = 3 / len;
+  return `M${a.x + dx * (ta + gap)} ${a.y + dy * (ta + gap)}L${b.x - dx * (tb + gap)} ${b.y - dy * (tb + gap)}`;
+};
+---
+
+<figure class="graph-figure">
+  <div class="scroll">
+    <svg viewBox="0 0 800 318" role="img" aria-labelledby="ig-title ig-desc" xmlns="http://www.w3.org/2000/svg">
+      <title id="ig-title">The three graph rules</title>
+      <desc id="ig-desc">
+        Cycles: order.ts imports invoice.ts, which imports customer.ts, which imports order.ts; the
+        cycle is one violation named by the set of its files. Orphans: index.ts is an entry that
+        imports app.ts, which imports util.ts; a test outside the scope imports repo.fake.ts, so it
+        is not an orphan; nothing imports legacy.ts, so it is. Reach: http.ts reaches pg-live.ts
+        through the port repo.ts, which is allowed; cli.ts reaches pg-live.ts through shared/db.ts,
+        avoiding every port, which is reported.
+      </desc>
+      <defs>
+        {
+          ["plain", "bad", "good"].map((k) => (
+            <marker
+              id={`ig-${k}`}
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="7"
+              markerHeight="7"
+              orient="auto-start-reverse"
+            >
+              <path d="M0,0 L10,5 L0,10 z" class={`head-${k}`} />
+            </marker>
+          ))
+        }
+      </defs>
+
+      {
+        panels.map((panel, i) => {
+          const byId = Object.fromEntries(panel.nodes.map((n) => [n.id, n]));
+          return (
+            <g transform={`translate(${px(i)} 0)`}>
+              <rect x="0.5" y="0.5" width={PANEL_W - 1} height="317" rx="6" class="panel" />
+              <text x="16" y="28" class="rule">
+                {panel.rule}
+              </text>
+              <text x="16" y="46" class="title">
+                {panel.title}
+              </text>
+
+              {panel.edges.map((e) => (
+                <path
+                  d={edgePath(byId[e.from], byId[e.to])}
+                  class={`edge ${e.kind ?? "plain"}`}
+                  marker-end={`url(#ig-${e.kind === "bad" ? "bad" : e.kind === "good" ? "good" : "plain"})`}
+                />
+              ))}
+
+              {panel.nodes.map((n) => (
+                <g>
+                  {n.tag && (
+                    <text
+                      x={n.x}
+                      y={n.tagBelow ? n.y + H / 2 + 13 : n.y - H / 2 - 5}
+                      text-anchor="middle"
+                      class="tag"
+                    >
+                      {n.tag}
+                    </text>
+                  )}
+                  <rect
+                    x={n.x - width(n) / 2}
+                    y={n.y - H / 2}
+                    width={width(n)}
+                    height={H}
+                    rx="5"
+                    class={`node ${n.kind ?? ""}`}
+                  />
+                  <text x={n.x} y={n.y + 4} text-anchor="middle" class={`label ${n.kind ?? ""}`}>
+                    {n.label}
+                  </text>
+                </g>
+              ))}
+
+              {panel.caption.map((line, j) => (
+                <text x="16" y={276 + j * 17} class="caption">
+                  {line}
+                </text>
+              ))}
+            </g>
+          );
+        })
+      }
+    </svg>
+  </div>
+  <figcaption>
+    Each rule is a question about the whole graph at once, which is why only the CLI answers them:
+    the plugin sees one file at a time.
+  </figcaption>
+</figure>
+
+<style>
+  .graph-figure {
+    margin-block: 1.5rem;
+  }
+  .scroll {
+    overflow-x: auto;
+  }
+  svg {
+    display: block;
+    width: 100%;
+    min-width: 640px;
+    height: auto;
+    font-family: var(--__sl-font);
+  }
+  figcaption {
+    margin-top: 0.5rem;
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-3);
+  }
+  .panel {
+    fill: none;
+    stroke: var(--sl-color-hairline);
+  }
+  .rule {
+    font-family: var(--__sl-font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    fill: var(--sl-color-text-accent);
+  }
+  .title {
+    font-size: 12px;
+    fill: var(--sl-color-gray-3);
+  }
+  .caption {
+    font-size: 12px;
+    fill: var(--sl-color-gray-2);
+  }
+  .tag {
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    fill: var(--sl-color-gray-3);
+  }
+  .node {
+    fill: var(--sl-color-bg);
+    stroke: var(--sl-color-gray-4);
+    stroke-width: 1.25;
+  }
+  .node.bad {
+    stroke: var(--sl-color-red);
+    stroke-width: 1.5;
+  }
+  .node.entry {
+    stroke: var(--sl-color-accent);
+    stroke-width: 1.5;
+  }
+  .node.via {
+    stroke: var(--sl-color-accent);
+    stroke-dasharray: 4 3;
+  }
+  .node.outside {
+    stroke-dasharray: 2 3;
+  }
+  .label {
+    font-family: var(--__sl-font-mono);
+    font-size: 11px;
+    fill: var(--sl-color-gray-2);
+  }
+  .label.bad {
+    fill: var(--sl-color-red);
+  }
+  .label.outside {
+    fill: var(--sl-color-gray-3);
+  }
+  .edge {
+    fill: none;
+    stroke-width: 1.5;
+  }
+  .edge.plain {
+    stroke: var(--sl-color-gray-4);
+  }
+  .edge.outside {
+    stroke: var(--sl-color-gray-4);
+    stroke-dasharray: 2 3;
+  }
+  .edge.bad {
+    stroke: var(--sl-color-red);
+    stroke-width: 1.75;
+  }
+  .edge.good {
+    stroke: var(--sl-color-accent);
+    stroke-width: 1.75;
+  }
+  .head-plain {
+    fill: var(--sl-color-gray-4);
+  }
+  .head-bad {
+    fill: var(--sl-color-red);
+  }
+  .head-good {
+    fill: var(--sl-color-accent);
+  }
+</style>

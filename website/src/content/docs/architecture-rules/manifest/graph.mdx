@@ -3,6 +3,8 @@ title: Graph
 description: Rules about the shape of the whole import graph — cycles, orphans, and what a tier may reach through any number of hops.
 ---
 
+import ImportGraph from "../../../../components/ImportGraph.astro";
+
 Every other family judges one file, or one edge leaving it. `graph` judges the **whole
 repository resolved at once**: whether two files import each other, whether anything imports
 a file at all, and whether one tier can reach another through any number of intermediate
@@ -33,6 +35,8 @@ graph:
 
 `graph` is a top-level section, not a node: its rules are statements about the repository,
 and every glob in it is expanded through `aliases` like the rest of the manifest.
+
+<ImportGraph />
 
 ## `cycles`
 

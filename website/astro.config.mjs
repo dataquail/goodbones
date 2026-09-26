@@ -1,5 +1,9 @@
 import starlight from "@astrojs/starlight";
-import { defineConfig } from "astro/config";
+import { defineConfig, passthroughImageService } from "astro/config";
+
+// One surface for every code frame — the block, its tab bar and a terminal's title bar — a step
+// off the page ground in each theme.
+const surface = ({ theme }) => (theme.type === "dark" ? "#1a1816" : "#f4f1ea");
 
 export default defineConfig({
   integrations: [
@@ -7,6 +11,40 @@ export default defineConfig({
       title: "Goodbones",
       description:
         "Architecture policy as one manifest of your repository, enforced by oxlint and a CLI — and refactors tracked as campaigns that only move forward.",
+      logo: {
+        light: "./src/assets/mark-light.svg",
+        dark: "./src/assets/mark-dark.svg",
+        alt: "",
+      },
+      customCss: [
+        "@fontsource-variable/atkinson-hyperlegible-next",
+        "@fontsource-variable/atkinson-hyperlegible-mono",
+        "./src/styles/theme.css",
+      ],
+      // Code blocks match the theme: the Vitesse pair is already quiet, and the frame loses
+      // its shadow and takes the same hairline and radius as everything else.
+      expressiveCode: {
+        themes: ["vitesse-dark", "vitesse-light"],
+        styleOverrides: {
+          borderRadius: "0.375rem",
+          borderColor: "var(--sl-color-hairline)",
+          codeFontFamily: "var(--__sl-font-mono)",
+          uiFontFamily: "var(--__sl-font)",
+          codeBackground: surface,
+          frames: {
+            shadowColor: "transparent",
+            editorTabBarBackground: surface,
+            editorActiveTabBackground: surface,
+            editorActiveTabIndicatorTopColor: "transparent",
+            editorActiveTabIndicatorBottomColor: "var(--sl-color-accent)",
+            editorTabBarBorderBottomColor: "var(--sl-color-hairline)",
+            terminalBackground: surface,
+            terminalTitlebarBackground: surface,
+            terminalTitlebarBorderBottomColor: "var(--sl-color-hairline)",
+            terminalTitlebarDotsOpacity: "0.3",
+          },
+        },
+      },
       social: [
         {
           icon: "github",
@@ -91,6 +129,8 @@ export default defineConfig({
       ],
     }),
   ],
+  // The site's only images are SVG, which need no optimizing, so no Sharp.
+  image: { service: passthroughImageService() },
   site: "https://dataquail.github.io",
   base: "/goodbones",
 });

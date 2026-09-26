@@ -3,6 +3,8 @@ title: Introduction
 description: What the manifest is, the problem it replaces, and the two properties everything else rests on.
 ---
 
+import ArchitectureTree from "../../../../components/ArchitectureTree.astro";
+
 Most repositories that take architecture seriously end up with three enforcement systems
 that do not talk to each other: a dependency-graph tool with its own binary and its own
 resolution config, a folder-structure linter with its own config language, and a drawer
@@ -78,6 +80,13 @@ says about a folder is written at that folder:
         message: "A repository is reached from a command handler, not a query."
         allow: ["@/modules/*/commands/**", "@/modules/*/event-handlers/**"]
 ```
+
+That makes the directory tree the backbone of the whole policy. A folder says what the files
+under it may import, and its descendants inherit it; it says which children it admits, so a
+stray file is a violation rather than an oversight; and a file can name the siblings it owes —
+its test, or a port's adapters in another folder:
+
+<ArchitectureTree />
 
 The trade is real and worth naming: a tree answers _"what governs this file?"_ well and
 _"which files does this rule govern?"_ badly. That is what

@@ -1,0 +1,71 @@
+---
+title: Introduction
+description: Two live diagrams of a repository — its tree with the manifest laid over it, and every campaign's ladder — that redraw as the code changes.
+---
+
+The browser is a page that draws what the manifest and the campaigns say about your repository,
+and redraws it as you edit. It has two views.
+
+**The Architecture Browser** is the tree diagram from the
+[Architecture Rules introduction](/goodbones/architecture-rules/getting-started/introduction/), for
+your repository. Every file and folder is a row; every import the resolver could follow is an arc
+beside the tree, greyed until you hover the file it belongs to. Then the file's imports come forward
+in the accent, the files that import it in ink, a refused edge in red, and the siblings it owes in
+green. On the right, `architecture.yaml` is rendered as written — each included file under its own
+tab — and the node governing the hovered file lights up; hover a line of the manifest and every file
+its node governs lights up in the tree. Click either to keep it, and the middle pane says what
+[`architecture explain`](/goodbones/architecture-rules/enforcement/cli/) would: what the file may
+import and which allowance admitted each edge, who imports it, what it owes, and every violation
+on it. An allowance no import uses is struck through where it was written.
+
+**The Campaign Browser** is the ladder from the
+[Campaigns introduction](/goodbones/campaigns/getting-started/introduction/), for your campaigns.
+Phases in order, each recognized by its objectives; the sectors standing at the first phase with
+residue for them; the end state last. Hover a phase and the sectors standing there light up; hover
+an objective and the sectors it still fires in do, with every holdout the
+[ledger](/goodbones/campaigns/running/ledger/) carries for each; hover a sector and its files,
+attestations, notes and firing holdouts appear — with what
+[the nudge](/goodbones/campaigns/running/nudge/) would say about it, when the working tree touches
+it.
+
+## Running it
+
+```bash
+pnpm add -D @goodbones/browser
+pnpm exec goodbones-browser            # serves http://127.0.0.1:4321/ over the current repository
+pnpm exec goodbones-browser --open     # and opens it
+```
+
+Run it from the repository's root, as you run `architecture`. It reads the same manifest
+(`ARCHITECTURE_CONFIG` names another) and walks the same roots (`packages` by default; pass others
+as arguments). The page redraws whenever a source file, a manifest file or a ledger changes.
+
+```bash
+pnpm exec goodbones-browser serve src lib --port 4000
+```
+
+## Hosting a snapshot
+
+```bash
+pnpm exec goodbones-browser build --out architecture-site
+```
+
+writes the same page with the models as of now, for a static host. Serve the folder from the root
+of a host; the page finds no feed there and says it is a snapshot. A snapshot runs no git, so it
+carries no nudge.
+
+## What it draws from
+
+The browser is a third host over the same core the CLI and the plugin answer to. It loads the
+policy the way the CLI does, walks and parses each file once, and builds two models: the atlas
+(every file with its governing node, every edge with its verdict and the allowance that admitted
+it, every violation, and the manifest's text with each node's position in it) and the campaign view
+(every campaign's phases, objectives, sectors, ledgers, records and the working tree's nudge).
+Both are served as JSON beside the page, so anything else can read them too:
+
+```
+GET /__goodbones/atlas.json
+GET /__goodbones/campaigns.json
+GET /__goodbones/status.json
+GET /__goodbones/events        # server-sent events: `changed` when the repository does
+```

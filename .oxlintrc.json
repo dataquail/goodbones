@@ -40,7 +40,9 @@
     "**/vitest.shared.ts",
     "**/vitest.workspace.ts",
     "website/**",
-    "scripts/**"
+    "scripts/**",
+    "**/*.astro",
+    "**/astro.config.ts"
   ],
   "rules": {
     "constructor-super": "error",

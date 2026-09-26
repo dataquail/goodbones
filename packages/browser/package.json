@@ -1,0 +1,78 @@
+{
+  "name": "@goodbones/browser",
+  "version": "0.1.0-beta.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "The Architecture Browser and the Campaign Browser for @goodbones: an Astro app, prebuilt and served by one bin, that draws a repository's tree with its architecture.yaml laid over it and every campaign's phases, sectors and holdouts — and redraws as the code changes.",
+  "author": "zacharyweidenbach",
+  "keywords": [
+    "architecture",
+    "lint",
+    "import-boundaries",
+    "campaigns",
+    "diagram",
+    "monorepo"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dataquail/goodbones.git",
+    "directory": "packages/browser"
+  },
+  "homepage": "https://dataquail.github.io/goodbones",
+  "bugs": {
+    "url": "https://github.com/dataquail/goodbones/issues"
+  },
+  "exports": {
+    ".": {
+      "types": "./build/dts/index.d.ts",
+      "default": "./build/esm/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./build/dts/index.d.ts",
+  "bin": {
+    "goodbones-browser": "./build/esm/main.js"
+  },
+  "files": [
+    "build/dts",
+    "build/esm",
+    "build/site",
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "!src/**/*.test-helper.ts"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json && astro build",
+    "check": "tsc -b tsconfig.json",
+    "clean": "rm -rf build .tsbuildinfo .astro",
+    "dev": "astro dev",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@goodbones/ast-grep": "workspace:*",
+    "@goodbones/campaigns": "workspace:*",
+    "@goodbones/core": "workspace:*",
+    "@goodbones/typescript": "workspace:*",
+    "effect": "4.0.0-beta.94"
+  },
+  "devDependencies": {
+    "@astrojs/react": "^7.0.0",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^25.9.4",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "astro": "^7.2.2",
+    "jsdom": "^30.0.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "vite": "^8.2.2"
+  },
+  "nx": {
+    "includedScripts": []
+  }
+}

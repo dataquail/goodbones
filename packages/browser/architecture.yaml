@@ -1,0 +1,85 @@
+# yaml-language-server: $schema=https://dataquail.github.io/goodbones/schema/architecture-node.schema.json
+#
+# The @goodbones/browser node of the repository's architecture policy. The
+# root architecture.yaml includes this file at `~/browser/`; the globals it
+# shares — the aliases, the `defs` it uses, the graph rules — are written there.
+message: "@goodbones/browser is a third host: the Architecture Browser and the Campaign Browser, an Astro page prebuilt into `build/site` and served by the `goodbones-browser` bin over whichever repository it is run in. It answers to the core, the pack, the matcher and the campaigns family, never to the CLI or the plugin."
+layout: open
+imports:
+  message: "A host composes the package. It reaches the core's barrels, the language pack's, the syntax matcher's and the campaigns family's, the page's own toolchain, and its own siblings — never another host."
+  # The floor, this host's runtime (React, bundled into the page), and the
+  # toolchain the package's own Astro config names.
+  external: [effect, vitest, react, astro, "@astrojs/react", vite]
+  allow:
+    - "node:**"
+    - vitest.shared.ts
+    - "@core/index.ts"
+    - "@core/testing.ts"
+    - "@ts/index.ts"
+    - "@ag/index.ts"
+    - "@camp/index.ts"
+    - "@br/**"
+children:
+  "src/":
+    layout: open
+    surface:
+      - use: no-default-exports
+      - use: named-reexports-only
+    children:
+      # The two models, and nothing that reads a file: given a loaded policy
+      # and the facts the host read, they return the drawings' data. The
+      # same rule the core's pure tiers carry, for the same reason.
+      "model/":
+        message: "model/ builds the two browsers' data from a loaded policy and the facts the host read. It reads no file and runs no process; the server hands it everything."
+        layout: open
+        children: {}
+        members:
+          - use: no-file-system-calls
+        imports:
+          message: "The models are a transformation of the core's and the campaigns family's values. They reach the two barrels and each other, never the server or the page."
+          allow: ["@core/index.ts", "@camp/index.ts", "@br/model/**"]
+
+      # The host glue: the composition root, the walk, the routes, the bin.
+      "server/":
+        message: "server/ is the host: it composes the policy, walks the repository, watches it, and answers the page's four routes — from the bin's own server or from Vite's in development."
+        layout: open
+        children: {}
+        imports:
+          message: "The server composes everything below it: the barrels, the models, and its own siblings. It never reaches the page's components."
+          allow:
+            - "@core/index.ts"
+            - "@ts/index.ts"
+            - "@ag/index.ts"
+            - "@camp/index.ts"
+            - "@br/model/**"
+            - "@br/server/**"
+
+      # The page: React components Astro builds into `build/site`. They see
+      # the models' types and the routes, nothing of the server.
+      "app/":
+        message: "app/ is the Astro page: two React islands that fetch the models from `__goodbones/*` and draw them. It names the models' types and never a server module, so it is buildable with nothing of Node in it."
+        layout: open
+        children: {}
+        members:
+          # The page reports through what it draws. A stray console.log
+          # in a page a user opens is noise in their devtools.
+          - message: "`{name}` prints. The page reports through what it draws; a console line in a page a user opens is noise in their devtools."
+            subject: calls
+            match: [log, warn, error, info, debug, trace]
+            probe:
+              source: 'console.log("x");'
+              name: log
+        imports:
+          message: "The page reaches the model types, React, and its own siblings. It never imports a server module — those need Node, and the page runs in a browser."
+          # React and vitest come down from the package; the component tests
+          # render through the testing library.
+          external: ["@testing-library/react"]
+          allow: ["@br/model/**", "@br/app/**", "@camp/index.ts"]
+
+      # The barrel and the bin.
+      "*.ts":
+        imports:
+          message: "The barrel names every server tier and the models; the bin drives the server."
+          allow: ["@br/**"]
+
+  "**/": { layout: open, children: {} }

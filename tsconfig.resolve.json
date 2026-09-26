@@ -23,6 +23,8 @@
       "@goodbones/campaigns": ["./packages/campaigns/src/index.ts"],
       "@goodbones/campaigns/*": ["./packages/campaigns/src/*"],
       "@goodbones/cli/*": ["./packages/cli/src/*"],
+      "@goodbones/browser": ["./packages/browser/src/index.ts"],
+      "@goodbones/browser/*": ["./packages/browser/src/*"],
       "@goodbones/oxlint": ["./packages/oxlint/src/plugin.ts"],
       "@goodbones/oxlint/*": ["./packages/oxlint/src/*"]
     },

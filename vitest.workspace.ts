@@ -9,4 +9,5 @@ export default defineWorkspace([
   "packages/campaigns",
   "packages/cli",
   "packages/oxlint",
+  "packages/browser",
 ]);

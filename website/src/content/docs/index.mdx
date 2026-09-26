@@ -1,6 +1,6 @@
 ---
 title: Goodbones
-description: Architecture policy as one manifest of your repository, enforced by oxlint and a CLI, and refactors tracked as campaigns.
+description: Write your repository's architecture in one file and enforce it with oxlint.
 template: splash
 hero:
   title: goodbones
@@ -8,7 +8,7 @@ hero:
     light: ../../assets/mark-light.svg
     dark: ../../assets/mark-dark.svg
     alt: ""
-  tagline: Write down what each part of your repository may reach, who may reach it, what it may declare, and which files are allowed to live there — once, in a file that reads like a directory listing. Then track the refactors that get you there as campaigns.
+  tagline: Write down how your repository is meant to be built, in one file, and have oxlint and a CLI enforce it.
   actions:
     - text: Get Started
       link: /goodbones/architecture-rules/getting-started/introduction/
@@ -24,71 +24,50 @@ import { Card, CardGrid } from "@astrojs/starlight/components";
 
 ## Architecture Rules
 
-`@goodbones/oxlint` and `@goodbones/cli` turn architecture policy into one manifest of your repository —
-import boundaries, export sites, member vocabularies and file taxonomy, all resolved to real
-files and enforced by oxlint.
+Describe each folder's imports, exports and files in one manifest, and lint every change against it.
 
 <CardGrid>
-  <Card title="One manifest, not a rule list" icon="document">
-    A tree keyed by path pattern, where everything the architecture says about a part of
-    the repository is written **at that part of the repository** — its imports, its
-    importers, its members, the siblings it owes, the children it admits.
-
-    [Read the overview →](/goodbones/architecture-rules/manifest/)
-
+  <Card title="One manifest" icon="document">
+    Rules sit at the folder they govern, so the file reads like a directory listing. [Read the
+    overview →](/goodbones/architecture-rules/manifest/)
   </Card>
   <Card title="Real resolution" icon="approve-check">
-    Every pattern is matched against a **resolved** file path, through your `tsconfig`
-    `paths` and your workspace links. A rule about `@/modules/user` is a rule about the
-    file that specifier actually names.
-
+    Rules match the file an import resolves to, through your `tsconfig` paths and workspace links.
     [How resolution works →](/goodbones/architecture-rules/enforcement/resolution/)
-
   </Card>
-</CardGrid>
-
-<CardGrid>
   <Card title="Tight by default" icon="setting">
-    A folder admits only the children it lists; a file may import only what it or an ancestor
-    allows. Laxity is opted into by name — `reset`, `unrestricted`, `layout: open` — so widening is
-    a sentence someone wrote, and `grep` is the adoption backlog.
+    A folder admits only the files and imports you list. Loosening a rule is always explicit. [Read
+    about inheritance →](/goodbones/architecture-rules/manifest/inheritance/)
   </Card>
   <Card title="Every rule proves itself" icon="warning">
-    Each compiled rule carries a probe generated from its own node path, and the plugin **refuses to
-    load** if any rule fails it. A rule that has drifted into matching nothing is a load-time error,
-    not something a separate script might notice later.
+    The plugin refuses to load if a rule can no longer match anything. [How probes work
+    →](/goodbones/architecture-rules/enforcement/probes/)
   </Card>
-  <Card title="A ratchet, not a suppression list" icon="seti:config">
-    The baseline records violations a repository carries while it adopts a rule, keyed by a
-    line-independent fingerprint. Fix one and the build fails until its entry is gone, so the floor
-    only ever rises.
+  <Card title="Adopt gradually" icon="seti:config">
+    Record today's violations in a baseline; the build fails if the count grows. [Adopting a policy
+    →](/goodbones/architecture-rules/enforcement/adoption/)
   </Card>
-  <Card title="Two ways to ask" icon="seti:typescript">
-    An oxlint plugin for the editor and CI, and a CLI that evaluates the same policy with no linter
-    in the loop. Both answer to the same core, so an alpha plugin API is not a single point of
-    failure.
+  <Card title="Editor and CLI" icon="seti:typescript">
+    Get feedback in the editor through oxlint, or check the whole repository with the CLI. [CLI
+    reference →](/goodbones/architecture-rules/enforcement/cli/)
   </Card>
 </CardGrid>
 
 ## Campaigns
 
-`@goodbones/campaigns` tracks a multi-step refactor as an object in the same manifest: objectives
-with ledgers that only shrink, over the sectors of code that move through it, through phases you
-define as you learn them — and a nudge that tells whoever touches a sector what would move it on.
+Track a multi-step refactor in the same manifest, and see how far each part of the code has moved.
 
 <CardGrid>
   <Card title="A refactor you can measure" icon="list-format">
-    Each objective records every place its pattern still occurs, per sector. The count only goes
-    down on its own; growth needs a recorded reason.
-
-    [Read the introduction →](/goodbones/campaigns/getting-started/introduction/)
-
+    Each objective lists every place its pattern still occurs. The list only shrinks. [Read the
+    introduction →](/goodbones/campaigns/getting-started/introduction/)
   </Card>
   <Card title="A plan written as you learn" icon="random">
-    Define the phases you know and leave the rest open. As sectors reach the edge of the plan, the
-    next step becomes clear and is written down.
-
-    [How phases work →](/goodbones/campaigns/manifest/phases/)
-
+    Define the phases you know now and leave the rest open. [How phases work
+    →](/goodbones/campaigns/manifest/phases/)
+  </Card>
+  <Card title="A nudge on every change" icon="rocket">
+    Anyone who touches the code is told what would move it to the next phase. [Read about the nudge
+    →](/goodbones/campaigns/running/nudge/)
   </Card>
 </CardGrid>

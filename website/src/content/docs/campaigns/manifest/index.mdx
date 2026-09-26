@@ -1,132 +1,81 @@
 ---
 title: Defining a campaign
-description: The shape of a campaign in the manifest — a scope, a perimeter, a ladder of phases and the objectives that recognize them, and the fields every campaign may carry.
+description: The fields of a campaign and a full example.
 ---
 
-A campaign is an entry under the manifest's top-level `campaigns` key, keyed by its id. The
-[introduction](/goodbones/campaigns/getting-started/introduction/#the-smallest-campaign)
-shows the smallest one; this page is the full shape, and the pages after it take each part
-in turn.
+A campaign is an entry under the top-level `campaigns` key, keyed by its id. This page lists
+every field; the next pages cover each part.
 
-The full shape — the design's ball-of-mud-to-DDD campaign — is a perimeter that births a
-sector per bounded context, a ladder of phases each recognized by criteria, a transitional
-shape the end forbids, a step no analysis sees, and an open phase where the plan runs out:
+## Example
+
+Billing moving to domain-driven design, one bounded context at a time:
 
 ```yaml
 campaigns:
   billing-ddd:
+    why: Untangle billing into bounded contexts behind ports.
+    owner: "@your-org/billing"
     scope: src/**
-    legacy: src/services/** # what no sector has claimed; stands at `domain`
+    legacy: src/services/** # unclaimed files that count as legacy
     perimeter:
-      marker: "**/context.ts" # names the bounded context, may list the globs it owns
-    onTouch: ratchet # growth in a touched sector is refused; the default for a defined phase
+      marker: "**/context.ts" # each context.ts marks one sector
+    onTouch: ratchet
 
     phases:
       - id: domain
-        intent: a domain module with unit tests, no I/O
-        objectives: [no-io-in-domain, domain-has-unit-tests]
+        intent: a domain module with no I/O
+        objectives: [no-io-in-domain]
       - id: repository
-        intent: a repository behind a port, one migration, an integration test
-        objectives: [no-raw-queries-outside-repository, has-migration, has-integration-test]
-      - id: dual-write
-        intent: the feature flag writes to both tables; nothing reads the new one yet
-        objectives: [has-flag, has-both-writes] # windowed: gone by `cutover`
+        intent: a repository with a migration
+        objectives: [has-migration]
       - id: backfilled
-        intent: legacy rows copied into the new table and verified
-        attested: true # no detector sees a backfill; `campaigns attest` leaves this phase
+        intent: legacy rows copied and verified
+        attested: true # no detector sees this; `campaigns attest` leaves it
       - id: cutover
         intent: the flag and the legacy write path are removed
-        objectives: [no-flag, no-legacy-write]
-      - id: aggregates # open, and therefore last: no objectives yet
-        intent: >
-          Model refunds and disputes inside the billing aggregate, or split them out —
-          undecided until two contexts have reached `cutover`.
+        objectives: [no-legacy-write]
+      - id: aggregates # open: no objectives yet, so it must be last
+        intent: Model refunds inside the billing aggregate, or split them out.
 
     objectives:
       no-io-in-domain:
         holdout: declaration
         match:
-          {
-            all:
-              [
-                { path: { file: "/domain/" } },
-                { members: { subject: calls, name: "readFileSync" } },
-              ],
-          }
+          all:
+            - path: { file: "/domain/" }
+            - members: { subject: calls, name: "readFileSync" }
         probes: { fires: [{ path: src/billing/domain/a.ts, source: "readFileSync('x')" }] }
-      domain-has-unit-tests: # per file: each domain file owes a sibling test
-        holdout: file
-        match:
-          {
-            all:
-              [{ path: { file: "/domain/.*\\.ts$" } }, { not: { requires: ["{base}.test.ts"] } }],
-          }
-        probes: { fires: [{ path: src/billing/domain/a.ts }] }
-      no-raw-queries-outside-repository:
-        holdout: match
-        match:
-          {
-            all:
-              [{ not: { path: { file: "/repository/" } } }, { syntax: { pattern: "knex($$$)" } }],
-          }
-        probes: { fires: [{ path: src/billing/a.ts, source: "knex('x')" }] }
-      has-migration: # a presence: the sector is the holdout until one file in it matches
+      has-migration: # the sector is the holdout until one file matches
         holdout: sector
         sector: { has: { path: { file: "/migrations/.*\\.ts$" } } }
-      has-integration-test:
-        holdout: sector
-        sector: { has: { path: { file: "/repository/.*\\.integration\\.test\\.ts$" } } }
-      has-flag: # a transitional shape: must be there in `dual-write`, must be gone by `cutover`
-        holdout: sector
-        until: cutover
-        sector: { has: { content: { regex: "flags\\.billingDualWrite" } } }
-        probes: { fires: [{ path: src/billing/a.ts, source: "flags.billingDualWrite" }] }
-      has-both-writes:
-        {
-          holdout: sector,
-          until: cutover,
-          sector: { has: { content: { regex: "writeBoth" } } },
-          probes: { fires: [{ path: src/billing/a.ts, source: "writeBoth()" }] },
-        }
-      no-flag:
-        {
-          holdout: file,
-          match: { content: { regex: "flags\\.billingDualWrite" } },
-          probes: { fires: [{ path: src/billing/a.ts, source: "flags.billingDualWrite" }] },
-        }
       no-legacy-write:
-        {
-          holdout: match,
-          match: { syntax: { pattern: "legacyBilling.write($$$)" } },
-          probes: { fires: [{ path: src/billing/a.ts, source: "legacyBilling.write(x)" }] },
-        }
+        holdout: match
+        match: { syntax: { pattern: "legacyBilling.write($$$)" } }
+        probes: { fires: [{ path: src/billing/a.ts, source: "legacyBilling.write(x)" }] }
 ```
 
-| Field        | Meaning                                                                                                                                                                                                                    |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `why`        | the rationale, printed by `explain` and `conformance`                                                                                                                                                                      |
-| `how`        | what a reader at a holdout does about it — the message every hit carries, unless the objective states its own                                                                                                              |
-| `owner`      | who is running it; printed in the status table                                                                                                                                                                             |
-| `scope`      | which files it sees: alias-aware globs, as [`graph`](/goodbones/architecture-rules/manifest/graph/) takes; or `{ path, extensions }` to widen the walk — see [The scope](/goodbones/campaigns/manifest/sectors/#the-scope) |
-| `legacy`     | which unclaimed files count as legacy; omit for all of them — see [Sectors](/goodbones/campaigns/manifest/sectors/)                                                                                                        |
-| `perimeter`  | how a sector is recognized — see [Sectors](/goodbones/campaigns/manifest/sectors/)                                                                                                                                         |
-| `onTouch`    | what a touched sector owes: `advise`, `ratchet` or `paydown` — see [The nudge](/goodbones/campaigns/running/nudge/)                                                                                                        |
-| `phases`     | the ladder, in order — see [Phases](/goodbones/campaigns/manifest/phases/)                                                                                                                                                 |
-| `endState`   | sugar for the last phase: a sector-relative node tree — see [The end state](/goodbones/campaigns/manifest/phases/#the-end-state)                                                                                           |
-| `objectives` | the detectors, keyed by id — see [Objectives](/goodbones/campaigns/manifest/objectives/)                                                                                                                                   |
-| `staleAfter` | `14d`, `12h`: how long without progress before the report calls it stalled; omit for never                                                                                                                                 |
-| `onComplete` | `keep` (the default — stays as a guard against recurrence) or `remove` (`check` fails until it is deleted)                                                                                                                 |
+## Fields
 
-Everything above `objectives` is optional. A campaign's findings are of kind `campaign`, their
-rule name is `campaign/<campaign>/<objective>`, and they are judged against the objective's
-ledger, never against the baseline.
+Only `objectives` is required.
 
-## From the family's first shape
+| Field        | Meaning                                                                                                                                                                                                                            |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `title`      | A display name.                                                                                                                                                                                                                    |
+| `why`        | The rationale. Printed by `explain` and `conformance`.                                                                                                                                                                             |
+| `how`        | What to do at a holdout. Every finding carries it unless the objective sets its own.                                                                                                                                               |
+| `owner`      | Who runs the campaign. Printed in the status table.                                                                                                                                                                                |
+| `scope`      | Globs of the files it sees (default: every file), as [`graph`](/goodbones/architecture-rules/manifest/graph/) takes. `{ path, extensions }` also widens the walk. See [Sectors](/goodbones/campaigns/manifest/sectors/#the-scope). |
+| `legacy`     | Which unclaimed files count as legacy. Default: all of them. See [Sectors](/goodbones/campaigns/manifest/sectors/).                                                                                                                |
+| `perimeter`  | How a sector is recognized. See [Sectors](/goodbones/campaigns/manifest/sectors/).                                                                                                                                                 |
+| `onTouch`    | What a touched sector owes: `advise`, `ratchet` or `paydown`. See [The nudge](/goodbones/campaigns/running/nudge/).                                                                                                                |
+| `phases`     | The ordered steps. See [Phases](/goodbones/campaigns/manifest/phases/).                                                                                                                                                            |
+| `endState`   | Shorthand for the last phase, as a sector-relative node tree. See [Phases](/goodbones/campaigns/manifest/phases/).                                                                                                                 |
+| `objectives` | The detectors, keyed by id. See [Objectives](/goodbones/campaigns/manifest/objectives/).                                                                                                                                           |
+| `staleAfter` | How long without progress before the report calls it stalled, such as `14d` or `12h`. Default: never.                                                                                                                              |
+| `onComplete` | `keep` (default; stays as a guard against recurrence) or `remove` (`check` fails until you delete it).                                                                                                                             |
 
-The family shipped as a list of campaigns each carrying one `detect`. That shape is refused
-by name: a campaign is now a map keyed by its id, what a campaign used to be is one of its
-`objectives`, `unit` is `holdout` and `detect` is `match`; `title`, `why`, `how`, `owner`,
-`staleAfter` and `onComplete` sit on the campaign. A ledger in the first layout,
-`.architecture-campaigns/<id>.json`, is read as the one objective's under the implicit sector
-and rewritten in the new layout by the next `objectives clear`. `campaigns init`, `prune` and
-`allow` are `objectives clear` (which also writes a first ledger) and `objectives concede`.
+The top-level `ledger` key sets where ledgers are written, relative to the manifest. Default:
+`.architecture-campaigns`.
+
+Findings have kind `campaign` and rule name `campaign/<campaign>/<objective>`. They are judged
+against the objective's [ledger](/goodbones/campaigns/running/ledger/), never the baseline.

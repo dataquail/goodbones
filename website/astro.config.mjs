@@ -72,14 +72,13 @@ export default defineConfig({
                 { slug: "architecture-rules/manifest", label: "Overview" },
                 { slug: "architecture-rules/manifest/patterns" },
                 { slug: "architecture-rules/manifest/imports" },
-                { slug: "architecture-rules/manifest/imported-by" },
                 { slug: "architecture-rules/manifest/exports" },
                 { slug: "architecture-rules/manifest/members" },
                 { slug: "architecture-rules/manifest/surface" },
                 { slug: "architecture-rules/manifest/graph" },
                 { slug: "architecture-rules/manifest/structure" },
                 { slug: "architecture-rules/manifest/inheritance" },
-                { slug: "architecture-rules/manifest/javascript" },
+                { slug: "architecture-rules/manifest/organizing" },
               ],
             },
             {
@@ -87,7 +86,6 @@ export default defineConfig({
               items: [
                 { slug: "architecture-rules/enforcement/resolution" },
                 { slug: "architecture-rules/enforcement/probes" },
-                { slug: "architecture-rules/enforcement/baseline" },
                 { slug: "architecture-rules/enforcement/adoption" },
                 { slug: "architecture-rules/enforcement/conformance" },
                 { slug: "architecture-rules/enforcement/cli" },
@@ -131,6 +129,14 @@ export default defineConfig({
   ],
   // The site's only images are SVG, which need no optimizing, so no Sharp.
   image: { service: passthroughImageService() },
+  // Pages folded into others by the concision pass, kept reachable at their old URLs.
+  redirects: {
+    "/architecture-rules/manifest/imported-by":
+      "/goodbones/architecture-rules/manifest/imports/#importedby",
+    "/architecture-rules/manifest/javascript": "/goodbones/architecture-rules/manifest/organizing/",
+    "/architecture-rules/enforcement/baseline":
+      "/goodbones/architecture-rules/enforcement/adoption/",
+  },
   site: "https://dataquail.github.io",
   base: "/goodbones",
 });

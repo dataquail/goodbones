@@ -1,15 +1,15 @@
 ---
 title: Imports
-description: What a part of the tree may reach — allow, external, deny, and the two widening switches.
+description: Which files a part of the tree may import, and which files may import it.
 ---
 
-`imports` states what this node and everything under it may reach. It is the family that
-carries dependency-direction policy: which tiers may see which, and which may not.
+`imports` says what a node and everything under it may import. `importedBy` says the reverse:
+which files may import this one. Use them to set the direction dependencies flow between tiers.
 
 ```yaml
 "@/modules/{module}/domain/":
   imports:
-    message: "domain/ holds the model — no framework, no persistence, no bus."
+    message: "domain/ holds the model: no framework, no persistence."
     reset: true
     external: [effect]
     allow: ["@/modules/{module}/domain/**", "@/platform/ddd/contracts/**"]
@@ -18,45 +18,29 @@ carries dependency-direction policy: which tiers may see which, and which may no
         message: "Cross-module access goes through a port, not another module's barrel."
 ```
 
-| Field          | Meaning                                                                        |
-| -------------- | ------------------------------------------------------------------------------ |
-| `allow`        | repo-relative globs. A resolved target matching none of them is the violation. |
-| `external`     | npm package names. Omit to inherit; `[]` forbids every external.               |
-| `deny`         | prohibitions checked **before** `allow`, and winning over it.                  |
-| `message`      | what the allowlist means, shown when a target falls outside it.                |
-| `reset`        | stop inheriting ancestors' allowances.                                         |
-| `unrestricted` | this tier has no allowlist yet.                                                |
+## Fields
 
-## `allow` is an allowlist over resolved paths
+| Field          | Meaning                                                                              |
+| -------------- | ------------------------------------------------------------------------------------ |
+| `allow`        | repo-relative globs. An import whose target matches none is a violation.             |
+| `external`     | npm package names allowed. Omit to inherit the nearest ancestor's; `[]` forbids all. |
+| `deny`         | prohibitions, checked before `allow` and winning over it.                            |
+| `message`      | shown when a target falls outside `allow`.                                           |
+| `reset`        | `true`: stop inheriting ancestors' `allow` and `external`. Inherited `deny` stays.   |
+| `unrestricted` | `true`: this tier has no allowlist yet; only prohibitions apply. Implies `reset`.    |
 
-Every entry is matched against the **resolved** target — the real file the specifier names
-after `paths`, workspace links and package `exports` have been applied. A target matching
-no entry is the violation, which means widening is something you do by name, in the open,
-in a diff someone reviews.
+`allow` is matched against the resolved target: the real file after `paths`, workspace links
+and package `exports` are applied. `external` is matched by package name, so `effect` admits
+every subpath of the package. To forbid one subpath, `deny` its resolved path.
 
-Local and external targets are separate channels. `allow` governs files inside the
-repository; `external` governs npm packages, matched by package name:
+A node that states `imports` without `allow` must set `unrestricted: true`, or the manifest
+does not decode. An unrestricted tier still inherits every prohibition above it, and
+`grep unrestricted` lists your adoption backlog.
 
-```yaml
-external: [effect, "@effect-server-utils/cqrs"]
-```
+## `deny`
 
-`external: []` is meaningful and strong — _"this tier reaches no third-party code at all"_.
-Omitting `external` inherits the nearest ancestor's list, which is usually what you want:
-one tier states the runtime it is allowed to name, and its subtree lives with it.
-
-:::caution
-An `external` entry matches by package name, so `"effect"` admits every subpath the package
-publishes. If some subpath is off-limits to a tier that may otherwise use the package, that
-is a `deny` against its resolved path, not something the `external` list can express.
-:::
-
-## `deny` for a better message
-
-A prohibition is checked first and wins over `allow`. That is not about strictness — a
-target outside the allowlist is already refused — it is about the message. `deny` is how a
-rule keeps a specific, useful sentence for a mistake that the allowlist would otherwise
-report generically:
+A target outside `allow` is already refused, so write a `deny` when a specific mistake deserves
+its own message.
 
 ```yaml
 deny:
@@ -68,34 +52,48 @@ deny:
 
 | Field      | Meaning                                         |
 | ---------- | ----------------------------------------------- |
-| `match`    | the target this prohibits                       |
+| `match`    | targets this prohibits                          |
 | `matchNot` | targets carved back out of `match`              |
 | `except`   | **importers** the prohibition does not apply to |
 | `message`  | why                                             |
 
-`except` is the important asymmetry: an exemption to a prohibition is declared _by the
-prohibition_, in the same breath, never by the tier escaping it. A descendant cannot opt
-itself out of a rule an ancestor wrote. See
+A descendant cannot opt out of an ancestor's `deny`; only its own `except` and `matchNot` can.
+Prohibitions that hold everywhere go in the top-level `deny` list. See
 [Inheritance](/goodbones/architecture-rules/manifest/inheritance/).
 
-Prohibitions that hold everywhere go in the top-level `deny` array instead of on a node.
+## `importedBy`
 
-## The two widening switches
+Write `importedBy` beside the file you want to protect. Any file outside `allow` that imports
+it is a violation, reported against the importer.
 
-Both exist so that a loose tier is a sentence someone wrote rather than a gap nobody
-noticed, and both are greppable.
+```yaml
+"*.repository.ts":
+  importedBy:
+    message: "A repository is reached from a command handler, not from a query."
+    allow: ["@/modules/*/commands/**", "@/modules/*/event-handlers/**"]
+```
 
-**`reset: true`** stops inheriting ancestors' `allow` and `external`. A tier that is
-genuinely narrower than its parent — a domain layer inside an application package — states
-its own allowlist from scratch rather than trying to subtract. Inherited `deny` entries are
-unaffected: a prohibition only ever accumulates.
+Reach for it when your rule starts with "a repository is…" rather than "a command handler
+may…". A new tier is then refused by default, instead of needing a new outbound `deny`.
 
-**`unrestricted: true`** says _"this tier has no allowlist yet; only the prohibitions
-apply."_ It implies `reset`. It is **required** whenever a node states `imports` without an
-`allow` — you cannot leave the allowlist off silently. That is the point: `grep unrestricted`
-over a manifest is the adoption backlog, and the number should go down.
+| Field      | Meaning                                                                |
+| ---------- | ---------------------------------------------------------------------- |
+| `message`  | required. Why the restriction exists.                                  |
+| `allow`    | required. Globs matched against the **importing** file.                |
+| `matchNot` | files in this node's subtree, relative to its folder, left unprotected |
 
-:::note
-An `unrestricted` tier still inherits every prohibition above it, and is still covered by
-the top-level `deny`. It is untightened, not exempt.
+The typical `matchNot` is a module's barrel: the module is private except through `index.ts`.
+
+```yaml
+"@/modules/{module}/":
+  importedBy:
+    message: "A module is private. Cross-module access goes through its barrel."
+    allow: ["@/modules/**", "**/*.test.ts"]
+    matchNot: [index.ts]
+```
+
+:::caution
+A `{capture}` from the node's path cannot appear in `importedBy.allow`; the manifest is
+refused. Write `*` instead, as above. For "this module only", use an `imports.allow` on the
+importer's side, where captures work. Captures do work in `matchNot`.
 :::

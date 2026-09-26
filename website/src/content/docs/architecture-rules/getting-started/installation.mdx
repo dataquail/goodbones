@@ -1,127 +1,101 @@
 ---
 title: Installation
-description: Installing the plugin, wiring it into oxlint, a first manifest, and the editor reading it.
+description: Install the plugin and CLI, write a first manifest, and watch a rule fire.
 ---
 
-## Install
+import { Steps } from "@astrojs/starlight/components";
 
-Two installs, for the two ways the same policy is evaluated:
+Add a first policy to a TypeScript repository and watch it catch a bad import.
 
-```bash
-pnpm add -D @goodbones/oxlint   # the plugin: editor feedback and `oxlint` in CI
-pnpm add -D @goodbones/cli      # the `architecture` CLI: check, baseline, coverage, and the graph family
-```
+<Steps>
 
-Both pull in `@goodbones/core` (the manifest schema and the evaluators),
-`@goodbones/typescript` (the TypeScript language pack) and `@goodbones/campaigns` (the
-[campaigns family](/goodbones/campaigns/getting-started/introduction/), which the core does not
-own) transitively; you never install those directly until a second language pack exists. The pack parses files with
-[`oxc-parser`](https://www.npmjs.com/package/oxc-parser) and resolves modules with
-[`unrs-resolver`](https://www.npmjs.com/package/unrs-resolver); each ships its own native
-binary as a platform package, and there is nothing else to configure at the OS level.
+1. Install the oxlint plugin and the CLI:
 
-## Wire it into oxlint
+   ```bash
+   pnpm add -D @goodbones/oxlint   # editor and CI feedback through oxlint
+   pnpm add -D @goodbones/cli      # the `architecture` command
+   ```
 
-oxlint loads JS plugins with a bare dynamic `import()`, so the plugin is registered by
-specifier and its five rules are enabled by id:
+2. Enable the plugin's rules in `.oxlintrc.json`:
 
-```json
-// .oxlintrc.json
-{
-  "jsPlugins": [{ "name": "architecture", "specifier": "@goodbones/oxlint" }],
-  "rules": {
-    "architecture/imports": "error",
-    "architecture/exports": "error",
-    "architecture/members": "error",
-    "architecture/structure": "error",
-    "architecture/surface": "error",
-    "import/no-cycle": "error"
-  }
-}
-```
+   ```json
+   {
+     "jsPlugins": [{ "name": "architecture", "specifier": "@goodbones/oxlint" }],
+     "rules": {
+       "architecture/imports": "error",
+       "architecture/exports": "error",
+       "architecture/members": "error",
+       "architecture/structure": "error",
+       "architecture/surface": "error"
+     }
+   }
+   ```
 
-`import/no-cycle` is oxlint's own, and it owns the one check a per-file rule cannot make.
+   The plugin also has an `architecture/campaigns` rule; see
+   [Campaigns installation](/goodbones/campaigns/getting-started/installation/).
 
-The plugin reads the manifest from the repository root at module load — `architecture.yaml`
-by name, or one of the [other forms](/goodbones/architecture-rules/manifest/#formats) — which
-is also when it runs the [probe check](/goodbones/architecture-rules/enforcement/probes/). A
-malformed manifest or a vacuous rule fails there, loudly, rather than lowering to a policy
-that matches nothing.
+3. Write `architecture.yaml` at the repository root:
 
-## A first manifest
+   ```yaml
+   # yaml-language-server: $schema=https://dataquail.github.io/goodbones/schema/architecture.schema.json
+   resolve:
+     scopes:
+       - files: ""
+         language: typescript
+         options: { tsconfig: tsconfig.json }
+     unresolved: error
+   aliases:
+     "@": src
+   tree:
+     "@/domain/":
+       imports:
+         message: "domain/ may not reach the framework."
+         reset: true
+         external: [effect]
+         allow: ["@/domain/**"]
+       children:
+         "*.ts": {}
+   ```
 
-`architecture init` writes a starter: one open root, the adoption ceilings at zero, and a
-comment per section naming the page that explains it.
+   This says:
 
-```bash
-pnpm exec architecture init
-```
+   - `src/domain/` admits only `.ts` files.
+   - Files there may import only from `src/domain/` and `effect`. Anything else fails with the message.
+   - Every import in the repository must resolve to a file.
 
-Or start from the tree instead of a blank page: `architecture infer` describes what the
-repository does today as a manifest `check` already accepts, and the work is deleting from it.
-See [Starting from the tree](/goodbones/architecture-rules/getting-started/infer/).
+   Or run `pnpm exec architecture init` for a starter, or
+   [infer one](/goodbones/architecture-rules/getting-started/infer/) from your code.
 
-Or write one by hand. This is a complete policy:
+4. Plant a violation and watch it fail:
 
-```yaml
-# architecture.yaml
-# yaml-language-server: $schema=https://dataquail.github.io/goodbones/schema/architecture.schema.json
-resolve:
-  scopes:
-    - files: ""
-      language: typescript
-      options: { tsconfig: tsconfig.json }
-  unresolved: error
-aliases:
-  "@": src
-tree:
-  "@/domain/":
-    message: "domain/ is the model. It reaches nothing but itself."
-    imports:
-      message: "domain/ may not reach the framework."
-      reset: true
-      external: [effect]
-      allow: ["@/domain/**"]
-    children:
-      "*.ts": {}
-```
+   ```bash
+   echo 'import "express";' > src/domain/probe.ts
+   pnpm oxlint src
+   rm src/domain/probe.ts
+   ```
 
-It says four things:
+5. Run the CLI to check the whole repository, including the
+   [`graph`](/goodbones/architecture-rules/manifest/graph/) rules the plugin cannot see:
 
-- `src/domain/` admits `.ts` files and nothing else.
-- Files there may import from `src/domain/`, and from `effect`.
-- Anything else — another folder, another package — is refused with the message given.
-- Every import specifier in the repository must resolve to something.
+   ```bash
+   pnpm exec architecture check
+   ```
 
-## Verify it fires
+</Steps>
 
-Before trusting a new rule, plant the violation it exists to catch and watch it fail:
+## Errors at load
 
-```bash
-echo 'import "express";' > src/domain/probe.ts
-pnpm oxlint src
-rm src/domain/probe.ts
-```
+The plugin reads the manifest when oxlint starts. A malformed manifest stops the lint with every
+error at once, each naming its file, line and column. A rule that can no longer match anything
+also stops it; see [probes](/goodbones/architecture-rules/enforcement/probes/).
 
-This is the habit the whole package is built around, and it is automated two ways: the
-plugin's own load-time probe check, and the
-[`architecture` CLI](/goodbones/architecture-rules/enforcement/cli/).
+## Editor completion
 
-## The editor reads it too
+The first-line comment points your YAML extension (such as VS Code's) at the manifest's schema, so
+it completes keys and flags misspellings as you type.
 
-The first line of the manifest names its JSON Schema. Any editor with a YAML language server
-— VS Code's YAML extension, for one — completes every key from it and flags a misspelled one
-as you type, before the loader runs. The schema is generated from the codec that decodes the
-manifest, so what the editor accepts is what the loader accepts.
-
-What the editor misses, the loader reports with a file, line and column, and every issue at
-once rather than the first. A repository that would rather write the manifest as JavaScript
-can — see [Using a JavaScript manifest](/goodbones/architecture-rules/manifest/javascript/) —
-and gives up both of those to do so.
-
-## Build before you lint
-
-If you consume the plugin from a workspace package rather than from npm, the compiled
-output must exist before oxlint runs — oxlint imports JavaScript, and a stale build
-enforces a stale policy while still linting green. Make the build a `prelint` step rather
-than a convention.
+:::caution
+If you load the plugin from a workspace package instead of npm, build it before linting (for
+example in a `prelint` script). oxlint loads the compiled output, so a stale build enforces a stale
+policy and still passes.
+:::

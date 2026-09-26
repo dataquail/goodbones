@@ -1,79 +1,71 @@
 ---
 title: Objectives
-description: An objective is a detector, a granularity, probes, and a ledger that only shrinks on its own — and the holdout it declares decides what each ledger entry is.
+description: What an objective detects, what one ledger entry is, and how to prove it with probes.
 ---
 
-An objective is a detector, a granularity, probes, and a ledger that only shrinks on its own.
-It belongs to one campaign and is named by at most one phase; an objective no phase names is
-in window in every phase, from the legacy to the end — the campaign's standing measures.
+An objective is one thing a campaign tracks: a pattern to remove, something each sector must
+have, or a number to reach. Its [ledger](/goodbones/campaigns/running/ledger/) lists every
+place it still fires.
 
-| Field     | Meaning                                                                                                                                                     |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `holdout` | what one ledger entry is — `file`, `declaration`, `match` or `sector` — see [The holdout](#the-holdout)                                                     |
-| `match`   | a per-file detector: `all`, `any`, `not` over the [terms](/goodbones/campaigns/manifest/detectors/); evaluated by both hosts                                |
-| `sector`  | a term over the sector's files, instead of `match`: `has`, `oneRoot` or `oneHost` — see [Sector terms](/goodbones/campaigns/manifest/sectors/#sector-terms) |
-| `measure` | a number per sector, instead of either — see [Scalar objectives](/goodbones/campaigns/manifest/scalars/)                                                    |
-| `until`   | the phase at which the objective stops counting, exclusive — see [Windows](/goodbones/campaigns/manifest/phases/#windows)                                   |
-| `how`     | this objective's own message, over the campaign's                                                                                                           |
-| `probes`  | sources it must fire on and stay silent on — see [Probes](#probes); required with `match`                                                                   |
+```yaml
+objectives:
+  no-legacy-write:
+    holdout: match
+    match: { syntax: { pattern: "legacyBilling.write($$$)" } }
+    probes: { fires: [{ path: src/billing/a.ts, source: "legacyBilling.write(x)" }] }
+```
 
-Exactly one of `match`, `sector` and `measure`. Sharing one detector across campaigns goes
-through the manifest's `defs`/`use`; there is no top-level pool of objectives.
+## Fields
+
+Set exactly one of `match`, `sector` and `measure`.
+
+| Field        | Meaning                                                                                                                          |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `holdout`    | What one ledger entry is: `file`, `declaration`, `match` or `sector`. Required with `match` or `sector`.                         |
+| `match`      | A per-file detector: `all`, `any`, `not` over [terms](/goodbones/campaigns/manifest/detectors/).                                 |
+| `sector`     | A term over the whole sector: `has`, `oneRoot` or `oneHost`. See [Sectors](/goodbones/campaigns/manifest/sectors/#sector-terms). |
+| `measure`    | A number per sector. See [Scalar objectives](/goodbones/campaigns/manifest/scalars/).                                            |
+| `until`      | The phase at which the objective stops counting (exclusive). See [Phases](/goodbones/campaigns/manifest/phases/).                |
+| `how`, `why` | Override the campaign's message and rationale for this objective.                                                                |
+| `probes`     | Sources it must fire on, and stay silent on. Required with `match`.                                                              |
+
+An objective no phase names counts in every phase. Share a detector across campaigns with
+[`defs`/`use`](/goodbones/architecture-rules/manifest/organizing/).
 
 ## The holdout
 
-An objective declares what a holdout **is**, and that decides both what its ledger entries
-look like and what a term from another level means.
+`holdout` sets what one ledger entry is:
 
-| Holdout       | A holdout is…                   | Entry              | Fingerprint subject                                                    |
-| ------------- | ------------------------------- | ------------------ | ---------------------------------------------------------------------- |
-| `file`        | a whole file                    | `file`             | _(none)_                                                               |
-| `declaration` | a named declaration in the file | `file#Name`        | the declaration's name                                                 |
-| `match`       | one matched expression          | `file#Anchor#hash` | the enclosing declaration and a short hash of the matched text         |
-| `sector`      | the sector itself               | `~`                | _(none)_ — for a `sector` term: one while it fails, zero once it holds |
+| Holdout       | One entry is           | Ledger key         |
+| ------------- | ---------------------- | ------------------ |
+| `file`        | a whole file           | `file`             |
+| `declaration` | a named declaration    | `file#Name`        |
+| `match`       | one matched expression | `file#Anchor#hash` |
+| `sector`      | the sector itself      | `~`                |
 
-Entries are written relative to the sector's root — the marker's folder, the matched glob, the
-file's own folder, or the repository for the implicit sector and the legacy — so a lift from
-`hapi/src/billing/` to `nest/src/billing/` moves nothing in the ledger. Fingerprints anchor
-on declarations, never on positions, so an entry survives a reformat as a baseline entry does.
-A `match` entry's hash changes when the matched text changes; an edit elsewhere inside the
-same declaration leaves the anchor in place, and `check` treats the entry as the same one —
-`objectives clear` rewrites the hash without counting it as progress. A match at the top level
-of a file has no anchor and is keyed by its hash alone.
+Keys are relative to the sector's root, so moving a sector's folder changes no entries. A
+`match` key anchors on its enclosing declaration, so reformatting or editing elsewhere keeps
+the entry; if the matched text itself changes, `objectives clear` updates the hash without
+counting it as progress. A top-level match has no anchor and is keyed by its hash.
 
-Every term answers at one level. `path`, `imports`, `requires`, `content` and a `fn` that
-returns a boolean are statements about the **file**; `exports` and `members` are about a
-**declaration**; `syntax`, `report` and a `fn` that returns a list are about a **match**. The
-holdout decides what a term from another level means:
+### Mixing term levels
 
-- In a **`file`** objective every term is existential — _the file contains one_ — and `not`
-  is _contains none_. The objective yields at most one hit per file.
-- In a **`declaration`** or **`match`** objective, the candidates are what the declaration-
-  and match-level terms produce. A file-level term is a **filter** over all of them: true
-  admits every candidate, false admits none. A declaration-level term in a `match`
-  objective speaks to the match's anchor; a match-level term in a `declaration` objective
-  sources the declaration each match sits in.
-- `not` is the complement **within those candidates**. `all: [syntax A, not syntax B]` is
-  the declarations A matches that B does not. `not syntax B` alone is nothing at all —
-  there is no universe of "every other declaration" to draw from — and a probe will say
-  so at load.
+File-level terms are `path`, `imports`, `requires`, `content` and a boolean `fn`.
+Declaration-level terms are `exports` and `members`. Match-level terms are `syntax`, `report`
+and a list-returning `fn`.
+
+- In a `file` objective, each term means "the file contains one", and `not` means "contains
+  none".
+- In a `declaration` or `match` objective, declaration and match terms produce candidates, and
+  a file term keeps all of them or none. A declaration term in a `match` objective tests the
+  match's enclosing declaration; a match term in a `declaration` objective yields the
+  declaration it sits in.
+- `not` only removes candidates: `all: [syntax A, not syntax B]` works, but `not syntax B`
+  alone matches nothing and fails its probe.
 
 ## Probes
 
-Every `match` objective carries probes, and one that fails a probe refuses to load — the same
-vacuity check every rule makes, with a second half. `probes.fires` (at least one) are
-sources the objective must report; `probes.ignores` are sources it must stay silent on, and
-when one of those fires the error names the first leaf term that admitted it — which,
-for a detector that is composed, is the term to tighten. A `has` term's detector and a `match`
-perimeter's are proven the same way.
-
-A probe is a `path` — the file it stands for, which must be inside the campaign's own
-`scope` — and, for a detector that reads the file, a `source`: a snippet parsed by the
-scope's language and matcher at load. `edges` maps each specifier in the snippet to its
-target in place of the live resolver, in the same three forms `imports.resolves` takes, and
-`files` lists the siblings that exist in place of the file system. A detector holding a
-`content`, `syntax`, `exports`, `members` or `fn` term is refused at lowering if any of its
-probes has no `source`, since a path alone cannot exercise it.
+Probes prove a detector fires. If any probe fails, the policy refuses to load.
 
 ```yaml
 probes:
@@ -86,3 +78,16 @@ probes:
     - path: src/util.ts
       source: "export const x = 1;"
 ```
+
+| Field     | Meaning                                                                                                                                 |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `fires`   | Sources the objective must report. At least one.                                                                                        |
+| `ignores` | Sources it must not report. A failure names the term that let it through.                                                               |
+| `path`    | The file the probe stands for. Must be inside the campaign's `scope`.                                                                   |
+| `source`  | The file's contents. Required when the detector has a `content`, `syntax`, `exports`, `members` or `fn` term.                           |
+| `edges`   | Where each import in `source` resolves, in the three forms [`imports.resolves`](/goodbones/architecture-rules/manifest/imports/) takes. |
+| `files`   | Sibling files that exist, for `requires`.                                                                                               |
+| `report`  | Diagnostics a `report` term would return, with one-based positions.                                                                     |
+| `value`   | For a scalar, the number the file contributes.                                                                                          |
+
+`has` terms and `match` perimeters take probes the same way.

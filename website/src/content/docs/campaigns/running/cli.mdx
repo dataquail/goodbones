@@ -1,20 +1,30 @@
 ---
 title: Commands
-description: The campaign verbs of the architecture CLI — the status table, the nudge, attest, note, history, and the two ledger verbs, clear and concede.
+description: Command reference for the campaign verbs of the architecture CLI.
 ---
 
-Every campaign verb is a subcommand of the same `architecture` bin that runs `check` — see
-[The CLI](/goodbones/architecture-rules/enforcement/cli/) for how it finds the manifest and
-which roots it walks. `check` itself judges every campaign's objectives against their ledgers,
-and `explain <file>` prints the sector a file is in, its phase, and each objective's truth
-table for that file.
+Campaign commands are subcommands of the `architecture` bin (see
+[the CLI](/goodbones/architecture-rules/enforcement/cli/)). `check` also verifies every campaign
+against its ledgers, and `explain <file>` shows a file's sector, phase and each objective's result.
+
+| Command                      | What it does                                                                |
+| ---------------------------- | --------------------------------------------------------------------------- |
+| `campaigns`                  | status table: progress, owner, stalls, phases, per-objective burn-down      |
+| `campaigns status --changed` | [the nudge](/goodbones/campaigns/running/nudge/) for the current diff       |
+| `campaigns attest`           | record that a sector passed an attested phase                               |
+| `campaigns note`             | leave a remark on a sector for the next person                              |
+| `campaigns history`          | the ledgers' git history, one row per commit                                |
+| `objectives clear`           | reconcile the [ledgers](/goodbones/campaigns/running/ledger/) with the code |
+| `objectives concede`         | record why a count may rise                                                 |
+
+Every command takes optional roots to walk after its arguments. `campaigns clear` and
+`campaigns concede` are aliases for the `objectives` verbs. `campaigns init`, `prune` and `allow`
+were removed and are refused with a pointer to their replacement.
+
+Where a command records an author, it uses `--by <email>`, else git's `user.email`, else
+`GIT_AUTHOR_EMAIL`. `attest`, `note` and `concede` fail without one.
 
 ## `campaigns`
-
-The [campaigns](/goodbones/campaigns/getting-started/introduction/) the manifest declares.
-Alone, the status table — each campaign's progress, what is left, its owner, whether it is
-stalled or complete, the distribution of its sectors over its phases when it has any, and
-each objective's burn-down beneath:
 
 ```
 $ architecture campaigns
@@ -25,36 +35,71 @@ $ architecture campaigns
     throws-in-lowering   21%     15 left  4 cleared  2 conceded
 ```
 
-```bash
-architecture campaigns status --changed [--base <ref>] [--json] [--hotfix "<reason>"]   # the nudge
-architecture campaigns attest <sector> <phase> --reason "<why>" [--evidence <url>]      # a step no detector sees
-architecture campaigns note <sector> "<text>"                                           # a remark for the next touch
-architecture campaigns history [<campaign>] [--since <ref>] [--json]                    # the ledgers' git history
-```
-
-`status --changed` is [the nudge](/goodbones/campaigns/running/nudge/): per
-sector the diff touches, which campaign, what phase, what would move it on, and a verdict it
-exits non-zero on. `attest` and `note` write the sector's record; both take `--campaign <id>`
-when the policy declares more than one. `history` replays the ledgers' and the manifest's git
-history as a series. Roots follow the subcommand, as they do everywhere else.
-
-## `objectives`
-
-The [ledgers](/goodbones/campaigns/running/ledger/):
+## `campaigns status --changed`
 
 ```bash
-architecture objectives clear [<campaign>[/<objective>]]                                 # reconcile with the code
-architecture objectives concede <campaign>[/<objective>] --reason "<why>" [--by <email>]  # record why a count may rise
+architecture campaigns status --changed [--base <ref>] [--json] [--hotfix "<reason>"] [--by <email>]
 ```
 
-`clear` reconciles every ledger with the code wherever that is not a regression: stale
-holdouts leave, drifted ones are rewritten, a sector entering a window is recorded with its
-initial (which is how a first ledger is written), a sector past a window has its holdouts
-closed, a receipted phase change re-baselines, and each sector's `reached` and the plan are
-recorded. `concede` is the one way a holdout is added, and it always appends a concession —
-the holdouts, a reason, a timestamp and the author, which defaults to git's `user.email`;
-`--holdouts a,b` concedes a subset and leaves the rest failing, `--sector <name>` narrows to
-one sector. For a [scalar objective](/goodbones/campaigns/manifest/scalars/), `clear` writes an
-improved value as the new record and `concede` records a rise with its reason; `concede`
-refuses `--holdouts` there, since a number has none. `campaigns init`, `prune` and `allow`
-are refused by name.
+| Flag                  | Meaning                                                                      |
+| --------------------- | ---------------------------------------------------------------------------- |
+| `--changed`           | required                                                                     |
+| `--base <ref>`        | compare against this commit instead of the ledger and `HEAD`                 |
+| `--json`              | print the JSON document                                                      |
+| `--hotfix "<reason>"` | concede growth `ratchet` or `paydown` would refuse; verdict becomes `hotfix` |
+| `--by <email>`        | author of the hotfix concession                                              |
+
+Exits non-zero when any sector's verdict is `back` or `no-paydown`.
+
+## `campaigns attest`
+
+```bash
+architecture campaigns attest <sector> <phase> --reason "<why>" [--evidence <url>] [--by <email>] [--campaign <id>]
+```
+
+`--reason` is required. Accepted only while the sector is at that phase. Run `objectives clear`
+afterwards to move the sector on.
+
+## `campaigns note`
+
+```bash
+architecture campaigns note <sector> "<text>" [--by <email>] [--campaign <id>]
+```
+
+`attest` and `note` need `--campaign <id>` when the policy declares more than one campaign.
+
+## `campaigns history`
+
+```bash
+architecture campaigns history [<campaign>] [--since <ref>] [--json]
+```
+
+Walks the git history of the ledgers and manifest from `--since <ref>`, one row per commit.
+Without `<campaign>`, covers every campaign.
+
+## `objectives clear`
+
+```bash
+architecture objectives clear [<campaign>[/<objective>]] [--by <email>]
+```
+
+Reconciles every ledger, or just the one named: removes holdouts that stopped firing, rewrites
+drifted ones, records sectors entering a window, closes sectors leaving one, re-baselines after a
+phase concession, and writes each sector's `reached` and the plan. It never adds a holdout. For a
+[scalar objective](/goodbones/campaigns/manifest/scalars/), it records an improved value.
+
+## `objectives concede`
+
+```bash
+architecture objectives concede <campaign>[/<objective>] --reason "<why>" [--sector <name>] [--holdouts a,b] [--by <email>]
+```
+
+| Flag              | Meaning                                                                      |
+| ----------------- | ---------------------------------------------------------------------------- |
+| `--reason`        | required                                                                     |
+| `--sector <name>` | only this sector                                                             |
+| `--holdouts a,b`  | only these holdouts; the rest still fail. Alias `--entries`. Not for scalars |
+| `--by <email>`    | author                                                                       |
+
+Name the objective when the campaign has more than one. For a scalar objective, `concede` records
+the rise as `{ from, to }`.

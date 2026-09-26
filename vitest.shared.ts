@@ -40,6 +40,8 @@ const config: ViteUserConfig = {
       { find: /^@goodbones\/typescript$/, replacement: entry("typescript", "index") },
       { find: /^@goodbones\/ast-grep$/, replacement: entry("ast-grep", "index") },
       { find: /^@goodbones\/campaigns$/, replacement: entry("campaigns", "index") },
+      { find: /^@goodbones\/campaigns\/testing$/, replacement: entry("campaigns", "testing") },
+      { find: /^@goodbones\/browser$/, replacement: entry("browser", "index") },
     ],
   },
 };

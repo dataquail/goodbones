@@ -62,6 +62,7 @@ aliases:
   "@ox": packages/oxlint/src
   "@ag": packages/ast-grep/src
   "@camp": packages/campaigns/src
+  "@br": packages/browser/src
 
 # Which exported names may cross which edges — the family a path rule cannot
 # express, because every importer of a module resolves to the same file.
@@ -84,11 +85,12 @@ exports:
       - makeFactExtractorLive
       - makeReportSourceLive
       - astGrepMatcher
-    # The two hosts' composition roots; the barrels that re-export them; and
+    # The three hosts' composition roots; the barrels that re-export them; and
     # the pack, which is what assembles its own extractor and resolver.
     except:
       - "@cli/config-loader.ts"
       - "@ox/config-loader.ts"
+      - "@br/server/compose.ts"
       - "@core/index.ts"
       - "@ts/index.ts"
       - "@ag/index.ts"
@@ -102,7 +104,11 @@ exports:
     message: "A language pack is constructed where a host is composed, and handed down as the `Language` port. Nothing in between names TypeScript — which is what lets a second language be added without editing the core."
     module: "@ts/index.ts"
     symbols: [typescriptLanguage]
-    except: ["@cli/config-loader.ts", "@ox/config-loader.ts", "**/*.test.ts"]
+    except:
+      - "@cli/config-loader.ts"
+      - "@ox/config-loader.ts"
+      - "@br/server/compose.ts"
+      - "**/*.test.ts"
     probe:
       source: 'import { typescriptLanguage } from "@goodbones/typescript";'
       symbol: typescriptLanguage
@@ -160,6 +166,10 @@ graph:
         - "@camp/testing.ts"
         - "@cli/main.ts"
         - "@ox/plugin.ts"
+        - "@br/index.ts"
+        - "@br/main.ts"
+        # The page's island, mounted by an `.astro` file the walk does not see.
+        - "@br/app/components/Browser.tsx"
 
   reach:
     - name: pure-tiers-reach-no-adapter
@@ -180,6 +190,7 @@ graph:
         - "@camp/**"
         - "@cli/**"
         - "@ox/**"
+        - "@br/**"
 
     # The one line that proves the decoupling held: nothing in the core
     # reaches TypeScript, or either host, through any number of hops.
@@ -187,7 +198,7 @@ graph:
       message: "The core reaches no other package. A second language is a second pack that depends on the core; the core depends on none of them."
       from: "@core/**"
       fromNot: "**/*.test.ts"
-      to: ["@ts/**", "@ag/**", "@camp/**", "@cli/**", "@ox/**"]
+      to: ["@ts/**", "@ag/**", "@camp/**", "@cli/**", "@ox/**", "@br/**"]
 
     # The line that proves THIS decoupling held: the core does not know the
     # campaigns family exists, and the campaigns family knows no language, no
@@ -197,7 +208,7 @@ graph:
       message: "The campaigns family reaches the core and nothing else in this repository. It is a family the core does not own — composed by a host as a `PolicyExtension` — so a second such family is a second package that depends on the core, and on none of its peers."
       from: "@camp/**"
       fromNot: "**/*.test.ts"
-      to: ["@ts/**", "@ag/**", "@cli/**", "@ox/**"]
+      to: ["@ts/**", "@ag/**", "@cli/**", "@ox/**", "@br/**"]
 
     # The campaigns family's own hexagon: its pure tiers reach no live adapter
     # of its own, for the reason the core's do not reach the core's.
@@ -230,6 +241,25 @@ graph:
       message: "The two hosts answer to the same core, never to each other — so the plugin carries nothing of the CLI's into a lint run."
       from: "@ox/**"
       to: "@cli/**"
+
+    # The third host, held to the same line from both sides: the browsers
+    # are composed over the core, not over the CLI's or the plugin's glue.
+    - name: browser-never-reaches-another-host
+      message: "The browser is a third host over the same core. It reaches neither the CLI nor the plugin, so a change to either host's glue cannot change what the browsers draw."
+      from: "@br/**"
+      to: ["@cli/**", "@ox/**"]
+
+    - name: no-host-reaches-the-browser
+      message: "Nothing reaches the browser but the browser. Its page carries React and a bundler; neither belongs in a lint run or a CLI check."
+      from: ["@cli/**", "@ox/**", "@core/**", "@ts/**", "@ag/**", "@camp/**"]
+      to: "@br/**"
+
+    # The page runs in a browser: it may know the models' types and nothing
+    # of the server, whose modules need Node.
+    - name: page-reaches-no-server
+      message: "The page reaches no server module, through any number of hops. It runs in a browser; the server needs Node."
+      from: "@br/app/**"
+      to: "@br/server/**"
 
 # Fragments the tree below reuses, each by `use: <name>`. A key written beside
 # `use` overrides the fragment's; a list is never merged, so a package that
@@ -281,6 +311,7 @@ tree:
   "~/campaigns/": { include: packages/campaigns/architecture.yaml }
   "~/cli/": { include: packages/cli/architecture.yaml }
   "~/oxlint/": { include: packages/oxlint/architecture.yaml }
+  "~/browser/": { include: packages/browser/architecture.yaml }
 
 # Migrations this repository is running, each tracked as an object: a
 # detector, a rationale, a guide, a definition of done, and a ledger under

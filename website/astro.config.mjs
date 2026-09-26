@@ -124,6 +124,10 @@ export default defineConfig({
             },
           ],
         },
+        {
+          label: "Browser",
+          items: [{ slug: "browser/introduction" }],
+        },
       ],
     }),
   ],

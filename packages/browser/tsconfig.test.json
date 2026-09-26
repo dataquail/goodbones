@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "include": ["src/**/*.test.ts", "src/**/*.test-helper.ts"],
+  "exclude": ["src/app/**"],
+  "references": [{ "path": "tsconfig.src.json" }],
+  "compilerOptions": {
+    "types": ["node"],
+    "noEmit": true,
+    "outDir": "build/test",
+    "tsBuildInfoFile": ".tsbuildinfo/test.tsbuildinfo",
+    "paths": {}
+  }
+}

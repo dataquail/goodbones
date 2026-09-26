@@ -1,0 +1,26 @@
+{
+  // The packages this one imports by bare specifier, so `tsc -b` builds their
+  // declarations first: a bare `@goodbones/*` import resolves through the
+  // workspace link to `build/dts`, never through a path alias.
+  "references": [
+    { "path": "../core/tsconfig.build.json" },
+    { "path": "../typescript/tsconfig.build.json" },
+    { "path": "../ast-grep/tsconfig.build.json" },
+    { "path": "../campaigns/tsconfig.build.json" }
+  ],
+  "extends": "../../tsconfig.base.json",
+  // `src/app` is the Astro app, built by `astro build` into `build/site`; tsc
+  // never sees it. `tsconfig.app.json` typechecks its React components.
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/*.test-helper.ts", "src/app/**"],
+  "compilerOptions": {
+    "types": ["node"],
+    "outDir": "build/src",
+    "tsBuildInfoFile": ".tsbuildinfo/src.tsbuildinfo",
+    "rootDir": "src",
+    // No `@/*` alias here on purpose: Node loads this package's emitted
+    // JavaScript with bare imports, and tsc does not rewrite path aliases on
+    // emit. Relative specifiers are what actually run.
+    "paths": {}
+  }
+}

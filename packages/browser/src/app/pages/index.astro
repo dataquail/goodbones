@@ -1,0 +1,34 @@
+---
+import "../styles/theme.css";
+
+import { Browser } from "../components/Browser.js";
+
+// The one page: both browsers as a React island rendered in the browser only,
+// since everything they draw comes from `__goodbones/*` beside this file.
+---
+
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>goodbones browser</title>
+    <meta
+      name="description"
+      content="The Architecture Browser and the Campaign Browser: a repository's tree with its architecture.yaml laid over it, and every campaign's phases, sectors and holdouts."
+    />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <script is:inline>
+      try {
+        const held = window.localStorage.getItem("goodbones-theme");
+        if (held === "light" || held === "dark") document.documentElement.dataset.theme = held;
+        else if (window.matchMedia("(prefers-color-scheme: light)").matches)
+          document.documentElement.dataset.theme = "light";
+      } catch {}
+    </script>
+  </head>
+  <body>
+    <Browser client:only="react" />
+    <noscript>The goodbones browser needs JavaScript.</noscript>
+  </body>
+</html>

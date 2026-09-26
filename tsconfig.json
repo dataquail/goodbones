@@ -9,6 +9,7 @@
     { "path": "packages/campaigns" },
     { "path": "packages/cli" },
     { "path": "packages/oxlint" },
+    { "path": "packages/browser" },
     { "path": "e2e" }
   ]
 }

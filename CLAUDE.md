@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 An Nx + pnpm monorepo publishing architecture-policy tooling: a policy written as one manifest of
-the repository (`architecture.yaml`), enforced by an oxlint plugin and a CLI. Six packages,
+the repository (`architecture.yaml`), enforced by an oxlint plugin and a CLI. Seven packages,
 all under `packages/`:
 
 - **`@goodbones/core`** (`packages/core`) — the manifest schema, the evaluators for the five
@@ -33,8 +33,20 @@ all under `packages/`:
   port over `@ast-grep/napi`, for the `campaigns` family's `syntax` term. A host composes it into
   the TypeScript pack (`typescriptLanguage({ syntax: astGrepMatcher() })`); the pack never names it.
 - **`@goodbones/oxlint`** (`packages/oxlint`) — the plugin: six oxlint rules over the same manifest.
+- **`@goodbones/browser`** (`packages/browser`) — the third host: the Architecture Browser (the
+  tree with every edge drawn beside it and `architecture.yaml` rendered line for line, each file and
+  node lighting the other up) and the Campaign Browser (every campaign's ladder of phases,
+  objectives and sectors, with the ledgers, records and the working tree's nudge under the
+  pointer). An Astro page with two React islands, prebuilt into `build/site` by `astro build` and
+  served by the `goodbones-browser` bin from whichever repository it is run in, with a feed
+  (`__goodbones/events`, server-sent) that redraws the page when a source file, a manifest or a
+  ledger changes; `goodbones-browser build --out <dir>` writes a static snapshot. Its runtime
+  dependencies are the four packages above and nothing else — React and Astro are bundled or
+  dev-only — and it is laid out as `model/` (the two models, pure), `server/` (the composition
+  root, the walk, the routes, the watcher, the bin) and `app/` (the page). `pnpm --filter
+@goodbones/browser dev` runs `astro dev` over this repository with the routes mounted on Vite.
 
-Both hosts depend on the core, the pack and the campaigns family, and never on each other. `website/` is an Astro + Starlight
+The three hosts depend on the core, the pack and the campaigns family, and never on each other. `website/` is an Astro + Starlight
 docs site deployed to GitHub Pages at <https://dataquail.github.io/goodbones>.
 
 **The repository enforces its own architecture with the packages it publishes.**
@@ -148,8 +160,19 @@ fails at install, not at lint. The package has never been published and goes thr
 before any host version that depends on it is released, as `@goodbones/explorer` did.
 
 **`packages/oxlint/build/esm/plugin.js` is the plugin entrypoint**, the package's default export (and
-its `./plugin` subpath). `packages/cli/build/esm/main.js` is the `architecture` bin. Both are in the
+its `./plugin` subpath). `packages/cli/build/esm/main.js` is the `architecture` bin, and
+`packages/browser/build/esm/main.js` is the `goodbones-browser` bin. All three are in the
 `exports`/`bin` maps, so renaming or moving those source files is a breaking change.
+
+**The browser's page is built by Astro, not tsc, and the two must not see each other's files.**
+`packages/browser/src/app/` is Astro's `srcDir`; `tsconfig.src.json` and `tsconfig.build.json`
+exclude it, and `tsconfig.app.json` typechecks its `.tsx` with the DOM lib against the `src`
+project's declarations. `astro build` runs after `tsc -b` in the package's `build` script and
+writes `build/site`, which is in `files`; a stale or missing `build/site` is what the bin refuses
+to serve. The page never imports a server module (a `reach` rule says so): it fetches
+`__goodbones/*` relative to itself, so the served page and a static export are one build. Slack
+in the repo policy is at its ceiling: every allowance the browser's node states is used by a
+source file or a test, so adding one means using it.
 
 **The plugin must be built before any lint.** oxlint imports JavaScript, so a stale `build/` enforces a
 stale policy while still linting green, and a missing one fails every package's lint with "Failed to
@@ -168,7 +191,7 @@ Changing `paths` in one file and not the other is how rules silently stop resolv
 new folder under a `src/` that no node governs trips the taxonomy-root catch-all rather than being
 quietly unpoliced; a new package under `packages/` is a new `~/<name>/` node with its own import
 allowlist (written in `packages/<name>/architecture.yaml` and included from the root, like the
-five that exist), plus a `paths` pair in `tsconfig.base.json` and `tsconfig.resolve.json`, an entry in
+six that exist), plus a `paths` pair in `tsconfig.base.json` and `tsconfig.resolve.json`, an entry in
 `vitest.workspace.ts`, an alias in `vitest.shared.ts`, a reference in the root `tsconfig.json` and
 `tsconfig.build.json`, a `references` entry in each dependent's `tsconfig.src.json` _and_
 `tsconfig.build.json`, an alias in the root manifest, an entry in the `no-dead-modules` graph rule

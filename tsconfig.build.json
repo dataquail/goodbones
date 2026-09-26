@@ -10,6 +10,7 @@
     { "path": "packages/ast-grep/tsconfig.build.json" },
     { "path": "packages/campaigns/tsconfig.build.json" },
     { "path": "packages/cli/tsconfig.build.json" },
-    { "path": "packages/oxlint/tsconfig.build.json" }
+    { "path": "packages/oxlint/tsconfig.build.json" },
+    { "path": "packages/browser/tsconfig.build.json" }
   ]
 }

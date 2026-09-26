@@ -1,0 +1,17 @@
+{
+  // The Astro app's React components and their tests, typechecked against the
+  // DOM. `astro build` compiles them; this only checks them. The model types
+  // they render come through the `src` project's declarations.
+  "extends": "../../tsconfig.base.json",
+  "include": ["src/app/**/*.ts", "src/app/**/*.tsx"],
+  "references": [{ "path": "tsconfig.src.json" }],
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["react", "react-dom"],
+    "noEmit": true,
+    "outDir": "build/app",
+    "tsBuildInfoFile": ".tsbuildinfo/app.tsbuildinfo",
+    "paths": {}
+  }
+}

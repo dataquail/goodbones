@@ -1,6 +1,6 @@
 {
   "name": "@goodbones/browser",
-  "version": "0.1.0-beta.0",
+  "version": "0.1.0-beta.1",
   "type": "module",
   "license": "MIT",
   "description": "The Architecture Browser and the Campaign Browser for @goodbones: an Astro app, prebuilt and served by one bin, that draws a repository's tree with its architecture.yaml laid over it and every campaign's phases, sectors and holdouts — and redraws as the code changes.",

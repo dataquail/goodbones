@@ -24,6 +24,10 @@
   --orange-low: #3a2a12;
   --blue: #7aa6d6;
   --blue-low: #16232f;
+  --violet: #b59ae6;
+  --violet-low: #2a2138;
+  --gold: #d8bd5a;
+  --gold-low: #2f2812;
   --radius: 6px;
   --font:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -51,6 +55,10 @@
   --orange-low: #f7e8cf;
   --blue: #2f5f95;
   --blue-low: #dde8f5;
+  --violet: #6b46b0;
+  --violet-low: #ebe3f7;
+  --gold: #806300;
+  --gold-low: #f5edcc;
   color-scheme: light;
 }
 
@@ -341,6 +349,9 @@ button.small:hover {
 .legend .key.in::before {
   background: var(--blue);
 }
+.legend .key.both::before {
+  background: var(--violet);
+}
 .legend .key.refused::before {
   background: var(--red);
 }
@@ -348,7 +359,7 @@ button.small:hover {
   background: var(--green);
 }
 .legend .key.governed::before {
-  background: var(--orange);
+  background: var(--gold);
 }
 .legend .key.defined::before,
 .legend .key.open::before,
@@ -437,11 +448,6 @@ button.small:hover {
   color: var(--faint);
   font-size: 11px;
 }
-.row .node-mark {
-  color: var(--accent);
-  font-size: 11px;
-  margin-left: 4px;
-}
 .badge {
   margin-left: 6px;
   font-size: 10px;
@@ -457,34 +463,76 @@ button.small:hover {
 .row.selected {
   border-left-color: var(--accent);
 }
+/* What the focus touches, in the arcs' own colours; the rest recedes. */
 .row.dep {
-  background: var(--accent-low);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-left-color: var(--accent);
 }
-.row.dep .name {
-  color: var(--accent-high);
+.row.dep .name,
+.row.dep .chevron {
+  color: var(--accent);
 }
 .row.importer {
-  background: var(--blue-low);
+  background: color-mix(in srgb, var(--blue) 16%, transparent);
+  border-left-color: var(--blue);
 }
-.row.importer .name {
+.row.importer .name,
+.row.importer .chevron {
   color: var(--blue);
+}
+.row.both {
+  background: color-mix(in srgb, var(--violet) 18%, transparent);
+  border-left-color: var(--violet);
+}
+.row.both .name,
+.row.both .chevron {
+  color: var(--violet);
 }
 .row.within {
   background: var(--bg-2);
 }
 .row.sibling {
-  background: var(--green-low);
+  background: color-mix(in srgb, var(--green) 16%, transparent);
+  border-left-color: var(--green);
 }
 .row.sibling .name {
   color: var(--green);
 }
-.row.governed .name {
-  text-decoration: underline;
-  text-decoration-color: var(--orange);
-  text-underline-offset: 3px;
+.tree.focused
+  .row:not(.focus, .dep, .importer, .both, .sibling, .within, .governed, .selected)
+  .name {
+  opacity: 0.45;
 }
 .row.governed {
-  box-shadow: inset 0 0 0 1px var(--orange-low);
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
+}
+.row.governed .name {
+  text-decoration: underline;
+  text-decoration-color: var(--gold);
+  text-underline-offset: 3px;
+}
+
+/* The manifest node a folder declares, named as the manifest writes it. */
+.node-pill {
+  flex: none;
+  max-width: 24ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 10.5px;
+  line-height: 16px;
+  color: var(--gold);
+  background: var(--gold-low);
+  border: 1px solid transparent;
+}
+.node-pill.chain {
+  border-color: var(--gold);
+}
+.node-pill.governing {
+  color: var(--bg);
+  background: var(--gold);
 }
 
 .arcs {
@@ -578,11 +626,25 @@ button.small:hover {
   text-overflow: ellipsis;
 }
 .line .node-tag {
-  flex: none;
+  flex: 0 1 auto;
+  max-width: 38%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   margin-left: 12px;
+  padding: 0 6px;
+  border-radius: 8px;
   font-size: 10px;
-  color: var(--accent);
-  opacity: 0.7;
+  color: var(--gold);
+  opacity: 0.6;
+}
+.line .code {
+  flex: 1 0 45%;
+}
+.line.own .node-tag,
+.line.chain .node-tag,
+.line:hover .node-tag {
+  opacity: 1;
+  background: var(--gold-low);
 }
 .line:hover {
   background: var(--bg-2);
@@ -593,11 +655,11 @@ button.small:hover {
   font-weight: 600;
 }
 .line.own {
-  background: var(--bg-2);
-  border-left-color: var(--orange);
+  background: color-mix(in srgb, var(--gold) 9%, transparent);
+  border-left-color: var(--gold);
 }
 .line.chain {
-  border-left-color: var(--accent);
+  border-left-color: color-mix(in srgb, var(--gold) 55%, transparent);
 }
 .line.selected {
   background: var(--accent-low);
@@ -606,6 +668,39 @@ button.small:hover {
   text-decoration: line-through;
   text-decoration-color: var(--red);
   color: var(--muted);
+}
+
+/* the manifest's colours: places loudest, rule keys next, prose quietest */
+.tk-path-key {
+  color: var(--accent);
+}
+.tk-key {
+  color: var(--blue);
+}
+.tk-string {
+  color: var(--green);
+}
+.tk-literal,
+.tk-indicator {
+  color: var(--ink);
+}
+.tk-ref {
+  color: var(--ink);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.tk-punct {
+  color: var(--muted);
+}
+.tk-text {
+  color: var(--muted);
+}
+.tk-comment {
+  color: var(--faint);
+  font-style: italic;
+}
+.line.slack .code span {
+  color: inherit;
 }
 
 /* the detail ----------------------------------------------------------- */

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Atlas, AtlasNode, AtlasPosition } from "../../../model/atlas.js";
 import { Detail } from "./Detail.js";
 import { ManifestPane } from "./ManifestPane.js";
-import { arcsOf, initiallyExpanded, relationsOf, rowsOf } from "./rows.js";
+import { arcsOf, foldersRevealing, initiallyExpanded, relationsOf, rowsOf } from "./rows.js";
 import type { Selection } from "./selection.js";
 import { Tree } from "./Tree.js";
 
@@ -31,7 +31,16 @@ type Props = {
 };
 
 export const ArchitectureBrowser = ({ atlas, onSelect, selection }: Props): React.JSX.Element => {
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => initiallyExpanded(atlas));
+  // A link to a folder opens the tree down to it, and the folder itself.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => {
+    const linked = selectionOf(atlas, selection);
+    return new Set([
+      ...initiallyExpanded(atlas),
+      ...(linked === null || linked.kind === "node"
+        ? []
+        : foldersRevealing(atlas, linked.path, true)),
+    ]);
+  });
   const [filter, setFilter] = useState("");
   const [hoverRow, setHoverRow] = useState<string | null>(null);
   const [hoverNode, setHoverNode] = useState<string | null>(null);
@@ -48,6 +57,17 @@ export const ArchitectureBrowser = ({ atlas, onSelect, selection }: Props): Reac
   }, [atlas]);
 
   const selected = useMemo(() => selectionOf(atlas, selection), [atlas, selection]);
+
+  // Whatever is selected afterwards, from the detail pane or the hash, is
+  // brought on screen: the folders above it open, and nothing else.
+  const selectedPath = selected === null || selected.kind === "node" ? null : selected.path;
+  useEffect(() => {
+    if (selectedPath === null) return;
+    const reveal = foldersRevealing(atlas, selectedPath, false);
+    setExpanded((previous) =>
+      reveal.every((folder) => previous.has(folder)) ? previous : new Set([...previous, ...reveal]),
+    );
+  }, [atlas, selectedPath]);
   const nodes = useMemo(
     () => new Map(atlas.manifest.nodes.map((node) => [node.id, node] as const)),
     [atlas],
@@ -117,7 +137,11 @@ export const ArchitectureBrowser = ({ atlas, onSelect, selection }: Props): Reac
       : (files.get(focusRow)?.chain ?? (focusNode === null ? [] : chainOfNode(nodes, focusNode)));
   const governedBy: string | null = hoverNode ?? (selected?.kind === "node" ? selected.id : null);
 
-  const scrollTo: AtlasPosition | null = focusNode?.position ?? null;
+  // A node hovered in the manifest is already on screen. Scrolling to its
+  // anchor would put a different line under the pointer, which would hover a
+  // different node and scroll again, so only a focus from outside the
+  // manifest moves it.
+  const scrollTo: AtlasPosition | null = hoverNode === null ? (focusNode?.position ?? null) : null;
 
   const select = (next: Selection | null): void => {
     onSelect(textOf(next));
@@ -170,6 +194,8 @@ export const ArchitectureBrowser = ({ atlas, onSelect, selection }: Props): Reac
           focusIsFolder={focusIsFolder}
           relations={relations}
           governedBy={governedBy}
+          chain={chain}
+          nodes={nodes}
           selected={selected !== null && selected.kind !== "node" ? selected.path : null}
           onHover={setHoverRow}
           onToggle={toggle}
@@ -233,6 +259,7 @@ const Legend = (): React.JSX.Element => (
   <div className="legend">
     <span className="key out">imports</span>
     <span className="key in">imported by</span>
+    <span className="key both">both ways</span>
     <span className="key refused">refused</span>
     <span className="key sibling">owed sibling</span>
     <span className="key governed">governed by node</span>

@@ -137,18 +137,42 @@ export const arcsOf = (
   }));
 };
 
-// Every folder, for a tree that opens fully; or the folders down to a depth,
-// for one too large to.
-export const initiallyExpanded = (atlas: Atlas): ReadonlySet<string> => {
-  const open = atlas.files.length <= 600;
-  return new Set(
-    atlas.folders.filter((folder) => open || folder.depth < 2).map((folder) => folder.path),
-  );
+// The roots, open, and every folder under them collapsed: the tree starts
+// as a list of what the walk covers, and is opened from there.
+export const initiallyExpanded = (atlas: Atlas): ReadonlySet<string> =>
+  new Set(atlas.folders.filter((folder) => folder.depth === 0).map((folder) => folder.path));
+
+// The folders to open so a path's row is on screen: every folder above it,
+// and with `self`, the folder itself.
+export const foldersRevealing = (
+  atlas: Atlas,
+  path: string,
+  self: boolean,
+): ReadonlyArray<string> => {
+  const known = new Set(atlas.folders.map((folder) => folder.path));
+  const open: Array<string> = [];
+  let at = path.indexOf("/");
+  while (at !== -1) {
+    const above = path.slice(0, at);
+    if (known.has(above)) open.push(above);
+    at = path.indexOf("/", at + 1);
+  }
+  if (self && known.has(path)) open.push(path);
+  return open;
 };
 
 // What a focus on one row means for every other: the files it reaches, the
-// files that reach it, the siblings it owes, and the files under it.
-export type Relation = "focus" | "dep" | "importer" | "sibling" | "within" | null;
+// files that reach it, the files that do both, the siblings it owes, and the
+// files under it.
+export type Relation = "focus" | "dep" | "importer" | "both" | "sibling" | "within" | null;
+
+// A file reached one way and then the other is reached both ways.
+export const joinRelations = (held: Relation | undefined, next: "dep" | "importer"): Relation =>
+  held === undefined || held === null
+    ? next
+    : (held === "dep" && next === "importer") || (held === "importer" && next === "dep")
+      ? "both"
+      : held;
 
 export const relationsOf = (
   atlas: Atlas,
@@ -168,8 +192,8 @@ export const relationsOf = (
         relations.set(edge.from, "within");
         relations.set(edge.to, "within");
       }
-    } else if (fromIn && !relations.has(edge.to)) relations.set(edge.to, "dep");
-    else if (toIn && !relations.has(edge.from)) relations.set(edge.from, "importer");
+    } else if (fromIn) relations.set(edge.to, joinRelations(relations.get(edge.to), "dep"));
+    else if (toIn) relations.set(edge.from, joinRelations(relations.get(edge.from), "importer"));
   }
   if (!isFolder) {
     const file = atlas.files.find((one) => one.path === focus);

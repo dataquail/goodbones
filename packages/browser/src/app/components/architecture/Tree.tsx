@@ -1,5 +1,8 @@
-import type { AtlasEdge } from "../../../model/atlas.js";
+import { useEffect, useRef } from "react";
+
+import type { AtlasEdge, AtlasNode } from "../../../model/atlas.js";
 import type { Arc, Relation, Row } from "./rows.js";
+import { joinRelations } from "./rows.js";
 
 // The tree and its arcs: one row per visible file or folder, the edges drawn
 // in a lane beside them. Every arc is there, greyed; the ones touching the
@@ -16,6 +19,9 @@ type Props = {
   readonly focusIsFolder: boolean;
   readonly relations: ReadonlyMap<string, Relation>;
   readonly governedBy: string | null;
+  // The nodes governing the focus, outermost first, whose pills light up.
+  readonly chain: ReadonlyArray<string>;
+  readonly nodes: ReadonlyMap<string, AtlasNode>;
   readonly selected: string | null;
   readonly onHover: (path: string | null) => void;
   readonly onToggle: (folder: string) => void;
@@ -58,14 +64,20 @@ const rowRelation = (row: Row, relations: ReadonlyMap<string, Relation>): Relati
   const own = relations.get(row.path);
   if (own !== undefined) return own;
   if (row.kind === "folder" && !row.expanded) {
-    // A collapsed folder carries the strongest relation of what it hides.
+    // A collapsed folder carries the strongest relation of what it hides: a
+    // file of it reached each way, or files reached one way and the other,
+    // make the folder reached both ways.
     let best: Relation = null;
+    let edge: Relation = null;
     for (const [path, relation] of relations) {
       if (!path.startsWith(`${row.path}/`)) continue;
-      if (relation === "dep" || relation === "importer") return relation;
-      best ??= relation;
+      if (relation === "both") return "both";
+      if (relation === "dep" || relation === "importer") {
+        edge = joinRelations(edge ?? undefined, relation);
+        if (edge === "both") return "both";
+      } else best ??= relation;
     }
-    return best;
+    return edge ?? best;
   }
   return null;
 };
@@ -78,9 +90,11 @@ const isGoverned = (row: Row, governedBy: string | null): boolean =>
 
 export const Tree = ({
   arcs,
+  chain,
   focus,
   focusIsFolder,
   governedBy,
+  nodes,
   onHover,
   onSelect,
   onToggle,
@@ -89,17 +103,29 @@ export const Tree = ({
   selected,
 }: Props): React.JSX.Element => {
   const height = Math.max(rows.length, 1) * ROW;
+
+  // The selected row is brought on screen once its folders have opened; a
+  // row already visible, as one just clicked is, does not move.
+  const listRef = useRef<HTMLOListElement | null>(null);
+  const selectedVisible = selected !== null && rows.some((row) => row.path === selected);
+  useEffect(() => {
+    if (!selectedVisible || listRef.current === null) return;
+    const row = [...listRef.current.children].find(
+      (element) => (element as HTMLElement).title === selected,
+    );
+    row?.scrollIntoView({ block: "nearest" });
+  }, [selected, selectedVisible]);
   const classified = arcs
     .map((arc) => ({ arc, kind: classify(arc, focus, focusIsFolder) }))
     .sort((a, b) => ORDER[a.kind] - ORDER[b.kind]);
   return (
     <div
-      className="tree"
+      className={focus === null ? "tree" : "tree focused"}
       onMouseLeave={() => {
         onHover(null);
       }}
     >
-      <ol className="rows" style={{ height }}>
+      <ol className="rows" ref={listRef} style={{ height }}>
         {rows.map((row) => {
           const relation = rowRelation(row, relations);
           const classes = ["row", row.kind];
@@ -139,11 +165,21 @@ export const Tree = ({
                 {row.name}
                 {row.kind === "folder" ? "/" : ""}
               </span>
-              {row.kind === "folder" && row.folder.declares.length > 0 ? (
-                <span className="node-mark" title={`node: ${row.folder.declares.join(", ")}`}>
-                  §
-                </span>
-              ) : null}
+              {row.kind === "folder"
+                ? row.folder.declares.map((id) => {
+                    const pill = ["node-pill"];
+                    if (id === governedBy) pill.push("governing");
+                    else if (chain.includes(id)) pill.push("chain");
+                    // A key that only repeats the folder's name says nothing
+                    // the row does not; it is marked, and named in the title.
+                    const key = nodes.get(id)?.key ?? id;
+                    return (
+                      <span key={id} className={pill.join(" ")} title={`manifest node ${key}`}>
+                        {key === `${row.name}/` ? "§" : key}
+                      </span>
+                    );
+                  })
+                : null}
               {row.kind === "folder" && !row.expanded ? (
                 <span className="meta">{row.files}</span>
               ) : null}

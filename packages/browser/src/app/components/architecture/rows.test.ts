@@ -1,14 +1,39 @@
 import { describe, expect, it } from "vitest";
 
-import { atlas } from "./fixture.test-helper.js";
-import { arcsOf, initiallyExpanded, relationsOf, rowIndexOf, rowsOf } from "./rows.js";
+import { atlas, edge } from "./fixture.test-helper.js";
+import {
+  arcsOf,
+  foldersRevealing,
+  initiallyExpanded,
+  relationsOf,
+  rowIndexOf,
+  rowsOf,
+} from "./rows.js";
 
 // The tree's geometry: rows in the order a listing reads, arcs between the
 // rows the edges land on, and a collapsed folder standing in for its files.
 
+const everyFolder = (): ReadonlySet<string> =>
+  new Set(atlas().folders.map((folder) => folder.path));
+
+describe("initiallyExpanded", () => {
+  it("opens the roots and leaves every folder under them collapsed", () => {
+    expect([...initiallyExpanded(atlas())]).toEqual(["svc"]);
+  });
+});
+
+describe("foldersRevealing", () => {
+  it("opens every folder above a path, and the folder itself when asked", () => {
+    expect(foldersRevealing(atlas(), "svc/domain/repo.go", false)).toEqual(["svc", "svc/domain"]);
+    expect(foldersRevealing(atlas(), "svc/domain", false)).toEqual(["svc"]);
+    expect(foldersRevealing(atlas(), "svc/domain", true)).toEqual(["svc", "svc/domain"]);
+    expect(foldersRevealing(atlas(), "elsewhere/x.go", true)).toEqual([]);
+  });
+});
+
 describe("rowsOf", () => {
   it("lists folders before files, each alphabetically, walking into the expanded", () => {
-    const all = rowsOf(atlas(), initiallyExpanded(atlas()));
+    const all = rowsOf(atlas(), everyFolder());
     expect(all.map((row) => `${row.kind}:${row.path}`)).toEqual([
       "folder:svc",
       "folder:svc/adapters",
@@ -36,7 +61,7 @@ describe("rowsOf", () => {
 
 describe("arcsOf", () => {
   it("draws every edge between the rows it lands on, and folds hidden files onto their folder", () => {
-    const expanded = initiallyExpanded(atlas());
+    const expanded = everyFolder();
     const rows = rowsOf(atlas(), expanded);
     const at = rowIndexOf(rows, expanded);
     const arcs = arcsOf(atlas(), rows, expanded);
@@ -64,6 +89,18 @@ describe("arcsOf", () => {
 });
 
 describe("relationsOf", () => {
+  it("names a file reached both ways, whichever edge comes first", () => {
+    const both = {
+      ...atlas(),
+      edges: [...atlas().edges, edge("svc/main.go", "svc/adapters/pg.go")],
+    };
+    expect(relationsOf(both, "svc/main.go", false).get("svc/adapters/pg.go")).toBe("both");
+    const reversed = { ...both, edges: [...both.edges].reverse() };
+    expect(relationsOf(reversed, "svc/main.go", false).get("svc/adapters/pg.go")).toBe("both");
+    // A folder reached through one file each way is reached both ways too.
+    expect(relationsOf(both, "svc/domain", true).get("svc/main.go")).toBe("importer");
+  });
+
   it("names what a file reaches, what reaches it, and what it owes", () => {
     const withOwed = {
       ...atlas(),

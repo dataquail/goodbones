@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { Atlas, AtlasNode, AtlasPosition } from "../../../model/atlas.js";
+import { tokenizeLines } from "./yaml-tokens.js";
 
 // The manifest, rendered as it was written — every file `include` pulled in
 // under its own tab — with each node's lines addressable: the line a node
@@ -62,6 +63,7 @@ export const ManifestPane = ({
 
   const active = files.find((file) => file.path === tab) ?? files[0];
   const lines = useMemo(() => (active === undefined ? [] : active.text.split("\n")), [active]);
+  const tokens = useMemo(() => tokenizeLines(lines), [lines]);
   const anchors = useMemo(
     () => (active === undefined ? [] : anchorsOf(atlas.manifest.nodes, active.path, lines.length)),
     [active, atlas, lines.length],
@@ -167,7 +169,15 @@ export const ManifestPane = ({
               }
             >
               <span className="ln">{line}</span>
-              <span className="code">{text === "" ? " " : text}</span>
+              <span className="code">
+                {text === ""
+                  ? " "
+                  : (tokens[index] ?? []).map((token, at) => (
+                      <span key={at} className={`tk-${token.kind}`}>
+                        {token.text}
+                      </span>
+                    ))}
+              </span>
               {anchor !== undefined ? <span className="node-tag">{anchor.node.id}</span> : null}
             </li>
           );

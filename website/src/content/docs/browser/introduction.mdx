@@ -8,12 +8,13 @@ and redraws it as you edit. It has two views.
 
 **The Architecture Browser** is the tree diagram from the
 [Architecture Rules introduction](/goodbones/architecture-rules/getting-started/introduction/), for
-your repository. Every file and folder is a row; every import the resolver could follow is an arc
-beside the tree, greyed until you hover the file it belongs to. Then the file's imports come forward
-in the accent, the files that import it in ink, a refused edge in red, and the siblings it owes in
-green. On the right, `architecture.yaml` is rendered as written — each included file under its own
-tab — and the node governing the hovered file lights up; hover a line of the manifest and every file
-its node governs lights up in the tree. Click either to keep it, and the middle pane says what
+your repository. Every file and folder is a row, and every import the resolver could follow is a
+greyed arc beside the tree. Hover a file or folder and its arcs come forward: the files it imports
+turn orange, the files that import it blue, files reached both ways violet, a refused edge red, and
+the siblings it owes green. In the middle, `architecture.yaml` is rendered as written, each included
+file under its own tab, and the node governing the hovered file lights up in gold, as does its pill
+in the tree. Hover a line of the manifest and every file its node governs lights up. Click either to
+keep it, and the right-hand pane says what
 [`architecture explain`](/goodbones/architecture-rules/enforcement/cli/) would: what the file may
 import and which allowance admitted each edge, who imports it, what it owes, and every violation
 on it. An allowance no import uses is struck through where it was written.

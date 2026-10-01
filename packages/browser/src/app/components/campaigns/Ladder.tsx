@@ -230,7 +230,7 @@ export const Ladder = ({
                 markerEnd="url(#ladder-arrow)"
               />
             ) : null}
-            {phase !== undefined && !phase.defined && phase.intent !== null ? (
+            {phase !== undefined && phase.intent !== null ? (
               <text x={cx + 12} y={PHASE_Y + PHASE_H + 20} className="intent">
                 “{truncate(phase.intent, 26)}”
               </text>
@@ -241,7 +241,7 @@ export const Ladder = ({
                 PHASE_H +
                 14 +
                 j * (CHIP_H + CHIP_GAP) +
-                (phase !== undefined && !phase.defined ? 14 : 0);
+                (phase !== undefined && phase.intent !== null ? 14 : 0);
               const objectivePick: Pick = { kind: "objective", id: objective.id };
               return (
                 <g

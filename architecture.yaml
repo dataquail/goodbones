@@ -337,6 +337,7 @@ campaigns:
     # one sector), no phases. What the family's first shape was.
     objectives:
       throws-in-lowering:
+        intent: "A throw in the lowering is a failure `loadPolicy`'s caller cannot handle as a value."
         holdout: match
         match:
           all:
@@ -368,6 +369,7 @@ campaigns:
     onComplete: keep
     objectives:
       host-lines:
+        intent: "Every verb in one module is every verb in one review; the line count is how much of it is still there."
         measure: { lines: true }
         direction: down
         target: 1000

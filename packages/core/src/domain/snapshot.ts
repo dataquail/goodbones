@@ -210,6 +210,10 @@ export const SnapshotPhase = Schema.Struct({
     Schema.Boolean,
     "Whether the phase names criteria. An open phase has only an intent, and is last.",
   ),
+  attested: describe(
+    Schema.Boolean,
+    "Whether the phase is attested: no objective sees it done, and a sector leaves it by `campaigns attest`.",
+  ),
   sectors: describe(Schema.Finite, "How many sectors are derived to stand at this phase."),
 });
 

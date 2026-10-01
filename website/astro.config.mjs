@@ -111,6 +111,7 @@ export default defineConfig({
                 { slug: "campaigns/manifest/scalars" },
                 { slug: "campaigns/manifest/sectors" },
                 { slug: "campaigns/manifest/phases" },
+                { slug: "campaigns/manifest/attested" },
                 { slug: "campaigns/manifest/detectors" },
               ],
             },

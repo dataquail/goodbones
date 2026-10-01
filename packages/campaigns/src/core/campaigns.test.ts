@@ -43,7 +43,7 @@ const rule = (
     id: "o",
     campaign: "x",
     message: "Migrate it.",
-    why: "Because.",
+    intent: "Because.",
     holdout: unit,
     match: detect,
     probes: { fires: [], ignores: [] },

@@ -49,7 +49,8 @@ export type ObjectiveSectorCard = {
 export type ObjectiveCard = {
   readonly id: string;
   readonly message: string;
-  readonly why: string | null;
+  // The objective's own intent; `null` when it states none.
+  readonly intent: string | null;
   // `match`, `file`, `declaration`, `sector` — or `measure` for a scalar.
   readonly holdout: string;
   readonly phase: string | null;
@@ -249,7 +250,7 @@ export const campaignViewOf = (input: CampaignViewInput): CampaignView => {
       return {
         id: objective.id,
         message: objective.message,
-        why: objective.why,
+        intent: objective.intent,
         holdout: objective.measure !== null ? "measure" : (objective.holdout ?? "match"),
         phase: summary?.phase ?? null,
         position: position(["campaigns", rule.id, "objectives", objective.id]),

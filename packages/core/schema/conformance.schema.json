@@ -871,6 +871,10 @@
                   "type": "boolean",
                   "description": "Whether the phase names criteria. An open phase has only an intent, and is last."
                 },
+                "attested": {
+                  "type": "boolean",
+                  "description": "Whether the phase is attested: no objective sees it done, and a sector leaves it by `campaigns attest`."
+                },
                 "sectors": {
                   "type": "number",
                   "allOf": [
@@ -883,6 +887,7 @@
               "required": [
                 "id",
                 "defined",
+                "attested",
                 "sectors"
               ],
               "additionalProperties": false

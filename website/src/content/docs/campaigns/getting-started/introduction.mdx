@@ -37,6 +37,13 @@ later needs a recorded reason (see [Phases](/goodbones/campaigns/manifest/phases
 
 <CampaignFrontier />
 
+## Steps a detector cannot see
+
+Some steps are judged, not detected: a backfill that ran, invariants that moved into an
+aggregate. A phase with `attested: true` holds such a step, and a sector leaves it when someone
+records that it is done. The vocabulary was built for refactors that are mostly judgment, not
+only for import bans; [Attested phases](/goodbones/campaigns/manifest/attested/) writes one out.
+
 ## The smallest campaign
 
 One objective, no sectors, no phases. Goodbones runs this one on itself:

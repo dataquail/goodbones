@@ -276,6 +276,17 @@ const PhaseDetail = ({
           and the next step becomes clear.
         </p>
       ) : null}
+      {phase.attested ? (
+        <p className="muted">
+          An attested phase is not detected: no objective sees it done. A sector leaves it when
+          someone records that it is, with{" "}
+          <code>
+            architecture campaigns attest &lt;sector&gt; {phase.id} --reason "…" --campaign{" "}
+            {campaign.id}
+          </code>
+          .
+        </p>
+      ) : null}
       {phase.concessions > 0 ? (
         <p className="muted small">
           {phase.concessions} recorded change{phase.concessions === 1 ? "" : "s"} to this phase.
@@ -355,7 +366,8 @@ const ObjectiveDetail = ({
         {objective.phase === null ? " · in window everywhere" : ` · phase ${objective.phase}`}
         {objective.position === null ? "" : ` · ${at(objective.position)}`}
       </p>
-      <p className="message">{objective.why ?? objective.message}</p>
+      {objective.intent !== null ? <p className="message">“{objective.intent}”</p> : null}
+      <p className={objective.intent === null ? "message" : "muted"}>{objective.message}</p>
       {measure === null ? (
         <>
           <div

@@ -853,6 +853,7 @@ const CAMPAIGN_MANIFEST = `export default {
       staleAfter: "30d",
       objectives: {
         throws: {
+          intent: "Errors are returned, not thrown.",
           holdout: "match",
           match: { syntax: { pattern: "throw new Error($$$)" } },
           probes: {

@@ -1497,10 +1497,10 @@
                         {
                           "type": "object",
                           "properties": {
-                            "how": {
+                            "intent": {
                               "type": "string"
                             },
-                            "why": {
+                            "how": {
                               "type": "string"
                             },
                             "holdout": {

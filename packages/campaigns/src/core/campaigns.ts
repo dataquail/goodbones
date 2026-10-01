@@ -169,7 +169,9 @@ export type CompiledObjective = {
   readonly id: string;
   readonly campaign: string;
   readonly message: string;
-  readonly why: string | null;
+  // What this check is for, in a sentence; `null` when the objective states
+  // none. The campaign's `why` is the refactor's, and is carried by it.
+  readonly intent: string | null;
   // `null` for a scalar objective, which holds nothing out.
   readonly holdout: Holdout | null;
   // The unit a per-file detector answers at; `declaration` for the
@@ -489,7 +491,7 @@ export const compileObjective = (
     id: rule.id,
     campaign: rule.campaign,
     message: rule.message,
-    why: rule.why ?? null,
+    intent: rule.intent ?? null,
     holdout,
     unit: holdout === null || holdout === "sector" ? "declaration" : holdout,
     detect,

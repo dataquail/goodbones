@@ -18,7 +18,7 @@ phases:
 | Field         | Meaning                                                                                                |
 | ------------- | ------------------------------------------------------------------------------------------------------ |
 | `id`          | kebab-case                                                                                             |
-| `intent`      | what the phase is for, in prose. Required on an open phase; the nudge shows it                         |
+| `intent`      | what the phase is for, in prose. Shown wherever the phase is named; required on an open one            |
 | `objectives`  | the objective ids that recognize this phase                                                            |
 | `attested`    | `true` for a step no detector can see; left with `campaigns attest`                                    |
 | `onTouch`     | overrides the campaign's [`onTouch`](/goodbones/campaigns/running/nudge/) for this phase               |
@@ -50,13 +50,16 @@ The loader refuses an `until` naming an unknown phase, or one at or before the l
 
 ## Attested phases
 
-A phase with `attested: true` has no detector. You leave it with:
+A phase with `attested: true` has no detector: it is a step a person judges done, such as a
+backfill that ran or invariants that moved into an aggregate. A sector leaves it with:
 
 ```bash
 architecture campaigns attest <sector> <phase> --reason "<why>" [--evidence <url>]
 ```
 
-It is accepted only while the sector is at that phase.
+It is accepted only while the sector is at that phase. The nudge and `explain` name the phase as
+attested and print the command. [Attested phases](/goodbones/campaigns/manifest/attested/)
+writes out a refactor that is mostly judgment.
 
 ## Open phases
 

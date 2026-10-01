@@ -17,7 +17,7 @@ const objective = (
 ): CampaignCard["objectives"][number] => ({
   id,
   message: `fix ${id}`,
-  why: null,
+  intent: null,
   holdout: "file",
   phase,
   position: null,

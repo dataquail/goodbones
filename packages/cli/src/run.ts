@@ -987,14 +987,14 @@ export const explain = (
                 ? `${String(parts.of)} of ${String(parts.per)} here`
                 : `${String(valueOfParts(measure, parts))} here`;
             return [
-              `      ${objective.name} — ${firstSentence(objective.why ?? objective.message)} (measure, ${objective.direction}; ${here})`,
+              `      ${objective.name} — ${firstSentence(objective.intent ?? objective.message)} (measure, ${objective.direction}; ${here})`,
             ];
           }
           const table = explainObjective(objective, input);
           if (table.length === 0) return [];
           const fired = table.length > 0 && table.every((line) => line.answer);
           return [
-            `      ${objective.name} — ${firstSentence(objective.why ?? objective.message)} (${objective.holdout}; ${fired ? "fires here" : "no hit"})`,
+            `      ${objective.name} — ${firstSentence(objective.intent ?? objective.message)} (${objective.holdout}; ${fired ? "fires here" : "no hit"})`,
             ...table.map(
               (line) =>
                 `          ${line.answer ? "✓" : "✗"} ${line.term}${line.count === undefined ? "" : ` (${String(line.count)})`}`,
@@ -1156,6 +1156,7 @@ limits:
 #     perimeter: file
 #     objectives:
 #       is-ts:
+#         intent: A JavaScript file is one the strict compiler never checks.
 #         holdout: file
 #         match: { path: { file: "\\\\.(js|jsx)$" } }
 #         probes: { fires: [{ path: src/legacy/util.js }], ignores: [{ path: src/util.ts }] }

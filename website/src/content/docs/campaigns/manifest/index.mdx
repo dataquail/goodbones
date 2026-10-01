@@ -39,6 +39,7 @@ campaigns:
 
     objectives:
       no-io-in-domain:
+        intent: A domain module that reads the file system cannot be tested without one.
         holdout: declaration
         match:
           all:
@@ -46,9 +47,11 @@ campaigns:
             - members: { subject: calls, name: "readFileSync" }
         probes: { fires: [{ path: src/billing/domain/a.ts, source: "readFileSync('x')" }] }
       has-migration: # the sector is the holdout until one file matches
+        intent: A context without a migration has no table of its own to cut over to.
         holdout: sector
         sector: { has: { path: { file: "/migrations/.*\\.ts$" } } }
       no-legacy-write:
+        intent: A write to the legacy path after cutover is a row the new store never sees.
         holdout: match
         match: { syntax: { pattern: "legacyBilling.write($$$)" } }
         probes: { fires: [{ path: src/billing/a.ts, source: "legacyBilling.write(x)" }] }
@@ -61,7 +64,7 @@ Only `objectives` is required.
 | Field        | Meaning                                                                                                                                                                                                                            |
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `title`      | A display name.                                                                                                                                                                                                                    |
-| `why`        | The rationale. Printed by `explain` and `conformance`.                                                                                                                                                                             |
+| `why`        | The rationale for the refactor. Printed by `explain` and `conformance`. Each objective states its own [`intent`](/goodbones/campaigns/manifest/objectives/).                                                                       |
 | `how`        | What to do at a holdout. Every finding carries it unless the objective sets its own.                                                                                                                                               |
 | `owner`      | Who runs the campaign. Printed in the status table.                                                                                                                                                                                |
 | `scope`      | Globs of the files it sees (default: every file), as [`graph`](/goodbones/architecture-rules/manifest/graph/) takes. `{ path, extensions }` also widens the walk. See [Sectors](/goodbones/campaigns/manifest/sectors/#the-scope). |

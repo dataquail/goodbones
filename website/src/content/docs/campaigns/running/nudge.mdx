@@ -21,12 +21,32 @@ At a **defined phase**, it lists what is left and the holdouts nearest your chan
 ```
 billing-ddd
   billing — phase repository (2 of 6), 9 days here
+    intent: a repository behind a port
     toward the next phase: no-raw-queries-outside-repository 7 · has-integration-test 1
+      no-raw-queries-outside-repository — A query outside the repository is one the port cannot see.
+      has-integration-test — A context with no integration test cannot be cut over safely.
     in the files you touched, nearest your change (3 of 8):
       src/billing/InvoiceService.ts#reconcile:41  no-raw-queries-outside-repository
       src/billing/InvoiceService.ts#void:58       no-raw-queries-outside-repository
       src/billing/context.ts                      has-integration-test
     this diff: −no-raw-queries-outside-repository: InvoiceService.ts#refund#4b02a9e1  forward
+    onTouch: ratchet — ok
+    ask: hold — leave the sector no worse; paydown is welcome in its own commit, not asked for
+```
+
+The phase's `intent` is printed wherever one is stated, and each objective's own `intent`
+beside its count, so the why is read where the check is.
+
+At an **attested phase**, nothing is detected, so the sector is never quiet: the nudge names the
+phase as attested and prints the command that leaves it. See
+[Attested phases](/goodbones/campaigns/manifest/attested/).
+
+```
+billing-ddd
+  billing — phase backfilled (4 of 6, attested), 2 days here
+    intent: legacy rows copied and verified
+    this phase is attested, not detected: no objective sees it done. When it is, record it —
+      architecture campaigns attest billing backfilled --reason "…" [--evidence <url>] --campaign billing-ddd
     onTouch: ratchet — ok
     ask: hold — leave the sector no worse; paydown is welcome in its own commit, not asked for
 ```
@@ -114,9 +134,16 @@ its tolerance, and `paydown` treats it as `ratchet`. Scalars are listed under `m
         "index": 1,
         "of": 6,
         "open": false,
+        "attested": false,
         "since": "2026-09-22T00:00:00.000Z"
       },
       "intent": "a repository behind a port",
+      "objectives": [
+        {
+          "id": "no-raw-queries",
+          "intent": "A query outside the repository is one the port cannot see."
+        }
+      ],
       "notes": [],
       "onTouch": "ratchet",
       "ask": "hold",
@@ -149,6 +176,9 @@ its tolerance, and `paydown` treats it as `ratchet`. Scalars are listed under `m
 }
 ```
 
+- `intent`: the phase's, at any phase that states one; `objectives`: those in `toward`, each
+  with its own `intent` (`null` where it states none).
+- `phase.attested`: the sector waits on `campaigns attest`; nothing in the diff can move it.
 - `belongsInSector`: files the diff added inside the scope that no sector claims.
 - `unbirths`: markers the diff deleted, and the sector each returns to the legacy.
 - `testsChecked`: always `unknown`; the tool runs no tests.

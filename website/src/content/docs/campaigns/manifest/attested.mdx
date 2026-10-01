@@ -1,0 +1,155 @@
+---
+title: Attested phases
+description: A step no detector sees, left by a recorded judgment, with a refactor that is mostly judgment written out.
+---
+
+Not every step of a refactor is something a detector can see. "The backfill has run" is a fact
+about production. "The aggregate owns its invariants" is a judgment a reviewer makes by reading.
+A campaign holds such a step as an **attested phase**: a phase with `attested: true` and an
+`intent`, which no objective recognizes, and which a sector leaves when someone records that it
+is done.
+
+```yaml
+- id: behaviour-in-aggregate
+  intent: The invariants the services enforced now live in the aggregate, and a reviewer has read it.
+  attested: true
+```
+
+A sector at an attested phase stays there until:
+
+```bash
+architecture campaigns attest <sector> <phase> --reason "<what was checked>" [--evidence <url>]
+```
+
+The attestation is accepted only while the sector stands at that phase, so it cannot be recorded
+ahead and passed through on arrival. It is written to the
+[sector's record](/goodbones/campaigns/running/ledger/#the-sectors-record) with the reason, the
+evidence, the author and the date, and the next `objectives clear` moves the sector on.
+
+An attested phase is defined, not open: it sits anywhere in the ladder, and changing it (removing
+`attested`, giving it objectives) is a [change to a defined phase](/goodbones/campaigns/manifest/phases/#changing-a-defined-phase)
+that needs a concession.
+
+## Where it sits
+
+An attested phase does its work between two detected ones. The phase before it brings the sector
+to the point where the judgment can be made. The phase after it holds what the judgment should
+have produced, so an attestation made lightly shows up as holdouts there. The detectors bracket
+the judgment; the attestation is the judgment.
+
+## A refactor that is mostly judgment
+
+An anemic domain is one where the entities are bags of fields, a class per table with a getter
+and a setter per column, and every rule about them lives in a service that reads the fields,
+decides, and writes them back. Moving to a rich domain means moving those rules into the
+entities, so that an `Order` refuses to ship unpaid rather than relying on every service
+remembering to check.
+
+The refactor has detectable edges and a judgment in the middle:
+
+1. **The fields close.** An entity with public setters cannot own its invariants, because anyone
+   can set a field past them. A detector sees a setter.
+2. **The rules move.** Whether the invariants now live in the entity, all of them and the right
+   ones, is something a reader decides. No detector tells an aggregate that owns its rules from
+   one that merely holds its fields.
+3. **The services thin.** Once the entity owns its rules, a service that still assigns entity
+   fields is bypassing them. A detector sees the assignment.
+
+Written as a campaign, with one sector per aggregate folder:
+
+```yaml
+campaigns:
+  rich-domain:
+    title: Behaviour moves into the aggregates
+    why: Every invariant lives in a service today, so each new service is a new place to forget one.
+    how: Move the rule into the entity as a method, and have the service call it.
+    owner: "@your-org/domain"
+    scope: src/domain/**
+    perimeter: { glob: "src/domain/*/" }
+    onTouch: ratchet
+
+    phases:
+      - id: fields-closed
+        intent: Nothing outside the entity can put it in a state it would refuse.
+        objectives: [no-public-setters]
+      - id: behaviour-in-aggregate
+        intent: The invariants the services enforced now live in the aggregate, and a reviewer has read it.
+        attested: true
+      - id: services-thin
+        intent: A service asks the entity; it never reaches past it to the fields.
+        objectives: [no-field-writes-in-services]
+      - id: value-objects # open: the plan runs out here
+        intent: Money, quantities and identifiers become value objects, once the aggregates settle.
+
+    objectives:
+      no-public-setters:
+        intent: An entity with a public setter cannot own its invariants; anyone can set a field past them.
+        holdout: declaration
+        match:
+          all:
+            - path: { file: "/entities/" }
+            - syntax:
+                kind: method_definition
+                has: { kind: property_identifier, regex: "^set[A-Z]" }
+        probes:
+          fires:
+            - path: src/domain/orders/entities/order.ts
+              source: "export class Order { setStatus(s: string) { this.status = s; } }"
+          ignores:
+            - path: src/domain/orders/entities/order.ts
+              source: "export class Order { ship() { if (!this.paid) throw new NotPaid(); this.status = 'shipped'; } }"
+      no-field-writes-in-services:
+        intent: A service that assigns an entity's field is bypassing the rule the entity now owns.
+        holdout: match
+        match:
+          all:
+            - path: { file: "/services/" }
+            - syntax: { pattern: "$ENTITY.$FIELD = $VALUE" }
+        probes:
+          fires:
+            - path: src/domain/orders/services/shipping.ts
+              source: "export const ship = (order: Order) => { order.status = 'shipped'; };"
+          ignores:
+            - path: src/domain/orders/services/shipping.ts
+              source: "export const ship = (order: Order) => { order.ship(); };"
+```
+
+Every objective and every phase states its `intent`, so the why travels with the check: the
+nudge, `explain` and the browser print it beside the count.
+
+The sector `src/domain/orders` starts at `fields-closed`, with one holdout per entity that still
+has a setter. When its ledger for `no-public-setters` reaches zero, its derived phase becomes
+`behaviour-in-aggregate`, and it stays there. Nothing in a diff can move it, so the nudge is never
+quiet about it:
+
+```
+rich-domain
+  src/domain/orders — phase behaviour-in-aggregate (2 of 4, attested), 3 days here
+    intent: The invariants the services enforced now live in the aggregate, and a reviewer has read it.
+    this phase is attested, not detected: no objective sees it done. When it is, record it —
+      architecture campaigns attest src/domain/orders behaviour-in-aggregate --reason "…" [--evidence <url>] --campaign rich-domain
+    onTouch: ratchet — ok
+    ask: hold — leave the sector no worse; paydown is welcome in its own commit, not asked for
+```
+
+When the reviewer has read the aggregate:
+
+```bash
+architecture campaigns attest src/domain/orders behaviour-in-aggregate \
+  --reason "Order.ship, Order.cancel and Order.refund carry the three invariants ShippingService enforced" \
+  --evidence https://github.com/your-org/app/pull/412
+architecture objectives clear rich-domain
+```
+
+The sector moves to `services-thin`, where `no-field-writes-in-services` counts for it: every
+assignment a service still makes to an entity's field is a holdout, and the ledger only shrinks.
+A judgment made lightly shows here, as services that still write fields the entity was said to
+own.
+
+## What the attestation is
+
+- **A record.** Who, when, why and where the evidence is, committed beside the ledgers. `campaigns
+history` shows it as a step; the [browser](/goodbones/browser/introduction/) shows it on the
+  sector.
+- **Not a bypass.** The sector must stand at the phase, and the phases after it are detected.
+- **Progress.** An attestation resets the campaign's stall clock, as a `clear` does.

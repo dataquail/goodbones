@@ -236,7 +236,9 @@ export const ObjectiveRule = Schema.Struct({
   campaign: Schema.String,
   // The `how`: what a reader at a holdout does about it.
   message: Schema.String,
-  why: Schema.optionalKey(Schema.String),
+  // The objective's own `intent`: what this check is for, in a sentence.
+  // Never the campaign's `why`, so an objective that states none shows none.
+  intent: Schema.optionalKey(Schema.String),
   // Absent for a scalar objective, which holds nothing out.
   holdout: Schema.optionalKey(Holdout),
   match: Schema.optionalKey(Detector),
@@ -302,8 +304,9 @@ export const PhaseConcession = Schema.Struct({
 // A phase: a named, ordered group of objectives. Defined when it names one
 // (or is attested, or carries an end state); open when it has only an
 // intent, and then it is last. `hash` is the phase's definition — its
-// position, its objectives and their detectors — so a change to a defined
-// phase is visible against the plan the ledger recorded.
+// position, its objectives and their detectors, never its prose — so a
+// change to a defined phase is visible against the plan the ledger
+// recorded, and a reworded intent is not one.
 export const PhaseRule = Schema.Struct({
   id: Schema.String,
   intent: Schema.optionalKey(Schema.String),

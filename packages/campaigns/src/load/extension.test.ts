@@ -124,6 +124,18 @@ describe("loadPolicy with campaigns", () => {
     expect(stateOf(policy).ledgers.size).toBe(0);
   });
 
+  it("carries an objective's intent as its own, never the campaign's why, and refuses `why` on an objective", () => {
+    const intent = "A JavaScript file is one the strict compiler never checks.";
+    const stated = unwrap(load(one({ intent }), [go()]));
+    expect(stateOf(stated).campaignRules[0]?.objectives[0]?.intent).toBe(intent);
+    // An objective that states none shows none: the campaign's `why` is the
+    // refactor's, and is not handed down to be mistaken for the step's.
+    const silent = unwrap(load(one(), [go()]));
+    expect(stateOf(silent).campaignRules[0]?.objectives[0]?.intent).toBeNull();
+    const refused = load(one({ why: "Every service is Go." }), [go()]);
+    expect(Result.isFailure(refused) && refused.failure.message).toMatch(/why/);
+  });
+
   it("refuses the family's first shape by name", () => {
     const listed = load(withCampaigns([{ id: "x" }] as never), [go()]);
     expect(Result.isFailure(listed) && listed.failure.message).toMatch(
@@ -407,6 +419,38 @@ describe("loadPolicy with campaigns", () => {
       ["c", []],
     ]);
     expect(stateOf(policy).campaignRules[0]?.phases.every((phase) => phase.hash.length === 8)).toBe(true);
+  });
+
+  it("digests a phase's definition and not its prose: a reworded intent is no plan change", () => {
+    const hashesOf = (intent: string, extra: Record<string, unknown> = {}) =>
+      stateOf(
+        unwrap(
+          load(
+            withCampaigns({
+              "js-to-go": {
+                scope: ["svc/**"],
+                phases: [
+                  { id: "a", intent, objectives: ["port-it"] },
+                  { id: "b", intent: "no shim is left", objectives: ["no-shim"] },
+                ],
+                objectives: {
+                  "port-it": objective(),
+                  "no-shim": objective({
+                    match: { path: { file: "shim" } },
+                    probes: { fires: [{ path: "svc/shim.go" }] },
+                    ...extra,
+                  }),
+                },
+              },
+            }),
+            [go()],
+          ),
+        ),
+      ).campaignRules[0]?.phases.map((phase) => phase.hash);
+    expect(hashesOf("the files are Go")).toEqual(hashesOf("every file is Go"));
+    expect(hashesOf("the files are Go")).toEqual(
+      hashesOf("the files are Go", { intent: "A shim is a file that is Go in name only." }),
+    );
   });
 
   it("proves a match perimeter on a sector in its end shape, and refuses one proven only on the shape it leaves", () => {

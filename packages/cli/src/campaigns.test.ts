@@ -51,6 +51,7 @@ const MANIFEST = (
           { id: "domain", intent: "no I/O in the domain", objectives: ["no-io"] },
           {
             id: "repository",
+            intent: "a repository behind a port",
             objectives: repositoryObjectives,
             ...(concessions.length === 0 ? {} : { concessions }),
           },
@@ -69,6 +70,7 @@ const MANIFEST = (
             probes: { fires: [{ path: "src/a.ts", source: "readFileSync('x')" }] },
           },
           "no-knex": {
+            intent: "A knex call outside the repository is a query the port cannot see.",
             holdout: "match",
             match: { syntax: { pattern: "knex($$$)" } },
             probes: { fires: [{ path: "src/a.ts", source: "knex('x')" }] },
@@ -299,7 +301,7 @@ describe.sequential("a campaign with sectors and phases", () => {
   it("prints the phase distribution in the status table and the snapshot", async () => {
     const status = await capture(campaigns(await policyAt(), ["src"], []));
     expect(status.output).toContain(
-      "phases: domain 1 → repository 0 → dual-write 1 → backfilled 0 → cutover 0 → aggregates (open) 0  · legacy 1 file",
+      "phases: domain 1 → repository 0 → dual-write 1 → backfilled (attested) 0 → cutover 0 → aggregates (open) 0  · legacy 1 file",
     );
     const snapshot = await capture(
       conformance(await policyAt(), ["src"], {
@@ -315,12 +317,12 @@ describe.sequential("a campaign with sectors and phases", () => {
       }>;
     };
     expect(parsed.campaigns[0]?.phases).toEqual([
-      { id: "domain", defined: true, sectors: 1 },
-      { id: "repository", defined: true, sectors: 0 },
-      { id: "dual-write", defined: true, sectors: 1 },
-      { id: "backfilled", defined: true, sectors: 0 },
-      { id: "cutover", defined: true, sectors: 0 },
-      { id: "aggregates", defined: false, sectors: 0 },
+      { id: "domain", defined: true, attested: false, sectors: 1 },
+      { id: "repository", defined: true, attested: false, sectors: 0 },
+      { id: "dual-write", defined: true, attested: false, sectors: 1 },
+      { id: "backfilled", defined: true, attested: true, sectors: 0 },
+      { id: "cutover", defined: true, attested: false, sectors: 0 },
+      { id: "aggregates", defined: false, attested: false, sectors: 0 },
     ]);
     expect(parsed.campaigns[0]?.legacy).toEqual({ files: 1, holdouts: 1 });
     expect(parsed.campaigns[0]?.objectives.map((one) => [one.id, one.phase])).toEqual([
@@ -389,6 +391,39 @@ describe.sequential("a campaign with sectors and phases", () => {
     await capture(objectives(await policyAt("2026-10-03T00:00:00Z"), ["src"], ["clear"]));
     expect(sectorsOf("has-flag").orders).toMatchObject({ cleared: 1, holdouts: [] });
     expect(readJson("sectors/orders.json")).toMatchObject({ reached: "backfilled" });
+
+    // Touched while it waits on a hand, the sector is never quiet: the nudge
+    // names the phase as attested, states its intent, and prints the
+    // command that leaves it. `explain` says the same of a file in it.
+    const waiting = await capture(
+      campaigns(await policyAt(), ["src"], ["status", "--changed", "--json"]),
+    );
+    const waitingNudge = JSON.parse(waiting.output) as { sectors: Array<Record<string, unknown>> };
+    expect(waitingNudge.sectors.find((one) => one.sector === "orders")).toMatchObject({
+      phase: { id: "backfilled", index: 3, of: 6, open: false, attested: true },
+      intent: "rows copied",
+      objectives: [],
+      toward: {},
+    });
+    const waitingText = await capture(campaigns(await policyAt(), ["src"], ["status", "--changed"]));
+    expect(waitingText.output).toContain("orders — phase backfilled (4 of 6, attested)");
+    expect(waitingText.output).toContain("    intent: rows copied");
+    expect(waitingText.output).toContain(
+      "this phase is attested, not detected: no objective sees it done. When it is, record it —",
+    );
+    expect(waitingText.output).toContain(
+      'architecture campaigns attest orders backfilled --reason "…" [--evidence <url>] --campaign billing-ddd',
+    );
+    const explainedWaiting = await capture(
+      explain(await policyAt(), "src/orders/service.ts", ["src"]),
+    );
+    expect(explainedWaiting.output).toContain(
+      "campaign/billing-ddd: sector orders — phase backfilled (4 of 6, attested), reached backfilled",
+    );
+    expect(explainedWaiting.output).toContain("      intent: rows copied");
+    expect(explainedWaiting.output).toContain(
+      'attested, not detected: architecture campaigns attest orders backfilled --reason "…" --campaign billing-ddd',
+    );
 
     const early = await capture(
       campaigns(
@@ -499,7 +534,14 @@ describe.sequential("a campaign with sectors and phases", () => {
     expect(nudge.sectors[0]).toMatchObject({
       campaign: "billing-ddd",
       sector: "billing",
-      phase: { id: "repository", index: 1, of: 6, open: false },
+      phase: { id: "repository", index: 1, of: 6, open: false, attested: false },
+      // The phase's intent, and each objective's own beside its count —
+      // `null` where the objective states none, never the campaign's why.
+      intent: "a repository behind a port",
+      objectives: [
+        { id: "no-knex", intent: "A knex call outside the repository is a query the port cannot see." },
+        { id: "has-migration", intent: null },
+      ],
       onTouch: "ratchet",
       ask: "hold",
       verdict: "back",
@@ -518,7 +560,12 @@ describe.sequential("a campaign with sectors and phases", () => {
     ).toEqual(["refund", "voidIt", "reconcile", "~"]);
     const text = await capture(campaigns(await policyAt(), ["src"], ["status", "--changed"]));
     expect(text.output).toContain("billing — phase repository (2 of 6)");
+    expect(text.output).toContain("    intent: a repository behind a port");
     expect(text.output).toContain("toward the next phase: no-knex 3 · has-migration 1");
+    expect(text.output).toContain(
+      "      no-knex — A knex call outside the repository is a query the port cannot see.",
+    );
+    expect(text.output).not.toContain("has-migration —");
     expect(text.output).toContain("onTouch: ratchet — back");
     expect(text.output).toContain("ask: hold");
 

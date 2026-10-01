@@ -372,13 +372,12 @@ const lowerCampaign = (
     ([objectiveId, spec]) => {
       const name = `campaign/${id}/${objectiveId}`;
       const message = spec.how ?? campaign.how ?? `${objectiveId} (${id})`;
-      const why = spec.why ?? campaign.why;
       const base = {
         name,
         id: objectiveId,
         campaign: id,
         message,
-        ...(why === undefined ? {} : { why }),
+        ...(spec.intent === undefined ? {} : { intent: spec.intent }),
         ...(spec.holdout === undefined ? {} : { holdout: spec.holdout }),
         ...(spec.until === undefined ? {} : { until: spec.until }),
       };

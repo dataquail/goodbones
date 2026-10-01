@@ -252,10 +252,14 @@ const measureNeedsProbe = (measure: MeasureSpec): boolean => {
 // has a `measure` in place of both, a `direction`, a `tolerance` either side
 // of its record, and the `target` at which it is met.
 const Objective = Schema.Struct({
+  // What the objective is for, in a sentence: the why of this one check,
+  // which travels with it — the nudge, `explain` and the browser show it
+  // beside the objective. The campaign's `why` is the refactor's; this is
+  // the step's. Never inherited: an objective that states none shows none.
+  intent: Schema.optionalKey(Schema.String),
   // What a reader at a holdout does about it — the message every hit
   // carries; falls back to the campaign's.
   how: Schema.optionalKey(Schema.String),
-  why: Schema.optionalKey(Schema.String),
   holdout: Schema.optionalKey(Holdout),
   match: Schema.optionalKey(DetectorRef),
   sector: Schema.optionalKey(SectorTermSpec),
@@ -386,7 +390,10 @@ const PhaseConcessionSpec = Schema.Struct({
 const EndStateSpec = Schema.Record(Schema.String, Schema.Unknown);
 // A phase: a named, ordered group of objectives. Defined when it names one
 // (or is `attested`, or carries an `endState`); open when it has only an
-// intent, and then it is last.
+// intent, and then it is last. `intent` is what the phase is for, in a
+// sentence, on any phase: the nudge, `explain` and the browser show it
+// wherever they name the phase. Required only on an open one, where it is
+// all there is.
 const Phase = Schema.Struct({
   id: KebabId,
   intent: Schema.optionalKey(Schema.String),

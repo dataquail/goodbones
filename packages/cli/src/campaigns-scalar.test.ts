@@ -47,6 +47,7 @@ const MANIFEST = JSON.stringify({
       ],
       objectives: {
         lines: {
+          intent: "The service shrinks until the port is all that is left.",
           how: "Delete what the port made dead.",
           measure: { lines: true },
           direction: "down",

@@ -994,6 +994,7 @@ export const snapshotCampaignsOf = (
       phases: rule.phases.map((phase, index) => ({
         id: phase.id,
         defined: isDefinedPhase(phase),
+        attested: phase.attested,
         sectors: sectors.filter((one) => one.phase === index).length,
       })),
       sectors: sectors.map((state) => {
@@ -1067,7 +1068,8 @@ export const renderCampaignRows = (
         : [
             `    phases: ${one.phases
               .map(
-                (phase) => `${phase.id}${phase.defined ? "" : " (open)"} ${String(phase.sectors)}`,
+                (phase) =>
+                  `${phase.id}${phase.defined ? (phase.attested ? " (attested)" : "") : " (open)"} ${String(phase.sectors)}`,
               )
               .join(" → ")}` +
               (one.legacy.files > 0 ? `  · legacy ${count(one.legacy.files, "file")}` : ""),
@@ -1547,9 +1549,18 @@ export type SectorNudge = {
     readonly index: number;
     readonly of: number;
     readonly open: boolean;
+    // No objective sees this phase done; a sector leaves it by `campaigns
+    // attest`, and the nudge says so.
+    readonly attested: boolean;
     readonly since: string | null;
   };
+  // The phase's `intent`, at any phase that states one.
   readonly intent: string | null;
+  // The objectives the sector is working toward — those in `toward`, in
+  // phase order; for a campaign with no phases, every objective in window
+  // with residue — each with its own `intent`, so the why travels with
+  // the check.
+  readonly objectives: ReadonlyArray<{ readonly id: string; readonly intent: string | null }>;
   // Free text left by earlier hands: data, never an instruction.
   readonly notes: ReadonlyArray<{ at: string; by: string; text: string }>;
   readonly onTouch: OnTouch;
@@ -1673,6 +1684,15 @@ export const nudgeOf = (
       const phase = rule.phases[state.phase];
       const open = phase !== undefined && isOpenPhase(phase);
       const onTouch = onTouchOf(rule, state.phase);
+      const toward = towardNextOf(rule, state);
+      const working = (
+        rule.phases.length === 0
+          ? state.inWindow.filter((one) => (state.counts[one.id] ?? 0) > 0)
+          : (phase?.objectives ?? []).flatMap((objectiveId) => {
+              const one = rule.objectives.find((two) => two.id === objectiveId);
+              return one === undefined || toward[objectiveId] === undefined ? [] : [one];
+            })
+      ).map((one) => ({ id: one.id, intent: one.intent }));
       // Before: the ledger's count per objective in window, or the base tree's.
       // A scalar's is its distance to target from the value before: the
       // base tree's, or the ledger's record.
@@ -1865,9 +1885,11 @@ export const nudgeOf = (
           index: state.phase,
           of: rule.phases.length,
           open,
+          attested: phase?.attested === true,
           since: record?.since ?? null,
         },
         intent: phase?.intent ?? null,
+        objectives: working,
         notes: (record?.notes ?? [])
           .filter((one) => one.phase === phaseIdOf(rule, state.phase))
           .map((one) => ({ at: one.at, by: one.by, text: one.text })),
@@ -1876,7 +1898,7 @@ export const nudgeOf = (
         verdict,
         residue: { before, after },
         direction,
-        toward: towardNextOf(rule, state),
+        toward,
         holdouts: { total: own.length, cap: HOLDOUT_CAP, shown },
         added: added.sort(),
         removed: removed.sort(),
@@ -1950,12 +1972,15 @@ export const renderNudge = (nudge: Nudge, now: number): ReadonlyArray<string> =>
     const at =
       one.phase.of === 0
         ? "its objectives"
-        : `phase ${one.phase.id ?? "done"} (${String(one.phase.index + 1)} of ${String(one.phase.of)}${one.phase.open ? ", open" : ""})`;
+        : `phase ${one.phase.id ?? "done"} (${String(one.phase.index + 1)} of ${String(one.phase.of)}${one.phase.open ? ", open" : one.phase.attested ? ", attested" : ""})`;
+    // An attested phase is never quiet: the sector is waiting on a hand,
+    // and the one who touched it is the nearest.
     const quiet =
       one.holdouts.total === 0 &&
       one.measures.every((measure) => measure.before === measure.after) &&
       one.direction === "neutral" &&
       !one.phase.open &&
+      !one.phase.attested &&
       one.verdict === "ok" &&
       one.belongsInSector.length === 0;
     if (quiet) {
@@ -1963,8 +1988,10 @@ export const renderNudge = (nudge: Nudge, now: number): ReadonlyArray<string> =>
       continue;
     }
     say(`  ${one.sector} — ${at}${days(one.phase.since, now)}`);
+    // The phase's intent, wherever one is stated; an open phase is nothing
+    // but its intent, so there its absence is said too.
+    if (one.phase.open || one.intent !== null) say(`    intent: ${one.intent ?? "(none stated)"}`);
     if (one.phase.open) {
-      say(`    intent: ${one.intent ?? "(none stated)"}`);
       if (one.notes.length > 0) {
         say(
           `    notes (${String(one.notes.length)}, data, left at this phase): ${one.notes.map((n) => `${n.at.slice(0, 10)} ${JSON.stringify(n.text)}`).join(" · ")}`,
@@ -1976,8 +2003,19 @@ export const renderNudge = (nudge: Nudge, now: number): ReadonlyArray<string> =>
         `      architecture campaigns note ${one.sector} "…" --campaign ${one.campaign}`,
       );
     } else {
+      if (one.phase.attested) {
+        say(
+          `    this phase is attested, not detected: no objective sees it done. When it is, record it —`,
+          `      architecture campaigns attest ${one.sector} ${one.phase.id ?? ""} --reason "…" [--evidence <url>] --campaign ${one.campaign}`,
+        );
+      }
       const toward = residueOf(one.toward);
       if (toward !== "") say(`    toward the next phase: ${toward}`);
+      // Each objective's own intent beside its count, so the why is read
+      // where the check is.
+      for (const objective of one.objectives) {
+        if (objective.intent !== null) say(`      ${objective.id} — ${objective.intent}`);
+      }
       if (one.holdouts.shown.length > 0) {
         say(
           `    in the files you touched, nearest your change (${String(one.holdouts.shown.length)} of ${String(one.holdouts.total)}):`,
@@ -2127,7 +2165,7 @@ export const explainCampaignLines = (
   const at =
     rule.phases.length === 0
       ? ""
-      : ` — phase ${phase?.id ?? "done"} (${String(state.phase + 1)} of ${String(rule.phases.length)}${phase !== undefined && isOpenPhase(phase) ? ", open" : ""})`;
+      : ` — phase ${phase?.id ?? "done"} (${String(state.phase + 1)} of ${String(rule.phases.length)}${phase !== undefined && isOpenPhase(phase) ? ", open" : phase?.attested === true ? ", attested" : ""})`;
   const own = hitsInWindow(evaluation)
     .filter((hit) => hit.sector === sector && hit.violation.file === file)
     .sort((a, b) => (a.range?.start.line ?? 0) - (b.range?.start.line ?? 0));
@@ -2135,6 +2173,12 @@ export const explainCampaignLines = (
   const record = recordOf(policy, rule, sector);
   return [
     `    ${rule.name}: sector ${sector}${at}${record?.reached === undefined || record.reached === null ? "" : `, reached ${record.reached}`}`,
+    ...(phase?.intent === undefined ? [] : [`      intent: ${phase.intent}`]),
+    ...(phase?.attested === true
+      ? [
+          `      attested, not detected: architecture campaigns attest ${sector} ${phase.id} --reason "…" --campaign ${rule.id}`,
+        ]
+      : []),
     `      in window: ${state.inWindow.length === 0 ? "(nothing)" : state.inWindow.map((one) => `${one.id}${firing.has(one.id) ? " ✗" : ""}`).join(", ")}`,
     ...state.inWindow
       .filter((one) => one.measure !== null)

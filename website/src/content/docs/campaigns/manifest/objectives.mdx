@@ -10,6 +10,7 @@ place it still fires.
 ```yaml
 objectives:
   no-legacy-write:
+    intent: A write to the legacy path after cutover is a row the new store never sees.
     holdout: match
     match: { syntax: { pattern: "legacyBilling.write($$$)" } }
     probes: { fires: [{ path: src/billing/a.ts, source: "legacyBilling.write(x)" }] }
@@ -19,18 +20,23 @@ objectives:
 
 Set exactly one of `match`, `sector` and `measure`.
 
-| Field        | Meaning                                                                                                                          |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| `holdout`    | What one ledger entry is: `file`, `declaration`, `match` or `sector`. Required with `match` or `sector`.                         |
-| `match`      | A per-file detector: `all`, `any`, `not` over [terms](/goodbones/campaigns/manifest/detectors/).                                 |
-| `sector`     | A term over the whole sector: `has`, `oneRoot` or `oneHost`. See [Sectors](/goodbones/campaigns/manifest/sectors/#sector-terms). |
-| `measure`    | A number per sector. See [Scalar objectives](/goodbones/campaigns/manifest/scalars/).                                            |
-| `until`      | The phase at which the objective stops counting (exclusive). See [Phases](/goodbones/campaigns/manifest/phases/).                |
-| `how`, `why` | Override the campaign's message and rationale for this objective.                                                                |
-| `probes`     | Sources it must fire on, and stay silent on. Required with `match`.                                                              |
+| Field     | Meaning                                                                                                                          |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `holdout` | What one ledger entry is: `file`, `declaration`, `match` or `sector`. Required with `match` or `sector`.                         |
+| `match`   | A per-file detector: `all`, `any`, `not` over [terms](/goodbones/campaigns/manifest/detectors/).                                 |
+| `sector`  | A term over the whole sector: `has`, `oneRoot` or `oneHost`. See [Sectors](/goodbones/campaigns/manifest/sectors/#sector-terms). |
+| `measure` | A number per sector. See [Scalar objectives](/goodbones/campaigns/manifest/scalars/).                                            |
+| `until`   | The phase at which the objective stops counting (exclusive). See [Phases](/goodbones/campaigns/manifest/phases/).                |
+| `intent`  | What this check is for, in a sentence. Shown beside the objective by the nudge, `explain` and the browser; never inherited.      |
+| `how`     | What to do at a holdout. Overrides the campaign's `how` for this objective.                                                      |
+| `probes`  | Sources it must fire on, and stay silent on. Required with `match`.                                                              |
 
 An objective no phase names counts in every phase. Share a detector across campaigns with
 [`defs`/`use`](/goodbones/architecture-rules/manifest/organizing/).
+
+The campaign's `why` is the refactor's rationale; an objective's `intent` is the step's. Write
+one on every objective, so whoever meets a holdout reads why this check exists, not only what
+to do about it. An objective that states none shows none.
 
 ## The holdout
 

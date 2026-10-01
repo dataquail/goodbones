@@ -92,7 +92,7 @@ const SAMPLE: Snapshot = {
           ledgered: true,
         },
       ],
-      phases: [{ id: "hooks", defined: true, sectors: 1 }],
+      phases: [{ id: "hooks", defined: true, attested: false, sectors: 1 }],
       sectors: [
         {
           name: "scope",

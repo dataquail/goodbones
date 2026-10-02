@@ -405,7 +405,9 @@ describe.sequential("a campaign with sectors and phases", () => {
       objectives: [],
       toward: {},
     });
-    const waitingText = await capture(campaigns(await policyAt(), ["src"], ["status", "--changed"]));
+    const waitingText = await capture(
+      campaigns(await policyAt(), ["src"], ["status", "--changed"]),
+    );
     expect(waitingText.output).toContain("orders — phase backfilled (4 of 6, attested)");
     expect(waitingText.output).toContain("    intent: rows copied");
     expect(waitingText.output).toContain(
@@ -523,7 +525,9 @@ describe.sequential("a campaign with sectors and phases", () => {
         Record<string, unknown> & {
           holdouts: {
             total: number;
+            touched: number;
             shown: Array<{ line: number | null; subject: string | null }>;
+            sector: Array<{ objective: string; message: string }>;
           };
         }
       >;
@@ -539,7 +543,10 @@ describe.sequential("a campaign with sectors and phases", () => {
       // `null` where the objective states none, never the campaign's why.
       intent: "a repository behind a port",
       objectives: [
-        { id: "no-knex", intent: "A knex call outside the repository is a query the port cannot see." },
+        {
+          id: "no-knex",
+          intent: "A knex call outside the repository is a query the port cannot see.",
+        },
         { id: "has-migration", intent: null },
       ],
       onTouch: "ratchet",
@@ -552,12 +559,17 @@ describe.sequential("a campaign with sectors and phases", () => {
       },
       toward: { "no-knex": 3, "has-migration": 1 },
     });
-    // Nearest the change first: the new call, then the two above it, then
-    // the sector's own holdout.
+    // Nearest the change first: the new call, then the two above it. The
+    // sector's own holdout has no file, so it is listed apart and never
+    // among the files touched.
     expect(nudge.sectors[0]?.holdouts.total).toBe(4);
+    expect(nudge.sectors[0]?.holdouts.touched).toBe(3);
     expect(
       nudge.sectors[0]?.holdouts.shown.map((one) => one.subject?.split("#")[0] ?? "~"),
-    ).toEqual(["refund", "voidIt", "reconcile", "~"]);
+    ).toEqual(["refund", "voidIt", "reconcile"]);
+    expect(nudge.sectors[0]?.holdouts.sector).toEqual([
+      { objective: "has-migration", message: "Move the call behind the port." },
+    ]);
     const text = await capture(campaigns(await policyAt(), ["src"], ["status", "--changed"]));
     expect(text.output).toContain("billing — phase repository (2 of 6)");
     expect(text.output).toContain("    intent: a repository behind a port");
@@ -566,8 +578,16 @@ describe.sequential("a campaign with sectors and phases", () => {
       "      no-knex — A knex call outside the repository is a query the port cannot see.",
     );
     expect(text.output).not.toContain("has-migration —");
+    expect(text.output).toContain(
+      "    of the sector as a whole:\n      has-migration: Move the call behind the port.",
+    );
+    expect(text.output).toContain(
+      "in the files you touched, nearest your change (3 of 3; 4 in the sector):",
+    );
     expect(text.output).toContain("onTouch: ratchet — back");
     expect(text.output).toContain("ask: hold");
+    expect(text.output.trimEnd().endsWith("not ok")).toBe(true);
+    expect(text.output).not.toContain("testsChecked");
 
     const escaped = await capture(
       campaigns(
@@ -824,9 +844,9 @@ describe("an end state", () => {
   it("expands into the families it lowers to, and each sector's residue against its own root", async () => {
     process.env.ARCHITECTURE_NOW = "2026-10-01T00:00:00Z";
     const policy = await loadPolicy(endRoot);
-    expect(campaignsOf(policy).campaignRules[0]?.phases.map((one) => [one.id, one.objectives])).toEqual([
-      ["end", ["end-state-imports", "end-state-structure"]],
-    ]);
+    expect(
+      campaignsOf(policy).campaignRules[0]?.phases.map((one) => [one.id, one.objectives]),
+    ).toEqual([["end", ["end-state-imports", "end-state-structure"]]]);
     const { output } = await capture(
       checkWith(policy, ["src"], {
         format: "json",

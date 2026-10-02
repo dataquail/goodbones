@@ -116,6 +116,13 @@ export type Direction = "forward" | "back" | "mixed" | "neutral";
 // Forward means no dimension is worse and at least one is better; back the
 // reverse; anything else is mixed and is reported as such, never resolved
 // by a sum.
+export const directionOf = (better: boolean, worse: boolean): Direction => {
+  if (better && worse) return "mixed";
+  if (better) return "forward";
+  if (worse) return "back";
+  return "neutral";
+};
+
 export const compareResidue = (before: Residue, after: Residue): Direction => {
   let better = false;
   let worse = false;
@@ -125,10 +132,7 @@ export const compareResidue = (before: Residue, after: Residue): Direction => {
     if (to < from) better = true;
     if (to > from) worse = true;
   }
-  if (better && worse) return "mixed";
-  if (better) return "forward";
-  if (worse) return "back";
-  return "neutral";
+  return directionOf(better, worse);
 };
 
 // The dimensions that went back, by name.

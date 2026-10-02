@@ -129,6 +129,7 @@ export {
   compareResidue,
   derivePhase,
   type Direction,
+  directionOf,
   donePhaseOf,
   inWindow,
   isDefinedPhase,
@@ -227,6 +228,7 @@ export {
   readDiff,
   textAt,
 } from "./host/diff.js";
+export { ledgerPhaseOf } from "./host/ledger-phase.js";
 export {
   type Ask,
   type BaseSide,

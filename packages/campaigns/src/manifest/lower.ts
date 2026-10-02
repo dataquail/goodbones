@@ -24,6 +24,7 @@ import type {
   PhaseRule,
   SectorTerm,
 } from "../domain/config.js";
+import { digest } from "../domain/digest.js";
 import {
   type CampaignProbesSpec,
   type CampaignsManifest,
@@ -166,29 +167,6 @@ const endStateFamiliesOf = (
   return END_STATE_FAMILIES.filter((family) =>
     family === "structure" ? structure > 0 : lowered[family].length > 0,
   );
-};
-
-// A stable digest of a phase's definition — its position, its objectives
-// and their detectors — so a change to a defined phase is visible against
-// what the plan file recorded. FNV-1a over the canonical JSON.
-const digest = (value: unknown): string => {
-  const canonical = (one: unknown): unknown =>
-    Array.isArray(one)
-      ? one.map(canonical)
-      : isRecord(one)
-        ? Object.fromEntries(
-            Object.keys(one)
-              .sort()
-              .map((key) => [key, canonical(one[key])]),
-          )
-        : one;
-  const text = JSON.stringify(canonical(value));
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < text.length; i += 1) {
-    hash ^= text.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0).toString(16).padStart(8, "0");
 };
 
 // A campaign lowered: its globs resolved — `scope`, `legacy`, a perimeter's
@@ -654,10 +632,11 @@ const lowerCampaign = (
       }
     }
   }
-  const hashed = phases.map((phase, index) => ({
-    ...phase,
-    hash: digest({
-      index,
+  // What a phase asks: its objectives and their detectors, whether it is
+  // attested, its end state, what it grows — never its prose, and never
+  // where it sits, so a phase inserted before it changes nothing here.
+  const hashed = phases.map((phase) => {
+    const definition = {
       id: phase.id,
       attested: phase.attested,
       endState: phase.endState ?? null,
@@ -684,8 +663,9 @@ const lowerCampaign = (
               }),
         };
       }),
-    }),
-  }));
+    };
+    return { ...phase, definition, hash: digest(definition) };
+  });
   // The end is the last phase, so a change to it is a change to that
   // phase's hash already; a campaign with no phases has an end that is
   // every objective, digested as a phase of its own would be.

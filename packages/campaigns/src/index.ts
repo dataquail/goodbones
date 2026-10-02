@@ -206,7 +206,7 @@ export {
   snapshotCampaignsOf,
   widenedExtensions,
 } from "./host/campaigns.js";
-export { clear, type ClearOutcome } from "./host/clear.js";
+export { clear, type ClearOutcome, type SectorMove, sectorMovesOf } from "./host/clear.js";
 export {
   type Commit,
   commitOf,

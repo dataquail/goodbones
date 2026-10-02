@@ -303,10 +303,11 @@ export const PhaseConcession = Schema.Struct({
 
 // A phase: a named, ordered group of objectives. Defined when it names one
 // (or is attested, or carries an end state); open when it has only an
-// intent, and then it is last. `hash` is the phase's definition — its
-// position, its objectives and their detectors, never its prose — so a
-// change to a defined phase is visible against the plan the ledger
-// recorded, and a reworded intent is not one.
+// intent, and then it is last. `definition` is what the phase asks — its
+// objectives and their detectors, never its prose and never its position —
+// and `hash` its digest, so a change to a defined phase is visible against
+// the plan the ledger recorded, while a reworded intent, or a phase
+// inserted before it, is not one.
 export const PhaseRule = Schema.Struct({
   id: Schema.String,
   intent: Schema.optionalKey(Schema.String),
@@ -320,6 +321,9 @@ export const PhaseRule = Schema.Struct({
   // by the host that evaluates it.
   endState: Schema.optionalKey(Schema.Unknown),
   concessions: Schema.Array(PhaseConcession),
+  // Carried so a plan recorded when the hash still covered the position can
+  // be compared exactly; absent from a rule built by hand.
+  definition: Schema.optionalKey(Schema.Unknown),
   hash: Schema.String,
 });
 export type PhaseRule = (typeof PhaseRule)["Type"];

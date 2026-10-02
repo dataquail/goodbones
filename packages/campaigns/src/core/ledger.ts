@@ -2,7 +2,8 @@ import { type Standing, standingOf } from "@goodbones/core";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
-import type { CampaignUnit, MeasureDirection } from "../domain/config.js";
+import type { CampaignUnit, MeasureDirection, PhaseRule } from "../domain/config.js";
+import { digest } from "../domain/digest.js";
 import { type CompiledCampaign, roundMeasure } from "./campaigns.js";
 import { isDefinedPhase, type SectorPosition } from "./phases.js";
 import { IMPLICIT_SECTOR } from "./sectors.js";
@@ -840,6 +841,13 @@ export const sectorClockOf = (record: SectorRecord): string =>
 // The plan record: what `clear` last saw of the campaign's phases, so that
 // `check` can tell a change to a defined phase (which needs a concession)
 // from a refinement of an open one (which is free).
+//
+// A phase is recorded by what it asks, and the plan by the order its phases
+// stand in. So inserting a phase changes no other, and moving two phases
+// past each other changes the one that moved: the order is what a sector is
+// asked first. Version 1 recorded a hash that covered the phase's index;
+// such a record is compared exactly — the same digest, at the index it was
+// recorded at — until the next `clear` rewrites it as version 2.
 
 const PlanPhase = Schema.Struct({
   id: Schema.String,
@@ -849,7 +857,7 @@ const PlanPhase = Schema.Struct({
 });
 
 export const PlanRecord = Schema.Struct({
-  version: Schema.Literal(1),
+  version: Schema.Literals([1, 2]),
   campaign: Schema.String,
   phases: Schema.Array(PlanPhase),
 });
@@ -872,7 +880,7 @@ export const serializePlanRecord = (record: PlanRecord): string =>
   `${JSON.stringify(record, null, 2)}\n`;
 
 export const planOf = (rule: CompiledCampaign): PlanRecord => ({
-  version: 1,
+  version: 2,
   campaign: rule.id,
   phases: rule.phases.map((phase) => ({
     id: phase.id,
@@ -891,20 +899,69 @@ export type PlanDiff = {
   readonly unreceipted: ReadonlyArray<string>;
 };
 
+// What a version 1 plan recorded for a phase standing at `index`: the digest
+// of its definition with the index in it. A rule built by hand carries no
+// definition, and its hash stands in.
+const placedHashOf = (phase: PhaseRule, index: number): string =>
+  typeof phase.definition === "object" && phase.definition !== null
+    ? digest({ ...phase.definition, index })
+    : phase.hash;
+
+// The longest run of ids two orders agree on; what is outside it moved.
+const keptInOrder = (
+  before: ReadonlyArray<string>,
+  after: ReadonlyArray<string>,
+): ReadonlySet<string> => {
+  const lengths: Array<Array<number>> = before.map(() => after.map(() => 0));
+  const at = (i: number, j: number): number => lengths[i]?.[j] ?? 0;
+  for (let i = before.length - 1; i >= 0; i -= 1) {
+    for (let j = after.length - 1; j >= 0; j -= 1) {
+      const row = lengths[i];
+      if (row === undefined) continue;
+      row[j] = before[i] === after[j] ? at(i + 1, j + 1) + 1 : Math.max(at(i + 1, j), at(i, j + 1));
+    }
+  }
+  const kept = new Set<string>();
+  let i = 0;
+  let j = 0;
+  while (i < before.length && j < after.length) {
+    const id = before[i];
+    if (id !== undefined && id === after[j]) {
+      kept.add(id);
+      i += 1;
+      j += 1;
+    } else if (at(i + 1, j) >= at(i, j + 1)) i += 1;
+    else j += 1;
+  }
+  return kept;
+};
+
 export const planDiffOf = (rule: CompiledCampaign, recorded: PlanRecord | undefined): PlanDiff => {
   if (recorded === undefined) return { refined: [], changed: [], unreceipted: [] };
   const refined: Array<string> = [];
   const changed: Array<string> = [];
   const unreceipted: Array<string> = [];
+  // The phases both plans have, in each one's order: what stands outside
+  // their longest common run moved relative to the rest.
+  const stayed = keptInOrder(
+    recorded.phases.map((one) => one.id).filter((id) => rule.phases.some((one) => one.id === id)),
+    rule.phases.map((one) => one.id).filter((id) => recorded.phases.some((one) => one.id === id)),
+  );
   for (const phase of rule.phases) {
-    const before = recorded.phases.find((one) => one.id === phase.id);
+    const index = recorded.phases.findIndex((one) => one.id === phase.id);
+    const before = recorded.phases[index];
     if (before === undefined) {
       refined.push(phase.id);
       continue;
     }
-    if (before.hash === phase.hash) continue;
+    const asked =
+      recorded.version === 1
+        ? placedHashOf(phase, index) === before.hash
+        : before.hash === phase.hash;
+    if (asked && stayed.has(phase.id)) continue;
     if (!before.defined) {
-      refined.push(phase.id);
+      // An open phase is last wherever it is; only what it asks can change.
+      if (!asked) refined.push(phase.id);
       continue;
     }
     changed.push(phase.id);

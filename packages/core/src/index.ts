@@ -32,6 +32,7 @@ export {
   standingOf,
 } from "./core/bound.js";
 export {
+  countedFiles,
   type Coverage,
   type CoverageFamily,
   type CoverageFloors,

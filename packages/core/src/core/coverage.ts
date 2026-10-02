@@ -248,6 +248,20 @@ export const vacancyOf = (
   return [...entries.entries()].map(([node, written]) => ({ node, allowances: written.size }));
 };
 
+// The files the limits count: every walked file but those under a pattern
+// the policy's `limits.outside` names.
+export const countedFiles = (
+  files: ReadonlyArray<string>,
+  outside: ReadonlyArray<RegExp>,
+): ReadonlyArray<string> =>
+  outside.length === 0
+    ? files
+    : files.filter((file) => !outside.some((pattern) => pattern.test(file)));
+
+// A ceiling the policy states for itself, per family, on the files it does
+// not reach — a count, where a floor is a fraction.
+export type UnreachedCeilings = CoverageFloors;
+
 export const fractionOf = (covered: number, total: number): number =>
   total === 0 ? 1 : covered / total;
 

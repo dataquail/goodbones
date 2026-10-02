@@ -708,6 +708,37 @@
                 }
               ]
             },
+            "unreached": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Use"
+                },
+                {
+                  "$ref": "#/$defs/Include"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "imports": {
+                      "type": "number"
+                    },
+                    "structure": {
+                      "type": "number"
+                    },
+                    "members": {
+                      "type": "number"
+                    },
+                    "surface": {
+                      "type": "number"
+                    },
+                    "graph": {
+                      "type": "number"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            },
             "conformance": {
               "anyOf": [
                 {
@@ -733,6 +764,26 @@
                     }
                   },
                   "additionalProperties": false
+                }
+              ]
+            },
+            "outside": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/Include"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
                 }
               ]
             }

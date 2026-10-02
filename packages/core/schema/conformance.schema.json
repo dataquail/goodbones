@@ -47,6 +47,14 @@
         }
       ]
     },
+    "outside": {
+      "type": "number",
+      "allOf": [
+        {
+          "description": "Walked files under the manifest's `limits.outside`: judged by every rule, and left out of `coverage` and `residue`."
+        }
+      ]
+    },
     "ok": {
       "type": "boolean",
       "description": "What `check` would exit with: true when no reportable violation, unresolved import, stale baseline entry or coverage shortfall exists."
@@ -69,7 +77,7 @@
               "type": "number",
               "allOf": [
                 {
-                  "description": "Files walked."
+                  "description": "Files the limits count: those walked, less the ones under `limits.outside`."
                 }
               ]
             },
@@ -78,6 +86,14 @@
               "allOf": [
                 {
                   "description": "The fraction the manifest's `limits.coverage` states for this family, when it states one."
+                }
+              ]
+            },
+            "ceiling": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "The most files this family may leave unreached (`total - covered`), as the manifest's `limits.unreached` states it, when it states one."
                 }
               ]
             }
@@ -103,7 +119,7 @@
               "type": "number",
               "allOf": [
                 {
-                  "description": "Files walked."
+                  "description": "Files the limits count: those walked, less the ones under `limits.outside`."
                 }
               ]
             },
@@ -112,6 +128,14 @@
               "allOf": [
                 {
                   "description": "The fraction the manifest's `limits.coverage` states for this family, when it states one."
+                }
+              ]
+            },
+            "ceiling": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "The most files this family may leave unreached (`total - covered`), as the manifest's `limits.unreached` states it, when it states one."
                 }
               ]
             }
@@ -137,7 +161,7 @@
               "type": "number",
               "allOf": [
                 {
-                  "description": "Files walked."
+                  "description": "Files the limits count: those walked, less the ones under `limits.outside`."
                 }
               ]
             },
@@ -146,6 +170,14 @@
               "allOf": [
                 {
                   "description": "The fraction the manifest's `limits.coverage` states for this family, when it states one."
+                }
+              ]
+            },
+            "ceiling": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "The most files this family may leave unreached (`total - covered`), as the manifest's `limits.unreached` states it, when it states one."
                 }
               ]
             }
@@ -171,7 +203,7 @@
               "type": "number",
               "allOf": [
                 {
-                  "description": "Files walked."
+                  "description": "Files the limits count: those walked, less the ones under `limits.outside`."
                 }
               ]
             },
@@ -180,6 +212,14 @@
               "allOf": [
                 {
                   "description": "The fraction the manifest's `limits.coverage` states for this family, when it states one."
+                }
+              ]
+            },
+            "ceiling": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "The most files this family may leave unreached (`total - covered`), as the manifest's `limits.unreached` states it, when it states one."
                 }
               ]
             }
@@ -205,7 +245,7 @@
               "type": "number",
               "allOf": [
                 {
-                  "description": "Files walked."
+                  "description": "Files the limits count: those walked, less the ones under `limits.outside`."
                 }
               ]
             },
@@ -214,6 +254,14 @@
               "allOf": [
                 {
                   "description": "The fraction the manifest's `limits.coverage` states for this family, when it states one."
+                }
+              ]
+            },
+            "ceiling": {
+              "type": "number",
+              "allOf": [
+                {
+                  "description": "The most files this family may leave unreached (`total - covered`), as the manifest's `limits.unreached` states it, when it states one."
                 }
               ]
             }
@@ -1126,6 +1174,7 @@
     "manifest",
     "roots",
     "files",
+    "outside",
     "ok",
     "coverage",
     "conformance",

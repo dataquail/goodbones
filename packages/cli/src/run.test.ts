@@ -372,6 +372,82 @@ describe.sequential("coverage", () => {
     expect(output).toContain("coverage is below the floor");
     expect(output).toContain("imports: 40% covered, floor 50%");
   });
+
+  // A fraction moves when the tree does: deleting files a rule reached
+  // lowers it, though the policy reaches exactly what it did. The count of
+  // what is left unreached does not.
+  it("holds the files a family leaves unreached to a count, which deleting reached files cannot move", async () => {
+    const policy = await loadPolicy(repoRoot);
+    const capped = (imports: number) => ({
+      ...policy,
+      config: { ...policy.config, limits: { unreached: { imports } } },
+    });
+    const over = await captureReport(check(capped(2), ["src", "lib"]));
+    expect(Exit.isFailure(over.exit)).toBe(true);
+    expect(over.output).toContain(
+      "more files are unreached than the ceiling the policy states for itself:",
+    );
+    expect(over.output).toContain("  imports: 3 files unreached, ceiling 2");
+    const report = JSON.parse(
+      (await captureReport(check(capped(2), ["src", "lib"], "json"))).output,
+    ) as CheckReport;
+    expect(report.coverage.imports).toEqual({ covered: 2, total: 5, ceiling: 2 });
+    expect(report.ok).toBe(false);
+
+    const held = await captureReport(check(capped(3), ["src", "lib"]));
+    expect(held.output).not.toContain("more files are unreached");
+    // `lib` alone is the tree with every reached file deleted: 0% covered,
+    // where it was 40%, and still three files unreached.
+    const shrunk = await captureReport(check(capped(3), ["lib"]));
+    expect(shrunk.output).not.toContain("more files are unreached");
+    const floored = {
+      ...policy,
+      config: { ...policy.config, limits: { coverage: { imports: 0.4 } } },
+    };
+    expect((await captureReport(check(floored, ["src", "lib"]))).output).not.toContain(
+      "coverage is below the floor",
+    );
+    expect((await captureReport(check(floored, ["lib"]))).output).toContain(
+      "coverage is below the floor",
+    );
+
+    const text = await captureReport(coverage(capped(4), ["src", "lib"]));
+    expect(text.output).toMatch(/imports\s+2\/5\s+40%.*3 unreached ≤ 4 ✓, lower it to 3/);
+  });
+
+  it("leaves what `limits.outside` names out of every count the limits hold", async () => {
+    const policy = await loadPolicy(repoRoot);
+    const outside = {
+      ...policy,
+      config: {
+        ...policy.config,
+        limits: {
+          outside: ["lib/**", "etc/**"],
+          coverage: { imports: 1 },
+          unreached: { imports: 0 },
+          conformance: { residue: 0 },
+        },
+      },
+    };
+    const report = JSON.parse(
+      (await captureReport(check(outside, ["src", "lib", "etc"], "json"))).output,
+    ) as CheckReport;
+    // Six files walked, and judged; two counted.
+    expect(report.files).toBe(6);
+    expect(report.outside).toBe(4);
+    expect(report.coverage.imports).toEqual({ covered: 2, total: 2, floor: 1, ceiling: 0 });
+    // etc/stray.ts is still a file no family reaches, and no longer residue
+    // the limits hold.
+    expect(report.conformance.residue).toEqual({ count: 0, ceiling: 0 });
+    const { output } = await captureReport(check(outside, ["src", "lib", "etc"]));
+    expect(output).not.toContain("coverage is below the floor");
+    expect(output).not.toContain("more files are unreached");
+    expect(output).not.toContain("conformance is above the ceiling");
+
+    const text = await captureReport(coverage(outside, ["src", "lib", "etc"]));
+    expect(text.output).toContain("6 files under src, lib, etc, 4 files outside the limits");
+    expect(text.output).toMatch(/imports\s+2\/2\s+100%/);
+  });
 });
 
 describe.sequential("facts", () => {

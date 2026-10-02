@@ -22,6 +22,7 @@ import {
 } from "../core/ledger.js";
 import type { Residue as ResidueVector } from "../core/phases.js";
 import { campaignsOf } from "../load/extension.js";
+import { growsFor } from "./ledger-phase.js";
 import {
   count,
   describeValue,
@@ -123,7 +124,9 @@ export const campaignReportsOf = (
     // worse than the record past the tolerance is growth `concede` records;
     // better past it, progress `clear` records — each a line of the same
     // `new` and `stale` lists a holdout lands in, so `check` fails on them
-    // for the same reasons and says the same next step.
+    // for the same reasons and says the same next step. A rise in a phase
+    // that `grows` the objective is on the `clear` side: the plan expected
+    // it, and the ledger is only behind.
     const scalarReport = (objective: CompiledObjective): ObjectiveReport => {
       const ledger = measureLedgerOf(policy, rule, objective);
       const sectors: Array<SectorObjectiveReport> = [];
@@ -174,18 +177,21 @@ export const campaignReportsOf = (
         const standing = Number.isNaN(measured)
           ? "unmeasured"
           : measureStandingOf(ledger, name, measured, objective.tolerance);
-        const line = `measured ${describeValue(measured)}, recorded ${String(own.recorded)}`;
-        if (standing === "breached") {
+        const grown = standing === "breached" && growsFor(policy, rule, name, objective.id);
+        const line =
+          `measured ${describeValue(measured)}, recorded ${String(own.recorded)}` +
+          (grown ? " — a rise its phase grows" : "");
+        if (standing === "breached" && !grown) {
           scalarNew.push({ objective: objective.id, sector: name, entry: line });
         }
-        if (standing === "surpassed") {
+        if (standing === "surpassed" || grown) {
           scalarStale.push({ objective: objective.id, sector: name, entry: line });
         }
         sectors.push({
           sector: name,
           count: 0,
-          new: standing === "breached" ? [line] : [],
-          stale: standing === "surpassed" ? [line] : [],
+          new: standing === "breached" && !grown ? [line] : [],
+          stale: standing === "surpassed" || grown ? [line] : [],
           drifted: 0,
           unrecorded: false,
           arithmetic: measureLedgerArithmeticHolds(ledger),

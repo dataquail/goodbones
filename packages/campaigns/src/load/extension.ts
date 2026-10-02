@@ -487,12 +487,12 @@ const load = (
           ? `${failed.name} (${failed.expected} probe ${failed.probe.path} measured ${String(failed.measured)}, ` +
             `${failed.expected === "ignores" ? "not 0" : failed.probe.value === undefined ? "not above 0" : `not ${String(failed.probe.value)}`})`
           : failed.expected === "fires"
-          ? `${failed.name} (fires probe ${failed.probe.path} did not fire)`
-          : failed.expected === "end-shape"
-            ? `${failed.name} (no fires probe is a sector in its end shape — one that no objective ` +
-              `fires on — so the perimeter would un-birth the sector the moment its first phase was met)`
-            : `${failed.name} (ignores probe ${failed.probe.path} fired` +
-              (failed.admittedBy === undefined ? ")" : `, admitted by \`${failed.admittedBy}\`)`),
+            ? `${failed.name} (fires probe ${failed.probe.path} did not fire)`
+            : failed.expected === "end-shape"
+              ? `${failed.name} (no fires probe is a sector in its end shape — one that no objective ` +
+                `fires on — so the perimeter would un-birth the sector the moment its first phase was met)`
+              : `${failed.name} (ignores probe ${failed.probe.path} fired` +
+                (failed.admittedBy === undefined ? ")" : `, admitted by \`${failed.admittedBy}\`)`),
     ),
     ...endStateFailures,
   ];
@@ -524,7 +524,9 @@ export const campaignsExtension = (
 ): PolicyExtension<CampaignsManifest, CampaignPolicy> => ({
   id: CAMPAIGNS_EXTENSION_ID,
   manifestKeys: ["campaigns", "ledger"],
-  decode: (slice: Readonly<Record<string, unknown>>, describe: (path: ManifestPath, detail: string) => string) =>
-    decodeCampaigns(slice, describe),
+  decode: (
+    slice: Readonly<Record<string, unknown>>,
+    describe: (path: ManifestPath, detail: string) => string,
+  ) => decodeCampaigns(slice, describe),
   load: (context) => load(options, context),
 });

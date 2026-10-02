@@ -122,6 +122,9 @@ and a `direction`, and stores numbers instead of holdouts:
 
 - `clear` moves `recorded` when the value improves past the tolerance, adding to `improved`.
 - `concede` moves it when the value worsens past the tolerance, recording `{ from, to }`.
+- `clear` does the same, on its own, for a sector standing in a phase that
+  [`grows`](/goodbones/campaigns/manifest/phases/#a-phase-that-grows) the objective. The
+  concession's reason names the phase.
 - `closed` is the value when the sector left the window. Values are rounded to six decimals.
 - A ledger whose `kind` or `direction` no longer matches the manifest is refused.
 

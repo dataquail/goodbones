@@ -72,9 +72,7 @@ export const decodeCampaigns = (
   const decoded = decode(slice);
   if (Result.isFailure(decoded)) {
     return Result.fail(
-      flatten(decoded.failure.issue).issues.map((issue) =>
-        describe(pathOf(issue), issue.message),
-      ),
+      flatten(decoded.failure.issue).issues.map((issue) => describe(pathOf(issue), issue.message)),
     );
   }
   return Result.succeed(decoded.success);

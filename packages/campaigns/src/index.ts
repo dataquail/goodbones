@@ -131,6 +131,7 @@ export {
   type Direction,
   directionOf,
   donePhaseOf,
+  growsAt,
   inWindow,
   isDefinedPhase,
   isOpenPhase,
@@ -218,7 +219,7 @@ export {
   readDiff,
   textAt,
 } from "./host/diff.js";
-export { ledgerPhaseOf } from "./host/ledger-phase.js";
+export { growsFor, ledgerPhaseOf } from "./host/ledger-phase.js";
 export { HOLDOUT_CAP } from "./host/ledgers.js";
 export {
   type Ask,

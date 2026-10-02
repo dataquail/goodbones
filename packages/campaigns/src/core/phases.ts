@@ -108,6 +108,11 @@ export const onTouchOf = (rule: CompiledCampaign, phase: number): OnTouch => {
   );
 };
 
+// Whether a phase expects a scalar objective to rise: `grows` on the phase.
+// For a sector standing there a rise is recorded, not refused.
+export const growsAt = (rule: CompiledCampaign, phase: number, objectiveId: string): boolean =>
+  rule.phases[phase]?.grows?.includes(objectiveId) ?? false;
+
 // The residue vector: one dimension per objective in window, never summed.
 export type Residue = Readonly<Record<string, number>>;
 

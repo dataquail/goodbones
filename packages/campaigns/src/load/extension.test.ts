@@ -252,7 +252,9 @@ describe("loadPolicy with campaigns", () => {
     const malformed = makeFileSystemFake([], {
       "ledgers/js-to-go/port-it.json": '{"sectors": {}}',
     });
-    const outcome = load(withCampaigns({ "js-to-go": campaign() }, "ledgers"), [go()], { files: malformed });
+    const outcome = load(withCampaigns({ "js-to-go": campaign() }, "ledgers"), [go()], {
+      files: malformed,
+    });
     expect(Result.isFailure(outcome) && outcome.failure.message).toMatch(
       /the ledger ledgers\/js-to-go\/port-it.json does not decode/,
     );
@@ -329,6 +331,72 @@ describe("loadPolicy with campaigns", () => {
       /holdout is `file`, `declaration` or `match`/,
     );
     expect(detailOf(one({ probes: { fires: [] } }))).toMatch(/at least one source it must report/);
+  });
+
+  // `grows` loosens a ratchet, so it is held to what it can mean.
+  it("holds a phase's `grows` to a scalar in window at a phase with an end", () => {
+    const ladder = (phases: ReadonlyArray<unknown>, shims: Record<string, unknown> = {}) =>
+      withCampaigns({
+        "js-to-go": {
+          scope: ["svc/**"],
+          phases,
+          objectives: {
+            "port-it": objective(),
+            lines: { measure: { lines: true }, direction: "down" },
+            shims: { measure: { files: true }, direction: "down", target: 0, ...shims },
+          },
+        },
+      });
+    const detailOf = (manifest: unknown): string => {
+      try {
+        const loaded = load(manifest, [go()]);
+        if (!Result.isFailure(loaded)) throw new Error("expected the manifest to be refused");
+        return loaded.failure.detail;
+      } catch (cause) {
+        return String(cause);
+      }
+    };
+    expect(detailOf(ladder([{ id: "a", objectives: ["port-it"], grows: ["nope"] }]))).toMatch(
+      /phase "a" grows an objective "nope" the campaign does not declare/,
+    );
+    expect(detailOf(ladder([{ id: "a", objectives: ["port-it"], grows: ["port-it"] }]))).toMatch(
+      /phase "a" grows "port-it", which is not a scalar objective/,
+    );
+    expect(
+      detailOf(
+        ladder([
+          { id: "a", objectives: ["port-it"] },
+          { id: "b", intent: "later", grows: ["lines"] },
+        ]),
+      ),
+    ).toMatch(/phase "b" is open and grows "lines"/);
+    // `shims` runs from `a` until `b`: it is not in window at `b`.
+    expect(
+      detailOf(
+        ladder(
+          [
+            { id: "a", objectives: ["shims"] },
+            { id: "b", objectives: ["port-it"], grows: ["shims"] },
+          ],
+          { until: "b" },
+        ),
+      ),
+    ).toMatch(/phase "b" grows "shims", which is not in window there/);
+
+    const phasesOf = (grows?: ReadonlyArray<string>) =>
+      stateOf(
+        unwrap(
+          load(
+            ladder([
+              { id: "a", objectives: ["port-it"], ...(grows === undefined ? {} : { grows }) },
+            ]),
+            [go()],
+          ),
+        ),
+      ).campaignRules[0]?.phases;
+    expect(phasesOf(["lines"])?.[0]?.grows).toEqual(["lines"]);
+    // What a phase grows is part of what it asks: adding it is a plan change.
+    expect(phasesOf(["lines"])?.[0]?.hash).not.toBe(phasesOf()?.[0]?.hash);
   });
 
   // The shapes the design refuses at load: an open phase that is not last,
@@ -413,12 +481,16 @@ describe("loadPolicy with campaigns", () => {
         [go()],
       ),
     );
-    expect(stateOf(policy).campaignRules[0]?.phases.map((phase) => [phase.id, phase.objectives])).toEqual([
+    expect(
+      stateOf(policy).campaignRules[0]?.phases.map((phase) => [phase.id, phase.objectives]),
+    ).toEqual([
       ["a", ["port-it"]],
       ["b", ["no-shim"]],
       ["c", []],
     ]);
-    expect(stateOf(policy).campaignRules[0]?.phases.every((phase) => phase.hash.length === 8)).toBe(true);
+    expect(stateOf(policy).campaignRules[0]?.phases.every((phase) => phase.hash.length === 8)).toBe(
+      true,
+    );
   });
 
   it("digests a phase's definition and not its prose: a reworded intent is no plan change", () => {
@@ -670,9 +742,7 @@ describe("loadPolicy with campaigns", () => {
       const files = makeFileSystemFake([], {
         "ledgers/js-to-go/lines.json": JSON.stringify(measured),
       });
-      const policy = unwrap(
-        load({ ...withScalar(), ledger: "ledgers" }, [go()], { files }),
-      );
+      const policy = unwrap(load({ ...withScalar(), ledger: "ledgers" }, [go()], { files }));
       expect(stateOf(policy).measureLedgers.get("js-to-go/lines")?.sectors.scope?.recorded).toBe(
         120,
       );

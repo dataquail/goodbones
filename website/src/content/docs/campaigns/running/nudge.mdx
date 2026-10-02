@@ -60,6 +60,22 @@ strangle-hapi
 ok
 ```
 
+When the diff touches the **shared files**, which every sector shares, the nudge says what it
+still owes and who is waiting:
+
+```
+strangle-hapi
+  shared — held by every sector, on no phase
+    prerequisites, which hold every sector at the phase that names them:
+      has-user-authenticator 1 — rebuilt: todo, user
+    hapi-lines: recorded 61 → now 80  measured, not held
+    onTouch: advise — ok
+    ask: none — the holdouts above are context; paydown is welcome in its own commit, not asked for
+```
+
+A sector waiting on a prerequisite lists it under "toward the next phase", marked as the
+shared files' to meet. See [The shared files](/goodbones/campaigns/manifest/sectors/#the-shared-files).
+
 At an **attested phase**, nothing is detected, so the sector is never quiet: the nudge names the
 phase as attested and prints the command that leaves it. See
 [Attested phases](/goodbones/campaigns/manifest/attested/).
@@ -237,6 +253,10 @@ is not `back`: the line reads `grows in <phase>`, and `measures[].grows` is `tru
   to), with `back` for a rise past the tolerance that no record covers, `conceded` for one a
   record does, and `grows` for one the judged phase expects.
 - `belongsInSector`: files the diff added inside the scope that no sector claims.
+- `shared`: `true` for the campaign's shared files, whose `phase.id` is `null`. `prerequisites`
+  lists each objective read over it, with its count, the phase naming it and the sectors
+  `waiting` there. An entry of `objectives` with `shared: true` is a prerequisite the sector
+  waits on.
 - `unmatchedOwns`: globs the sector's marker owns that no file matches.
 - `unbirths`: markers the diff deleted, and the sector each returns to the legacy.
 - `testsChecked`: always `unknown`; the tool runs no tests. The text output no longer prints it.

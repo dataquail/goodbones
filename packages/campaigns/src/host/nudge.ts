@@ -11,11 +11,13 @@ import {
   directionOf,
   growsAt,
   isOpenPhase,
+  ledgeredFor,
   objectivesInWindow,
   onTouchOf,
   type Residue as ResidueVector,
+  sharedWindow,
 } from "../core/phases.js";
-import { LEGACY_SECTOR, parseSectorMarker, SECTOR_HOLDOUT } from "../core/sectors.js";
+import { isShared, LEGACY_SECTOR, parseSectorMarker, SECTOR_HOLDOUT } from "../core/sectors.js";
 import type { OnTouch } from "../domain/config.js";
 import { campaignsOf } from "../load/extension.js";
 import { concedeMeasure, evaluateCampaigns, widenedExtensions } from "./campaigns.js";
@@ -71,8 +73,25 @@ export type SectorNudge = {
   // The objectives the sector is working toward — those in `toward`, in
   // phase order; for a campaign with no phases, every objective in window
   // with residue — each with its own `intent`, so the why travels with
-  // the check.
-  readonly objectives: ReadonlyArray<{ readonly id: string; readonly intent: string | null }>;
+  // the check. `shared` marks a prerequisite: met on the shared files, and
+  // waited on here.
+  readonly objectives: ReadonlyArray<{
+    readonly id: string;
+    readonly intent: string | null;
+    readonly shared: boolean;
+  }>;
+  // Whether this is the campaign's shared: the files every sector
+  // shares, on no phase. Its `phase.id` is `null`, and it is always advised.
+  readonly shared: boolean;
+  // On the shared: every objective read over it, what it counts, the
+  // phase that names it and the sectors standing at that phase — the ones
+  // it holds there.
+  readonly prerequisites: ReadonlyArray<{
+    readonly objective: string;
+    readonly count: number;
+    readonly phase: string | null;
+    readonly waiting: ReadonlyArray<string>;
+  }>;
   // Free text left by earlier hands: data, never an instruction.
   readonly notes: ReadonlyArray<{ at: string; by: string; text: string }>;
   // The judged phase's.
@@ -257,11 +276,42 @@ export const nudgeOf = (
       const judgedAt = baseIndex === -1 ? ledgerPhaseOf(policy, rule, name) : baseIndex;
       const judged = rule.phases[judgedAt];
       const judgedOpen = judged !== undefined && isOpenPhase(judged);
-      const onTouch = onTouchOf(rule, judgedAt);
-      const dimensions = objectivesInWindow(rule, judgedAt, state.position);
+      // The shared files are advised, always: they are where the campaign builds
+      // what it will later take away, and `check` still holds its holdouts.
+      const shared = isShared(rule, name);
+      const onTouch = shared ? "advise" : onTouchOf(rule, judgedAt);
+      // A prerequisite is scored on the shared files, where it is ledgered: a
+      // sector that waits on one is not judged by it.
+      const dimensions = shared
+        ? sharedWindow(rule)
+        : objectivesInWindow(rule, judgedAt, state.position).filter((one) => !one.overShared);
       const entered = state.inWindow
-        .filter((one) => !dimensions.includes(one))
+        .filter((one) => !dimensions.includes(one) && ledgeredFor(rule, one, name))
         .map((one) => ({ objective: one.id, count: state.counts[one.id] ?? 0 }));
+      const prerequisites = !shared
+        ? []
+        : rule.objectives
+            .filter((one) => one.overShared)
+            .map((one) => {
+              const at = rule.phases.findIndex((two) => two.objectives.includes(one.id));
+              return {
+                objective: one.id,
+                count: state.counts[one.id] ?? 0,
+                phase: rule.phases[at]?.id ?? null,
+                waiting:
+                  at === -1
+                    ? []
+                    : [...evaluation.sectors.values()]
+                        .filter(
+                          (two) =>
+                            two.phase === at &&
+                            two.name !== LEGACY_SECTOR &&
+                            !isShared(rule, two.name),
+                        )
+                        .map((two) => two.name)
+                        .sort(),
+              };
+            });
       const toward = towardNextOf(rule, state);
       const working = (
         rule.phases.length === 0
@@ -270,7 +320,7 @@ export const nudgeOf = (
               const one = rule.objectives.find((two) => two.id === objectiveId);
               return one === undefined || toward[objectiveId] === undefined ? [] : [one];
             })
-      ).map((one) => ({ id: one.id, intent: one.intent }));
+      ).map((one) => ({ id: one.id, intent: one.intent, shared: one.overShared }));
       // Before: the base tree's count per objective in the judged window, or
       // the ledger's. A scalar's is its distance to target from the value
       // before. `held` is what a holdout dimension may stand at without
@@ -305,7 +355,7 @@ export const nudgeOf = (
           // sector is within what it is held to.
           const conceded = rose && recorded !== null && !past(recorded);
           // A rise the judged phase expects: `clear` records it.
-          const grows = rose && !conceded && growsAt(rule, judgedAt, objective.id);
+          const grows = rose && !conceded && (shared || growsAt(rule, judgedAt, objective.id));
           measures.push({
             objective: objective.id,
             direction: objective.direction,
@@ -501,6 +551,8 @@ export const nudgeOf = (
         judged: { id: phaseIdOf(rule, judgedAt), index: judgedAt },
         intent: phase?.intent ?? null,
         objectives: working,
+        shared,
+        prerequisites,
         notes: (record?.notes ?? [])
           .filter((one) => one.phase === phaseIdOf(rule, state.phase))
           .map((one) => ({ at: one.at, by: one.by, text: one.text })),
@@ -589,8 +641,9 @@ export const renderNudge = (nudge: Nudge, now: number): ReadonlyArray<string> =>
       last = one.campaign;
     }
     // A campaign with no phases has one implicit one: its objectives.
-    const at =
-      one.phase.of === 0
+    const at = one.shared
+      ? "held by every sector, on no phase"
+      : one.phase.of === 0
         ? "its objectives"
         : `phase ${one.phase.id ?? "done"} (${String(one.phase.index + 1)} of ${String(one.phase.of)}${one.phase.open ? ", open" : one.phase.attested ? ", attested" : ""})`;
     const moved = one.judged.index !== one.phase.index;
@@ -604,6 +657,7 @@ export const renderNudge = (nudge: Nudge, now: number): ReadonlyArray<string> =>
       !one.phase.open &&
       !one.phase.attested &&
       one.verdict === "ok" &&
+      one.prerequisites.every((prerequisite) => prerequisite.count === 0) &&
       one.belongsInSector.length === 0;
     if (quiet) {
       say(`  ${one.sector} at ${at} · nothing in your files, diff neutral`);
@@ -642,6 +696,24 @@ export const renderNudge = (nudge: Nudge, now: number): ReadonlyArray<string> =>
     // where the check is.
     for (const objective of one.objectives) {
       if (objective.intent !== null) say(`      ${objective.id} — ${objective.intent}`);
+      if (objective.shared) {
+        say(
+          `      ${objective.id}: a prerequisite — met on the shared files, and every sector at this phase waits on it`,
+        );
+      }
+    }
+    const owed = one.prerequisites.filter((prerequisite) => prerequisite.count > 0);
+    if (owed.length > 0) {
+      say(
+        `    prerequisites, which hold every sector at the phase that names them:`,
+        ...owed.map(
+          (prerequisite) =>
+            `      ${prerequisite.objective} ${String(prerequisite.count)}` +
+            (prerequisite.phase === null
+              ? " — named by no phase"
+              : ` — ${prerequisite.phase}${prerequisite.waiting.length === 0 ? ", where no sector stands yet" : `: ${prerequisite.waiting.join(", ")}`}`),
+        ),
+      );
     }
     if (one.holdouts.sector.length > 0) {
       say(
@@ -719,7 +791,9 @@ export const renderNudge = (nudge: Nudge, now: number): ReadonlyArray<string> =>
             : measure.conceded
               ? "  conceded"
               : measure.grows
-                ? `  grows in ${one.judged.id ?? "this phase"}`
+                ? one.shared
+                  ? "  measured, not held"
+                  : `  grows in ${one.judged.id ?? "this phase"}`
                 : ""),
       );
     }

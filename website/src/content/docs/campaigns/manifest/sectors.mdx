@@ -49,6 +49,43 @@ campaigns:
 - A file in two sectors (nested perimeters) fails `check`.
 - Deleting a marker returns its folder to legacy, and the nudge says so.
 
+## The shared files
+
+Some files belong to every sector and so to none: the destination's platform that every module
+will need, the proxy and mirroring a strangling shares. Name them with `shared`:
+
+```yaml
+campaigns:
+  strangle-hapi:
+    scope: ["~/legacy-api/**", "~/server/src/modules/**", "~/server/src/platform/**"]
+    shared: ["~/server/src/platform/**", "~/legacy-api/src/lib/proxy-to-nest.ts"]
+    phases:
+      - { id: rebuilt, objectives: [has-nest-module, has-user-authenticator] }
+    objectives:
+      has-user-authenticator:
+        over: shared
+        holdout: sector
+        sector: { has: { path: { file: "user-auth\\.guard" } } }
+```
+
+- Shared files are taken out before any sector is born. No perimeter claims them, they are
+  never legacy, and a new file there gets no "belongs in a sector" notice.
+- The shared files stand on no phase. The nudge names it when a diff touches it, and it is always
+  advised.
+- **A prerequisite** is an objective with `over: shared`. It is read over the shared files,
+  and ledgered once, under the name `shared`.
+- **A phase that names a prerequisite holds every sector to it.** No sector leaves that phase
+  until the shared files meet the objective, and each sector waiting there shows it under "toward
+  the next phase". Work on the shared files that meets it moves them all on.
+- An `over: shared` objective that no phase names is a standing rule of the shared files' own.
+- `check` holds the shared files' holdouts like any others: growth fails until conceded.
+- **The shared files hold no number.** A scalar no phase names is measured there, as it is in every
+  sector, and `objectives clear` records it in either direction. It is how you see the
+  scaffolding leave.
+- Shared files must be inside the `scope`. Widen the scope to reach them.
+- The loader refuses `over: shared` in a campaign with no `shared`, and `until` on such an
+  objective. With `shared` declared, no sector may be named `shared`.
+
 ## The scope
 
 `scope` is the globs the campaign sees. `{ path, extensions }` adds files the language pack

@@ -163,6 +163,12 @@ export const SnapshotObjective = Schema.Struct({
     Schema.Finite,
     "Holdouts still firing when a sector left the window — not progress.",
   ),
+  over: Schema.optionalKey(
+    describe(
+      Schema.Literal("shared"),
+      "Present on an objective read over the campaign's shared files — a prerequisite — which is ledgered there alone.",
+    ),
+  ),
   entered: describe(
     Schema.Finite,
     "How many sectors the ledger has recorded in the objective's window, closed ones included.",
@@ -279,6 +285,18 @@ export const SnapshotCampaign = Schema.Struct({
       ),
     }),
     "The unclaimed remainder of the scope, which stands at the first phase and is not a sink.",
+  ),
+  shared: Schema.optionalKey(
+    describe(
+      Schema.Struct({
+        files: describe(Schema.Finite, "Files in the scope the campaign's `shared` names."),
+        holdouts: describe(
+          Schema.Finite,
+          "Holdouts of the objectives read over the shared: the prerequisites not yet met.",
+        ),
+      }),
+      "The files every sector shares, on no phase and in no sector. Absent from a campaign that declares none.",
+    ),
   ),
   plan: describe(
     Schema.Struct({

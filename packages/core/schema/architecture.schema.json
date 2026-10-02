@@ -875,6 +875,26 @@
                     }
                   ]
                 },
+                "shared": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/Include"
+                        },
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
                 "perimeter": {
                   "anyOf": [
                     {
@@ -3208,6 +3228,12 @@
                                 {
                                   "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
                                 }
+                              ]
+                            },
+                            "over": {
+                              "type": "string",
+                              "enum": [
+                                "shared"
                               ]
                             },
                             "probes": {

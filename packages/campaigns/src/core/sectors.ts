@@ -22,6 +22,17 @@ export const IMPLICIT_SECTOR = "scope";
 // What no sector has claimed.
 export const LEGACY_SECTOR = "legacy";
 
+// What every sector shares: the files a campaign's `shared` names. They
+// are taken out before any sector is born, so no perimeter claims them and
+// they are never the legacy; they stand on no phase; and the objectives
+// read over them (`over: shared`) are ledgered under this name alone.
+export const SHARED_SECTOR = "shared";
+
+// The name is the shared files' only in a campaign that declares one; in any
+// other it is a name a perimeter is free to give a sector.
+export const isShared = (rule: CompiledCampaign, name: string): boolean =>
+  rule.shared !== null && name === SHARED_SECTOR;
+
 export type Sector = {
   readonly name: string;
   // The folders the sector's files sit under, repo-relative without a
@@ -41,6 +52,8 @@ export type SectorIndex = {
   readonly sectors: ReadonlyMap<string, Sector>;
   // The legacy: files in the scope no sector claims.
   readonly legacy: ReadonlyArray<string>;
+  // The shared files: those in the scope the campaign's `shared` names.
+  readonly shared: ReadonlyArray<string>;
   // The sector a file is in — a sector's name, `LEGACY_SECTOR`, or `null`
   // when the file is outside the campaign (outside the scope, or unclaimed
   // and outside `legacy`).
@@ -162,10 +175,12 @@ type Claim = { readonly sector: string; readonly root: string };
 const indexOf = (
   rule: CompiledCampaign,
   files: ReadonlyArray<string>,
+  sharedFiles: ReadonlyArray<string>,
   sectors: ReadonlyMap<string, Sector>,
   claims: ReadonlyMap<string, ReadonlyArray<Claim>>,
 ): SectorIndex => {
   const seen = new Set(files);
+  const shared = new Set(sharedFiles);
   const legacyOf = (file: string): string | null =>
     rule.legacy === null || rule.legacy.some((pattern) => pattern.test(file))
       ? LEGACY_SECTOR
@@ -173,6 +188,7 @@ const indexOf = (
   // A file the campaign never saw — outside its scope, or not a source
   // file at all — is in no sector.
   const sectorOf = (file: string): string | null => {
+    if (shared.has(file)) return SHARED_SECTOR;
     if (!seen.has(file)) return null;
     const claimed = claims.get(file);
     if (claimed !== undefined && claimed.length > 0) return claimed[0]?.sector ?? null;
@@ -186,7 +202,7 @@ const indexOf = (
       sectors: [...new Set(claimed.map((one) => one.sector))].sort(),
     }));
   const sectorOfHit = (file: string, subject: string | null): string | null => {
-    if (rule.perimeter?.kind !== "match") return sectorOf(file);
+    if (rule.perimeter?.kind !== "match" || shared.has(file)) return sectorOf(file);
     const claimed = claims.get(file) ?? [];
     if (subject !== null) {
       const anchor = subject.split("#")[0] ?? subject;
@@ -196,18 +212,29 @@ const indexOf = (
     if (claimed.length === 1) return claimed[0]?.sector ?? null;
     return legacyOf(file);
   };
-  return { sectors, legacy, sectorOf, sectorOfHit, drift };
+  return { sectors, legacy, shared: sharedFiles, sectorOf, sectorOfHit, drift };
 };
 
 // The sectors of one campaign, read off its files through its perimeter.
 export const discoverSectors = (rule: CompiledCampaign, input: SectorDiscovery): SectorIndex => {
-  const files = [...input.files].sort();
+  // The shared files are taken out first: what every sector shares is never one
+  // sector's, whatever a perimeter would have made of it.
+  const isShared = (file: string): boolean =>
+    rule.shared?.some((pattern) => pattern.test(file)) ?? false;
+  const sharedFiles = input.files.filter(isShared).sort();
+  const files = input.files.filter((file) => !isShared(file)).sort();
   const sectors = new Map<string, Sector>();
   const claims = new Map<string, Array<Claim>>();
   const claim = (file: string, sector: string, root: string): void => {
     claims.set(file, [...(claims.get(file) ?? []), { sector, root }]);
   };
   const add = (sector: Sector): void => {
+    if (rule.shared !== null && sector.name === SHARED_SECTOR) {
+      throw new Error(
+        `a sector is named "${SHARED_SECTOR}", which the campaign keeps for the files its ` +
+          `\`shared\` names. Give the sector another name.`,
+      );
+    }
     const known = sectors.get(sector.name);
     // A name declared by two markers is one sector with both roots.
     sectors.set(
@@ -227,7 +254,7 @@ export const discoverSectors = (rule: CompiledCampaign, input: SectorDiscovery):
   const perimeter: CompiledPerimeter | null = rule.perimeter;
   if (perimeter === null) {
     add({ name: IMPLICIT_SECTOR, roots: [""], files, marker: null, declaration: null });
-    return indexOf(rule, files, sectors, claims);
+    return indexOf(rule, files, sharedFiles, sectors, claims);
   }
 
   switch (perimeter.kind) {
@@ -319,7 +346,7 @@ export const discoverSectors = (rule: CompiledCampaign, input: SectorDiscovery):
       break;
     }
   }
-  return indexOf(rule, files, sectors, claims);
+  return indexOf(rule, files, sharedFiles, sectors, claims);
 };
 
 // The root a file of the sector sits under: the first of the sector's
@@ -344,7 +371,9 @@ export const entryOf = (violation: Violation, root: string): string => {
 export const sectorNamed = (index: SectorIndex, name: string): Sector | null =>
   name === LEGACY_SECTOR
     ? { name, roots: [""], files: index.legacy, marker: null, declaration: null }
-    : (index.sectors.get(name) ?? null);
+    : name === SHARED_SECTOR && !index.sectors.has(name)
+      ? { name, roots: [""], files: index.shared, marker: null, declaration: null }
+      : (index.sectors.get(name) ?? null);
 
 // Where one file's hits fall, for a host that sees one file at a time. A
 // `glob` or `file` perimeter answers from the path; `match` from the
@@ -362,6 +391,9 @@ export const membershipOf = (
 ): ((subject: string | null) => Placement | null) => {
   const inScope = rule.scope.some((pattern) => pattern.test(file));
   if (!inScope) return () => null;
+  if (rule.shared?.some((pattern) => pattern.test(file)) === true) {
+    return () => ({ sector: SHARED_SECTOR, root: "" });
+  }
   const legacy = (): Placement | null =>
     rule.legacy === null || rule.legacy.some((pattern) => pattern.test(file))
       ? { sector: LEGACY_SECTOR, root: "" }

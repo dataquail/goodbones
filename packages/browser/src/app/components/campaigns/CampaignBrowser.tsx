@@ -132,6 +132,7 @@ export const CampaignBrowser = ({ onSelect, selection, view }: Props): React.JSX
           <span className="key open">open phase</span>
           <span className="key sector">sector</span>
           <span className="key legacy">legacy</span>
+          {campaign.shared === null ? null : <span className="key shared">shared</span>}
           <span className="key done">done</span>
           <span className="key nudged">touched in the working tree</span>
         </div>

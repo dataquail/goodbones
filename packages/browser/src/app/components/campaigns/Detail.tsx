@@ -568,8 +568,30 @@ const SectorDetail = ({
             <NudgeWord nudge={nudge} />{" "}
             <span className="muted small">
               direction {nudge.direction} · onTouch {nudge.onTouch}
+              {nudge.judged.index === nudge.phase.index
+                ? ""
+                : ` · judged at ${nudge.judged.id ?? "done"}, where the diff found it`}
             </span>
           </p>
+          {nudge.entered.some((one) => one.count > 0) ? (
+            <p className="muted small">
+              Now counted, not growth:{" "}
+              {nudge.entered
+                .filter((one) => one.count > 0)
+                .map((one) => `${one.objective} ${String(one.count)}`)
+                .join(" · ")}
+            </p>
+          ) : null}
+          {nudge.holdouts.sector.length > 0 ? (
+            <ul className="list compact">
+              {nudge.holdouts.sector.map((one) => (
+                <li key={one.objective} className="small">
+                  <span className="mono">{one.objective}</span>
+                  <div className="muted">{one.message}</div>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           {nudge.holdouts.shown.length > 0 ? (
             <ul className="list compact">
               {nudge.holdouts.shown.map((one) => (
@@ -581,9 +603,9 @@ const SectorDetail = ({
                   <div className="muted">{one.message}</div>
                 </li>
               ))}
-              {nudge.holdouts.total > nudge.holdouts.shown.length ? (
+              {nudge.holdouts.touched > nudge.holdouts.shown.length ? (
                 <li className="muted small">
-                  … {nudge.holdouts.total - nudge.holdouts.shown.length} more
+                  … {nudge.holdouts.touched - nudge.holdouts.shown.length} more in the files touched
                 </li>
               ) : null}
             </ul>

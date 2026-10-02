@@ -129,6 +129,7 @@ export {
   compareResidue,
   derivePhase,
   type Direction,
+  directionOf,
   donePhaseOf,
   inWindow,
   isDefinedPhase,
@@ -189,12 +190,8 @@ export {
   uniqueDiagnostics,
 } from "./domain/report.js";
 export {
-  type Ask,
   attest,
   authorOf,
-  type BaseSide,
-  baseSideAt,
-  baseSideOf,
   campaignFailuresOf,
   type CampaignReport,
   campaignReportsOf,
@@ -209,20 +206,14 @@ export {
   HOLDOUT_CAP,
   ledgeredFilter,
   note,
-  type Nudge,
-  type NudgeHoldout,
-  nudgeOf,
   type ObjectiveReport,
   type Readers,
   renderCampaignReports,
   renderCampaignRows,
   renderHistory,
-  renderNudge,
-  type SectorNudge,
   type SectorObjectiveReport,
   type SectorReport,
   snapshotCampaignsOf,
-  type Verdict,
   widenedExtensions,
 } from "./host/campaigns.js";
 export {
@@ -237,6 +228,19 @@ export {
   readDiff,
   textAt,
 } from "./host/diff.js";
+export { ledgerPhaseOf } from "./host/ledger-phase.js";
+export {
+  type Ask,
+  type BaseSide,
+  baseSideAt,
+  baseSideOf,
+  type Nudge,
+  type NudgeHoldout,
+  nudgeOf,
+  renderNudge,
+  type SectorNudge,
+  type Verdict,
+} from "./host/nudge.js";
 export {
   loadCampaignFunctions,
   type LoadedCampaignFunctions,

@@ -17,20 +17,18 @@ import {
 import { LEGACY_SECTOR, parseSectorMarker, SECTOR_HOLDOUT } from "../core/sectors.js";
 import type { OnTouch } from "../domain/config.js";
 import { campaignsOf } from "../load/extension.js";
+import { concedeMeasure, evaluateCampaigns, widenedExtensions } from "./campaigns.js";
+import { commitOf, type Diff, distanceToHunks, materializeTree, textAt } from "./diff.js";
+import { ledgerPhaseOf } from "./ledger-phase.js";
 import {
-  concedeMeasure,
   count,
-  evaluateCampaigns,
   HOLDOUT_CAP,
   ledgerOf,
   measureLedgerOf,
   phaseIdOf,
   recordOf,
-  widenedExtensions,
   writeJson,
-} from "./campaigns.js";
-import { commitOf, type Diff, distanceToHunks, materializeTree, textAt } from "./diff.js";
-import { ledgerPhaseOf } from "./ledger-phase.js";
+} from "./ledgers.js";
 
 // The nudge, `campaigns status --changed`: what a diff touches, which
 // campaign and phase each touched sector is in, and what would move it on.

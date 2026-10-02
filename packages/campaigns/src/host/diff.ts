@@ -48,8 +48,13 @@ const AMBIENT_GIT = [
   "GIT_QUARANTINE_PATH",
 ];
 
-export const gitEnv = (): NodeJS.ProcessEnv =>
-  Object.fromEntries(Object.entries(process.env).filter(([key]) => !AMBIENT_GIT.includes(key)));
+// Every git run here reads. `GIT_OPTIONAL_LOCKS=0` keeps a read from
+// refreshing the index as a side effect — which a host watching the index
+// for commits would see as a change of its own making.
+export const gitEnv = (): NodeJS.ProcessEnv => ({
+  ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !AMBIENT_GIT.includes(key))),
+  GIT_OPTIONAL_LOCKS: "0",
+});
 
 const git = (repoRoot: string, args: ReadonlyArray<string>): string =>
   execFileSync("git", args, {
@@ -59,6 +64,24 @@ const git = (repoRoot: string, args: ReadonlyArray<string>): string =>
     stdio: ["ignore", "pipe", "ignore"],
     maxBuffer: 256 * 1024 * 1024,
   });
+
+// Where git keeps `HEAD` and the index for this working tree, absolute. A
+// commit, a checkout and a `git add` change nothing a walk of the tree sees,
+// and each changes what a diff against `HEAD` says, so a host that redraws
+// on change watches these two. A linked worktree keeps them outside its own
+// folder, which is why git is asked rather than `.git/` assumed. `null`
+// where git does not answer.
+export const gitPathsOf = (
+  repoRoot: string,
+): { readonly head: string; readonly index: string } | null => {
+  try {
+    const at = (name: string): string =>
+      path.resolve(repoRoot, git(repoRoot, ["rev-parse", "--git-path", name]).trim());
+    return { head: at("HEAD"), index: at("index") };
+  } catch {
+    return null;
+  }
+};
 
 const HUNK = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 

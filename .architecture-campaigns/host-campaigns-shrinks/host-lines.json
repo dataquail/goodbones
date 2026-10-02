@@ -9,10 +9,10 @@
     "scope": {
       "entered": "2026-09-24T14:06:20.142Z",
       "initial": 2140,
-      "recorded": 2140,
-      "improved": 0,
+      "recorded": 1596,
+      "improved": 544,
       "closed": null,
-      "lastImproved": "2026-09-24T14:06:20.142Z"
+      "lastImproved": "2026-10-02T13:27:11.587Z"
     }
   },
   "concessions": []

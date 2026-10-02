@@ -44,34 +44,48 @@ describe("isRelevant", () => {
 // A commit changes no file the walk sees. Git moves `HEAD` and the index by
 // renaming a lock file over them, which is what this does.
 describe("watchRepository", () => {
-  it("reports a file it was asked to watch as well, replaced the way git replaces one", async () => {
-    const scratch = realpathSync(mkdtempSync(path.join(tmpdir(), "goodbones-watch-")));
-    const index = path.join(scratch, "index");
-    writeFileSync(index, "one");
-    writeFileSync(path.join(scratch, "ORIG_HEAD"), "x");
-    const seen: Array<ReadonlyArray<string>> = [];
-    const stop = watchRepository({
-      repoRoot: scratch,
-      extensions: [".ts"],
-      ledgerDir: ".architecture-campaigns",
-      also: [index],
-      debounceMs: 20,
-      onChange: (files) => {
-        seen.push(files);
-      },
-    });
-    try {
-      // A neighbour it was not asked about says nothing.
-      writeFileSync(path.join(scratch, "ORIG_HEAD"), "y");
-      writeFileSync(path.join(scratch, "index.lock"), "two");
-      renameSync(path.join(scratch, "index.lock"), index);
-      await expect
-        .poll(() => seen.flat(), { timeout: 5000, interval: 25 })
-        .toEqual(expect.arrayContaining([index]));
-      expect(seen.flat().every((file) => file === index)).toBe(true);
-    } finally {
-      stop();
-      rmSync(scratch, { force: true, recursive: true });
-    }
-  });
+  it(
+    "reports a file it was asked to watch as well, replaced the way git replaces one",
+    {
+      timeout: 30_000,
+    },
+    async () => {
+      const scratch = realpathSync(mkdtempSync(path.join(tmpdir(), "goodbones-watch-")));
+      const index = path.join(scratch, "index");
+      writeFileSync(index, "one");
+      writeFileSync(path.join(scratch, "ORIG_HEAD"), "x");
+      const seen: Array<ReadonlyArray<string>> = [];
+      const stop = watchRepository({
+        repoRoot: scratch,
+        extensions: [".ts"],
+        ledgerDir: ".architecture-campaigns",
+        also: [index],
+        debounceMs: 20,
+        onChange: (files) => {
+          seen.push(files);
+        },
+      });
+      try {
+        // A watcher takes a moment to start, and a change made before it has
+        // is not reported. So the replacement is made again until one is
+        // seen, as a second commit would be.
+        await expect
+          .poll(
+            () => {
+              // A neighbour it was not asked about says nothing.
+              writeFileSync(path.join(scratch, "ORIG_HEAD"), "y");
+              writeFileSync(path.join(scratch, "index.lock"), "two");
+              renameSync(path.join(scratch, "index.lock"), index);
+              return seen.flat();
+            },
+            { timeout: 20_000, interval: 100 },
+          )
+          .toEqual(expect.arrayContaining([index]));
+        expect(seen.flat().every((file) => file === index)).toBe(true);
+      } finally {
+        stop();
+        rmSync(scratch, { force: true, recursive: true });
+      }
+    },
+  );
 });

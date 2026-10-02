@@ -427,6 +427,16 @@ export const progressOf = (ledger: Ledger): number => {
 
 export const isComplete = (ledger: Ledger): boolean => holdoutsOf(ledger) === 0;
 
+// One sector's share of an objective paid: what `clear` removed over
+// everything the sector was ever asked to pay there. `0` for a sector the
+// ledger has not recorded, `1` for one that entered with nothing to pay.
+export const sectorProgressOf = (ledger: Ledger | undefined, sector: string): number => {
+  const own = ledger?.sectors[sector];
+  if (own === undefined) return 0;
+  const total = own.cleared + own.holdouts.length;
+  return total <= 0 ? 1 : own.cleared / total;
+};
+
 export const lastClearedOf = (ledger: Ledger): string | null => {
   const stamps = Object.values(ledger.sectors).map((one) => one.lastCleared);
   return stamps.length === 0 ? null : stamps.reduce((a, b) => (a > b ? a : b));
@@ -708,6 +718,20 @@ export const measureProgressOf = (ledger: MeasureLedger, target: number | null):
   const span = worseBy(ledger.direction, goal, initial);
   if (span <= 0) return 1;
   return Math.min(1, Math.max(0, 1 - worseBy(ledger.direction, goal, recorded) / span));
+};
+
+// One sector's share of the way from where it entered to the target. `0`
+// for a sector the ledger has not recorded, or a standing measure.
+export const measureSectorProgressOf = (
+  ledger: MeasureLedger | undefined,
+  sector: string,
+  target: number | null,
+): number => {
+  const own = ledger?.sectors[sector];
+  if (ledger === undefined || own === undefined || target === null) return 0;
+  const span = worseBy(ledger.direction, target, own.initial);
+  if (span <= 0) return 1;
+  return Math.min(1, Math.max(0, 1 - worseBy(ledger.direction, target, own.recorded) / span));
 };
 
 // ---------------------------------------------------------------------------

@@ -201,9 +201,7 @@ export {
   type HistoryRow,
   note,
   type Readers,
-  renderCampaignRows,
   renderHistory,
-  snapshotCampaignsOf,
   widenedExtensions,
 } from "./host/campaigns.js";
 export { clear, type ClearOutcome, type SectorMove, sectorMovesOf } from "./host/clear.js";
@@ -243,6 +241,7 @@ export {
   type SectorObjectiveReport,
   type SectorReport,
 } from "./host/report.js";
+export { renderCampaignRows, snapshotCampaignsOf } from "./host/status.js";
 export {
   loadCampaignFunctions,
   type LoadedCampaignFunctions,

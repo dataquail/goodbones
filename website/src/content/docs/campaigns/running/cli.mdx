@@ -35,6 +35,30 @@ $ architecture campaigns
     throws-in-lowering   21%     15 left  4 cleared  2 conceded
 ```
 
+A campaign with phases prints where its sectors stand, and its headline is read off that:
+
+```
+  strangle-hapi   30%     23 left
+    phases: fenced 3 → rebuilt 1 → mirrored 0 → served 1 → routes-moved 0 → settled (open) 0
+    no-role-checks     40%      6 left  4 cleared  0 conceded
+    routes-still-local 25%      6 left  2 cleared  0 conceded
+    no-hapi-routes       —      0 left  no sector has entered its window
+```
+
+- **The headline** is how far along the ladder the sectors are, averaged. A sector's position is
+  the phases behind it plus the share of its current phase that is paid, over the number of
+  defined phases. A sector at the open phase has taken every step. So the number rises as
+  sectors advance, and it does not fall when a sector enters a phase and that phase's holdouts
+  are counted for the first time.
+- **An objective's row** keeps its own ratio: cleared over everything the ledger was ever asked
+  to carry. An objective no sector has entered prints `—`. Nothing has been asked of anyone yet,
+  which is neither 0% nor 100%.
+- A campaign with no phases has no ladder, and its headline is the same ratio as its objectives'.
+
+`architecture conformance --json` carries the same numbers: `progress` and `steps` on a campaign,
+`position` on a sector, and `entered` and `progress` (`null` before any sector enters) on an
+objective.
+
 ## `campaigns status --changed`
 
 ```bash

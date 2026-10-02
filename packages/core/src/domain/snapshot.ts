@@ -163,9 +163,13 @@ export const SnapshotObjective = Schema.Struct({
     Schema.Finite,
     "Holdouts still firing when a sector left the window — not progress.",
   ),
-  progress: describe(
+  entered: describe(
     Schema.Finite,
-    "`1 - count / (initial + allowed - closed)`: how much of everything ever ledgered has been paid down.",
+    "How many sectors the ledger has recorded in the objective's window, closed ones included.",
+  ),
+  progress: describe(
+    Schema.NullOr(Schema.Finite),
+    "`1 - count / (initial + allowed - closed)`: how much of everything ever ledgered has been paid down. `null` while no sector has entered the objective's window: nothing has been asked yet, which is not the same as done.",
   ),
   lastCleared: describe(
     Schema.NullOr(Schema.String),
@@ -229,6 +233,10 @@ export const SnapshotSector = Schema.Struct({
     "The furthest phase the sector's record says it has reached; `null` before its first `clear`.",
   ),
   files: describe(Schema.Finite, "How many files the sector claims."),
+  position: describe(
+    Schema.Finite,
+    "Where the sector stands on the ladder: the phases behind it, plus the share of its current phase that is paid. From 0 to the campaign's `steps`.",
+  ),
   residue: describe(
     Schema.Record(Schema.String, Schema.Finite),
     "One dimension per objective in window for the sector: its holdouts there, or a scalar's distance to its target, never summed.",
@@ -250,7 +258,11 @@ export const SnapshotCampaign = Schema.Struct({
   count: describe(Schema.Finite, "Holdouts across every objective and sector."),
   progress: describe(
     Schema.Finite,
-    "Cleared over everything ever ledgered, across the campaign's objectives.",
+    "For a campaign with phases: its sectors' positions on the ladder, averaged, over its `steps` — so it rises as sectors advance and never falls when one enters a phase. For one with none: cleared over everything ever ledgered, across its objectives.",
+  ),
+  steps: describe(
+    Schema.Finite,
+    "How many defined phases the ladder has; 0 for a campaign with no phases. A sector at the open phase has taken every step.",
   ),
   objectives: describe(Schema.Array(SnapshotObjective), "Every objective, in manifest order."),
   phases: describe(

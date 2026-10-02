@@ -311,11 +311,35 @@ describe.sequential("a campaign with sectors and phases", () => {
     );
     const parsed = JSON.parse(snapshot.output) as {
       campaigns: Array<{
+        progress: number;
+        steps: number;
         phases: unknown;
         legacy: unknown;
-        objectives: Array<{ id: string; phase: string | null }>;
+        sectors: Array<{ name: string; position: number }>;
+        objectives: Array<{
+          id: string;
+          phase: string | null;
+          entered: number;
+          progress: number | null;
+        }>;
       }>;
     };
+    // Progress is where the sectors stand on the ladder: five defined
+    // phases, billing at the first and orders at the third.
+    expect(parsed.campaigns[0]?.steps).toBe(5);
+    expect(parsed.campaigns[0]?.sectors.map((one) => [one.name, one.position])).toEqual([
+      ["billing", 0],
+      ["orders", 2],
+    ]);
+    expect(parsed.campaigns[0]?.progress).toBeCloseTo(2 / 10);
+    expect(status.output).toMatch(/billing-ddd\s+20%\s+3 left/);
+    // An objective no sector has entered is neither 0% nor 100%: nothing
+    // has been asked of anyone yet.
+    expect(parsed.campaigns[0]?.objectives.find((one) => one.id === "no-flag")).toMatchObject({
+      entered: 0,
+      progress: null,
+    });
+    expect(status.output).toMatch(/no-flag\s+—\s+0 left {2}no sector has entered its window/);
     expect(parsed.campaigns[0]?.phases).toEqual([
       { id: "domain", defined: true, attested: false, sectors: 1 },
       { id: "repository", defined: true, attested: false, sectors: 0 },
@@ -374,6 +398,10 @@ describe.sequential("a campaign with sectors and phases", () => {
       since: "2026-10-02T00:00:00.000Z",
     });
     expect(Exit.isSuccess((await check()).exit)).toBe(true);
+    // Entering `repository` counted three holdouts for the first time. The
+    // campaign did not go backwards for it: billing stands a phase further.
+    const advanced = await capture(campaigns(await policyAt(), ["src"], []));
+    expect(advanced.output).toMatch(/billing-ddd\s+30%\s+5 left/);
   });
 
   it("explains a file: its sector, phase, the objectives in window, and the nearest holdouts", async () => {

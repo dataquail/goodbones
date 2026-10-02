@@ -22,7 +22,9 @@ type Props = {
   readonly onPick: (pick: Pick | null) => void;
 };
 
-const pct = (fraction: number): string => `${String(Math.round(fraction * 100))}%`;
+// `—` for an objective no sector has entered: neither 0% nor 100%.
+const pct = (fraction: number | null): string =>
+  fraction === null ? "—" : `${String(Math.round(fraction * 100))}%`;
 
 const when = (iso: string | null): string => {
   if (iso === null) return "—";
@@ -94,7 +96,12 @@ const CampaignDetail = ({
       ) : null}
       <dl className="facts">
         <dt>progress</dt>
-        <dd>{pct(campaign.progress)}</dd>
+        <dd>
+          {pct(campaign.progress)}
+          {campaign.steps > 0 ? (
+            <span className="muted small"> of the way along {campaign.steps} phases</span>
+          ) : null}
+        </dd>
         <dt>holdouts left</dt>
         <dd>{campaign.count}</dd>
         <dt>owner</dt>
@@ -372,9 +379,13 @@ const ObjectiveDetail = ({
         <>
           <div
             className="progress"
-            title={`${pct(objective.progress)} of the initial holdouts cleared`}
+            title={
+              objective.progress === null
+                ? "no sector has entered this objective's window yet"
+                : `${pct(objective.progress)} of the initial holdouts cleared`
+            }
           >
-            <div className="progress-bar" style={{ width: pct(objective.progress) }} />
+            <div className="progress-bar" style={{ width: pct(objective.progress ?? 0) }} />
           </div>
           <dl className="facts">
             <dt>left</dt>

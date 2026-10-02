@@ -9,8 +9,10 @@ import {
   donePhaseOf,
   inWindow,
   isOpenPhase,
+  ladderPositionOf,
   objectivesInWindow,
   onTouchOf,
+  stepsOf,
   UNPLACED,
   windowOf,
   worsened,
@@ -165,6 +167,29 @@ describe("onTouch", () => {
     };
     expect(onTouchOf(overridden, 0)).toBe("advise");
     expect(onTouchOf(rule, 6)).toBe("ratchet");
+  });
+});
+
+describe("a sector's position on the ladder", () => {
+  it("is the phases behind it plus the share of its phase that is paid, and never falls on entry", () => {
+    const rule = billing();
+    // Five defined phases; the open one is where the plan runs out.
+    expect(stepsOf(rule)).toBe(5);
+    const at = (phase: number, shares: Readonly<Record<string, number>> = {}) =>
+      ladderPositionOf(rule, phase, (id) => shares[id] ?? 0);
+    // Entering a phase: exactly its index, whatever the phase holds.
+    expect(at(1)).toBe(1);
+    // Paying it down: toward the next index.
+    expect(at(1, { "no-raw-queries": 0.5 })).toBe(1.5);
+    expect(at(1, { "no-raw-queries": 1 })).toBe(2);
+    // An attested phase counts nothing down.
+    expect(at(3)).toBe(3);
+    // The open phase, and past the last: every step taken.
+    expect(at(5)).toBe(5);
+    expect(at(6)).toBe(5);
+    // Never out of its own phase, whatever a share says.
+    expect(at(0, { "no-io": 7 })).toBe(1);
+    expect(at(0, { "no-io": -1 })).toBe(0);
   });
 });
 

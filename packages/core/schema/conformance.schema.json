@@ -683,7 +683,15 @@
             "type": "number",
             "allOf": [
               {
-                "description": "Cleared over everything ever ledgered, across the campaign's objectives."
+                "description": "For a campaign with phases: its sectors' positions on the ladder, averaged, over its `steps` — so it rises as sectors advance and never falls when one enters a phase. For one with none: cleared over everything ever ledgered, across its objectives."
+              }
+            ]
+          },
+          "steps": {
+            "type": "number",
+            "allOf": [
+              {
+                "description": "How many defined phases the ladder has; 0 for a campaign with no phases. A sector at the open phase has taken every step."
               }
             ]
           },
@@ -747,13 +755,24 @@
                     }
                   ]
                 },
-                "progress": {
+                "entered": {
                   "type": "number",
                   "allOf": [
                     {
-                      "description": "`1 - count / (initial + allowed - closed)`: how much of everything ever ledgered has been paid down."
+                      "description": "How many sectors the ledger has recorded in the objective's window, closed ones included."
                     }
                   ]
+                },
+                "progress": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "`1 - count / (initial + allowed - closed)`: how much of everything ever ledgered has been paid down. `null` while no sector has entered the objective's window: nothing has been asked yet, which is not the same as done."
                 },
                 "lastCleared": {
                   "anyOf": [
@@ -848,6 +867,7 @@
                 "count",
                 "cleared",
                 "closed",
+                "entered",
                 "progress",
                 "lastCleared",
                 "concessions",
@@ -933,6 +953,14 @@
                     }
                   ]
                 },
+                "position": {
+                  "type": "number",
+                  "allOf": [
+                    {
+                      "description": "Where the sector stands on the ladder: the phases behind it, plus the share of its current phase that is paid. From 0 to the campaign's `steps`."
+                    }
+                  ]
+                },
                 "residue": {
                   "type": "object",
                   "additionalProperties": {
@@ -950,6 +978,7 @@
                 "phase",
                 "reached",
                 "files",
+                "position",
                 "residue",
                 "stalled"
               ],
@@ -1042,6 +1071,7 @@
           "id",
           "count",
           "progress",
+          "steps",
           "objectives",
           "phases",
           "sectors",

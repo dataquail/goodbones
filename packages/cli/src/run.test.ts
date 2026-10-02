@@ -1094,8 +1094,10 @@ describe.sequential("campaigns", () => {
       ["legacy-to-modern", 2, 1, 1, true],
       ["no-throw", 1, 0, 0, true],
     ]);
-    // 2 left of 3 ever ledgered.
+    // 2 left of 3 ever ledgered: a campaign with no phases has no ladder to
+    // stand on, and its progress is still that ratio.
     expect(snapshot.campaigns[0]?.progress).toBeCloseTo(1 / 3);
+    expect(snapshot.campaigns[0]?.steps).toBe(0);
     expect(snapshot.campaigns[0]?.owner).toBe("@team/platform");
     expect(snapshot.campaigns[0]?.sectors).toEqual([
       {
@@ -1103,6 +1105,7 @@ describe.sequential("campaigns", () => {
         phase: null,
         reached: null,
         files: 4,
+        position: 0,
         residue: { "out-of-legacy": 2 },
         stalled: true,
       },

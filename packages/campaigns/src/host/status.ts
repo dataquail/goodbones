@@ -6,11 +6,13 @@ import {
   lastClearedOf,
   lastImprovedOf,
   measureProgressOf,
+  measureSectorProgressOf,
   progressOf,
   recordedOf,
   sectorClockOf,
+  sectorProgressOf,
 } from "../core/ledger.js";
-import { isDefinedPhase } from "../core/phases.js";
+import { isDefinedPhase, ladderPositionOf, stepsOf } from "../core/phases.js";
 import { LEGACY_SECTOR } from "../core/sectors.js";
 import { count, ledgerOf, measureLedgerOf, phaseIdOf, recordOf } from "./ledgers.js";
 import { campaignReportsOf } from "./report.js";
@@ -54,7 +56,13 @@ export const snapshotCampaignsOf = (
           count: 0,
           cleared: 0,
           closed: 0,
-          progress: measured === undefined ? 0 : measureProgressOf(measured, objective.target),
+          entered: Object.keys(measured?.sectors ?? {}).length,
+          // No sector has entered the window: nothing has been asked yet,
+          // which is not the same as done.
+          progress:
+            measured === undefined || Object.keys(measured.sectors).length === 0
+              ? null
+              : measureProgressOf(measured, objective.target),
           lastCleared: measured === undefined ? null : lastImprovedOf(measured),
           concessions: measured?.concessions.length ?? 0,
           complete: met,
@@ -77,7 +85,8 @@ export const snapshotCampaignsOf = (
           count: own?.count ?? 0,
           cleared: 0,
           closed: 0,
-          progress: 0,
+          entered: 0,
+          progress: (own?.count ?? 0) === 0 ? null : 0,
           lastCleared: null,
           concessions: 0,
           complete: (own?.count ?? 0) === 0,
@@ -96,7 +105,8 @@ export const snapshotCampaignsOf = (
         count: sectors.reduce((sum, one) => sum + one.holdouts.length, 0),
         cleared: sectors.reduce((sum, one) => sum + one.cleared, 0),
         closed: sectors.reduce((sum, one) => sum + one.closed, 0),
-        progress: progressOf(ledger),
+        entered: sectors.length,
+        progress: sectors.length === 0 ? null : progressOf(ledger),
         lastCleared: lastClearedOf(ledger),
         concessions: ledger.concessions.length,
         complete: isComplete(ledger),
@@ -110,12 +120,41 @@ export const snapshotCampaignsOf = (
     const totalCount = objectives.reduce((sum, one) => sum + one.count, 0);
     const sectors = [...evaluation.sectors.values()].filter((one) => one.name !== LEGACY_SECTOR);
     const legacy = evaluation.sectors.get(LEGACY_SECTOR);
+    // Each sector's position on the ladder: the phases behind it, plus the
+    // share of the one it stands in that the ledgers say is paid.
+    const steps = stepsOf(rule);
+    const positions = new Map(
+      sectors.map((state) => [
+        state.name,
+        ladderPositionOf(rule, state.phase, (objectiveId) => {
+          const at = rule.objectives.findIndex((one) => one.id === objectiveId);
+          const objective = rule.objectives[at];
+          if (objective === undefined) return 0;
+          return objective.measure !== null
+            ? measureSectorProgressOf(
+                measureLedgerOf(policy, rule, objective),
+                state.name,
+                objective.target,
+              )
+            : sectorProgressOf(ledgers[at], state.name);
+        }),
+      ]),
+    );
     return {
       id: rule.id,
       ...(rule.title === null ? {} : { title: rule.title }),
       ...(rule.owner === null ? {} : { owner: rule.owner }),
       count: totalCount,
-      progress: totalInitial <= 0 ? 1 : 1 - totalCount / totalInitial,
+      // With a ladder, how far along it the sectors stand — a number that
+      // rises as they advance and never falls when one enters a phase, as
+      // cleared-over-ever-ledgered does each time a new window is counted.
+      progress:
+        steps > 0 && sectors.length > 0
+          ? [...positions.values()].reduce((sum, one) => sum + one, 0) / (steps * sectors.length)
+          : totalInitial <= 0
+            ? 1
+            : 1 - totalCount / totalInitial,
+      steps,
       objectives,
       phases: rule.phases.map((phase, index) => ({
         id: phase.id,
@@ -138,6 +177,7 @@ export const snapshotCampaignsOf = (
           phase: phaseIdOf(rule, state.phase),
           reached: record?.reached ?? null,
           files: state.sector.files.length,
+          position: positions.get(state.name) ?? 0,
           residue: state.residue,
           stalled:
             rule.staleAfter !== null &&
@@ -167,7 +207,9 @@ export const snapshotCampaignsOf = (
     };
   });
 
-const percent = (fraction: number): string => `${String(Math.round(fraction * 100))}%`;
+// `—` for an objective no sector has entered: not 0%, and not 100%.
+const percent = (fraction: number | null): string =>
+  fraction === null ? "—" : `${String(Math.round(fraction * 100))}%`;
 
 // The status table: one row per campaign, its phase distribution beneath
 // when it has phases, its objectives beneath that. Stalled and complete
@@ -208,8 +250,10 @@ export const renderCampaignRows = (
               : `, target ${String(objective.measure.target)}`) +
             (objective.ledgered ? "" : "  no ledger")
           : `    ${objective.id.padEnd(width)}  ${percent(objective.progress).padStart(4)}  ${String(objective.count).padStart(5)} left` +
-            `  ${String(objective.cleared)} cleared  ${String(objective.allowed)} conceded` +
-            (objective.closed > 0 ? `  ${String(objective.closed)} closed` : "") +
+            (objective.entered === 0 && objective.count === 0
+              ? "  no sector has entered its window"
+              : `  ${String(objective.cleared)} cleared  ${String(objective.allowed)} conceded` +
+                (objective.closed > 0 ? `  ${String(objective.closed)} closed` : "")) +
             (objective.ledgered ? "" : "  no ledger"),
       ),
     ];

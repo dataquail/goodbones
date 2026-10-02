@@ -60,7 +60,8 @@ export type ObjectiveCard = {
   readonly allowed: number;
   readonly cleared: number;
   readonly closed: number;
-  readonly progress: number;
+  // `null` while no sector has entered the objective's window.
+  readonly progress: number | null;
   readonly lastCleared: string | null;
   readonly concessions: number;
   readonly complete: boolean;
@@ -114,6 +115,9 @@ export type SectorCard = {
   readonly residue: Readonly<Record<string, number>>;
   readonly counts: Readonly<Record<string, number>>;
   readonly values: Readonly<Record<string, number>>;
+  // Where the sector stands on the ladder: phases behind it, plus the share
+  // of its current phase that is paid.
+  readonly ladder: number;
   readonly stalled: boolean;
   readonly attested: ReadonlyArray<Attestation>;
   readonly notes: ReadonlyArray<Note>;
@@ -132,7 +136,10 @@ export type CampaignCard = {
   readonly onComplete: "keep" | "remove";
   readonly position: AtlasPosition | null;
   readonly count: number;
+  // With a ladder, the sectors' positions on it over its `steps`; with
+  // none, cleared over everything ever ledgered.
   readonly progress: number;
+  readonly steps: number;
   readonly stalled: boolean;
   readonly complete: boolean;
   readonly ledgered: boolean;
@@ -259,7 +266,7 @@ export const campaignViewOf = (input: CampaignViewInput): CampaignView => {
         allowed: summary?.allowed ?? 0,
         cleared: summary?.cleared ?? 0,
         closed: summary?.closed ?? 0,
-        progress: summary?.progress ?? 0,
+        progress: summary?.progress ?? null,
         lastCleared: summary?.lastCleared ?? null,
         concessions: summary?.concessions ?? 0,
         complete: summary?.complete ?? false,
@@ -332,6 +339,7 @@ export const campaignViewOf = (input: CampaignViewInput): CampaignView => {
         residue: sectorState.residue,
         counts: sectorState.counts,
         values: sectorState.values,
+        ladder: summary?.position ?? 0,
         stalled: summary?.stalled ?? false,
         attested: record?.attested ?? [],
         notes: record?.notes ?? [],
@@ -352,6 +360,7 @@ export const campaignViewOf = (input: CampaignViewInput): CampaignView => {
       position: position(["campaigns", rule.id]),
       count: snapshot.count,
       progress: snapshot.progress,
+      steps: snapshot.steps,
       stalled: report.stalled,
       complete: report.complete,
       ledgered: snapshot.ledgered,

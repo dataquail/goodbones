@@ -99,6 +99,33 @@ export const derivePhase = (
   return donePhaseOf(rule);
 };
 
+// How many steps the ladder has: its defined phases. An open phase is last
+// and is where the plan runs out, so a sector standing there has taken
+// every step there is.
+export const stepsOf = (rule: CompiledCampaign): number =>
+  rule.phases.filter(isDefinedPhase).length;
+
+// Where a sector stands on the ladder, as a number: the phases behind it,
+// plus the share of the phase it stands in that is paid — the mean of its
+// objectives' shares, `0` at an attested phase, which nothing counts down.
+// It moves with every holdout cleared and never falls on entering a phase:
+// a sector enters at the phase's index exactly, and nears the next index as
+// the phase is paid.
+export const ladderPositionOf = (
+  rule: CompiledCampaign,
+  phase: number,
+  shareOf: (objectiveId: string) => number,
+): number => {
+  const steps = stepsOf(rule);
+  const at = rule.phases[phase];
+  if (phase >= steps || at === undefined) return steps;
+  if (at.objectives.length === 0) return phase;
+  const paid =
+    at.objectives.reduce((sum, objectiveId) => sum + shareOf(objectiveId), 0) /
+    at.objectives.length;
+  return phase + Math.min(1, Math.max(0, paid));
+};
+
 // What a touched sector owes: the phase's own word, else the campaign's,
 // else `advise` for an open phase and `ratchet` for a defined one.
 export const onTouchOf = (rule: CompiledCampaign, phase: number): OnTouch => {

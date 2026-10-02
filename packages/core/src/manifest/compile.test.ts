@@ -174,6 +174,82 @@ describe("import policy scope", () => {
   });
 });
 
+describe("file kinds that overlap", () => {
+  // `*.test.ts` also matches every `*.integration.test.ts`. Each states an
+  // allowlist, and a file under both was held to their intersection — an
+  // integration test judged by the unit tests' rules, whichever was written
+  // first.
+  const lowered = lowerManifest(
+    base({
+      "@/platform/": {
+        imports: { message: "platform reaches itself.", allow: ["@/platform/**"] },
+        children: {
+          "*.ts": {},
+          "*.test.ts": {
+            imports: {
+              message: "A unit test reaches the platform and nothing live.",
+              deny: [{ message: "No database in a unit test.", match: "@/db/**" }],
+            },
+          },
+          "*.integration.test.ts": {
+            imports: {
+              message: "An integration test may reach the database.",
+              allow: ["@/db/**"],
+            },
+          },
+        },
+      },
+    }),
+  );
+  const selects = (rule: ImportRule, file: string): boolean =>
+    [rule.from].flat().some((one) => new RegExp(one).test(file)) &&
+    ![rule.fromNot ?? []].flat().some((one) => new RegExp(one).test(file));
+  const unit = "pkg/src/platform/guard.test.ts";
+  const integration = "pkg/src/platform/guard.integration.test.ts";
+
+  it("lets the narrower kind win the allowlist, as an overriding child wins over its folder", () => {
+    const unitRule = ruleNamed(lowered.imports, "/*.test.ts/imports");
+    const integrationRule = ruleNamed(lowered.imports, "/*.integration.test.ts/imports");
+    expect(selects(unitRule, unit)).toBe(true);
+    expect(selects(unitRule, integration)).toBe(false);
+    expect(selects(integrationRule, integration)).toBe(true);
+    expect(selects(integrationRule, unit)).toBe(false);
+  });
+
+  it("leaves a prohibition where it was: a deny composes, and nothing opts out of one", () => {
+    const denial = ruleNamed(lowered.imports, "/*.test.ts/deny-0");
+    expect(selects(denial, unit)).toBe(true);
+    expect(selects(denial, integration)).toBe(true);
+  });
+
+  it("leaves a kind that states no policy of its own under whatever selected it", () => {
+    // `*.ts` states nothing, so nothing steps aside for it or because of it:
+    // the folder's rule still exempts only the two kinds that override it.
+    const folderRule = ruleNamed(lowered.imports, "platform/imports");
+    expect(selects(folderRule, "pkg/src/platform/guard.ts")).toBe(true);
+    expect(selects(folderRule, unit)).toBe(false);
+  });
+
+  it("refuses two keys that select the same files with a policy each, as a value", () => {
+    const { refusals } = lowerManifest(
+      base({
+        "@/platform/": {
+          children: {
+            "*.test.ts": { imports: { allow: ["@/platform/**"] } },
+            "*.test.ts | *.spec.ts": { imports: { allow: ["@/db/**"] } },
+          },
+        },
+      }),
+    );
+    // Said once, naming both keys; `loadPolicy` makes it a `ConfigInvalid`.
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]).toMatch(
+      /"platform\/\*\.test\.ts" and its sibling "\*\.test\.ts \| \*\.spec\.ts" select the same files/,
+    );
+    expect(lowered.refusals).toEqual([]);
+  });
+});
+
 describe("external", () => {
   const lowered = lowerManifest(
     base({

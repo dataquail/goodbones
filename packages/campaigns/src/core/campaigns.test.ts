@@ -237,6 +237,30 @@ describe("every leaf term, true and false", () => {
     ).toBe(false);
   });
 
+  it("syntax: the same text twice in one declaration is two entries, not one", () => {
+    // `user.isSuperAdmin()` twice in one function: one hash, one anchor. Were
+    // they one entry, paying one down would show nothing, and paying both
+    // would clear one.
+    const twice: ReadonlyArray<StagedMatch> = [
+      { text: "user.isSuperAdmin()", anchor: "authRoutes" },
+      { text: "user.isSuperAdmin()", anchor: "authRoutes" },
+      { text: "user.isSuperAdmin()", anchor: "orgRoutes" },
+    ];
+    const calls = rule({ syntax: { rule: { pattern: "$U.isSuperAdmin()" } } }, "match");
+    const key = matchKeyOf("authRoutes", "user.isSuperAdmin()");
+    expect(subjects(calls, input({ matches: twice }))).toEqual([
+      key,
+      `${key}~2`,
+      matchKeyOf("orgRoutes", "user.isSuperAdmin()"),
+    ]);
+    // One paid: the entry that is left is the first again, and `~2` is the
+    // one a ledger finds stale.
+    expect(subjects(calls, input({ matches: twice.slice(1) }))).toEqual([
+      key,
+      matchKeyOf("orgRoutes", "user.isSuperAdmin()"),
+    ]);
+  });
+
   it("report: each diagnostic another tool reported on the file, anchored on the declaration at its position", () => {
     const diagnostics = [
       { line: 3, column: 4, code: "TS2551", message: "Property 'x' does not exist" },

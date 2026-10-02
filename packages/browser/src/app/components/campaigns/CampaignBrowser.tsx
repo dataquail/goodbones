@@ -95,7 +95,11 @@ export const CampaignBrowser = ({ onSelect, selection, view }: Props): React.JSX
           </h2>
           <div
             className="progress"
-            title={`${String(Math.round(campaign.progress * 100))}% of the initial holdouts cleared`}
+            title={
+              campaign.steps > 0
+                ? `${String(Math.round(campaign.progress * 100))}% of the way along the ladder, every sector averaged`
+                : `${String(Math.round(campaign.progress * 100))}% of the initial holdouts cleared`
+            }
           >
             <div
               className="progress-bar"

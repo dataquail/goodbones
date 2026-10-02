@@ -264,7 +264,7 @@ export const Ladder = ({
                   <title>
                     {objective.message}
                     {objective.measure === null
-                      ? ` — ${String(objective.count)} holdout(s), ${String(Math.round(objective.progress * 100))}% cleared`
+                      ? ` — ${String(objective.count)} holdout(s), ${objective.progress === null ? "no sector has entered its window" : `${String(Math.round(objective.progress * 100))}% cleared`}`
                       : ` — ${String(objective.measure.value ?? "?")} now, target ${String(objective.measure.target ?? "none")}`}
                   </title>
                 </g>

@@ -76,6 +76,7 @@ const SAMPLE: Snapshot = {
       owner: "@dataquail/web-platform",
       count: 388,
       progress: 0.0628,
+      steps: 1,
       objectives: [
         {
           id: "class-shape",
@@ -85,6 +86,7 @@ const SAMPLE: Snapshot = {
           count: 388,
           cleared: 26,
           closed: 0,
+          entered: 1,
           progress: 0.0628,
           lastCleared: "2026-09-14T09:11:00.000Z",
           concessions: 1,
@@ -99,6 +101,7 @@ const SAMPLE: Snapshot = {
           phase: "hooks",
           reached: "hooks",
           files: 900,
+          position: 0,
           residue: { "class-shape": 388 },
           stalled: false,
         },

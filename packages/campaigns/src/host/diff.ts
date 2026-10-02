@@ -49,9 +49,7 @@ const AMBIENT_GIT = [
 ];
 
 export const gitEnv = (): NodeJS.ProcessEnv =>
-  Object.fromEntries(
-    Object.entries(process.env).filter(([key]) => !AMBIENT_GIT.includes(key)),
-  );
+  Object.fromEntries(Object.entries(process.env).filter(([key]) => !AMBIENT_GIT.includes(key)));
 
 const git = (repoRoot: string, args: ReadonlyArray<string>): string =>
   execFileSync("git", args, {

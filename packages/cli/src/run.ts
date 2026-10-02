@@ -29,6 +29,7 @@ import {
   renderHistory,
   renderNudge,
   reportSpecsOf,
+  sectorMovesOf,
   snapshotCampaignsOf,
   valueOfParts,
   widenedExtensions,
@@ -1443,6 +1444,9 @@ export const objectives = (
             try: () => clear(policy, evaluation, only, by),
             catch: (cause) => fail(String(cause)),
           });
+          // Where each sector went, read off the ledgers as they stood: a
+          // clear of one objective places no sector, so it says nothing.
+          const moves = only === null ? sectorMovesOf(policy, evaluation) : [];
           for (const outcome of outcomes) {
             const parts = [
               ...(outcome.entered.length > 0
@@ -1499,6 +1503,14 @@ export const objectives = (
             }
             lines.push(
               `${outcome.campaign}/${outcome.objective}: ${parts.length === 0 ? "nothing to clear" : parts.join(", ")}; ${count(outcome.left, "holdout")} left.`,
+            );
+          }
+          for (const move of moves) {
+            lines.push(
+              `${move.campaign}: ${move.sector} ${move.back ? "went back" : "moved"} ${move.from ?? "done"} → ${move.to ?? "done"}` +
+                (move.passed.length === 0
+                  ? "."
+                  : `, passing ${move.passed.join(", ")} in the same clear: nothing there was ever counted for it.`),
             );
           }
         }

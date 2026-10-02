@@ -73,7 +73,10 @@ architecture objectives concede <campaign>[/<objective>] --reason "<why>"
 - A sector leaving a window, or gone, has its remaining holdouts `closed`.
 - After a [phase concession](/goodbones/campaigns/manifest/phases/#changing-a-defined-phase),
   sectors are re-baselined with `{ from, to }`.
-- It also writes each sector's record and the plan.
+- It also writes each sector's record and the plan, and says where each sector went:
+  `billing moved domain → repository`. A phase the sector entered and left in the same clear is
+  named as passed. If every sector passes a phase that way, the phase recognizes nothing: what it
+  detects is already gone by the time a sector gets there.
 
 **`concede`** is the only way to add holdouts. It appends a concession with the sector, holdouts,
 reason, time and author. See [Commands](/goodbones/campaigns/running/cli/) for its flags.
@@ -165,6 +168,11 @@ Don't edit it by hand.
 `<campaign>/plan.json` is the phase list `clear` last saw. `check` compares the manifest to it: a
 new phase, or an open phase gaining objectives, is **plan refined** and allowed. A defined phase
 changed or removed is **plan changed** and fails until the phase has a new `concessions` entry.
+
+Each phase is recorded by a hash of what it asks, and the file's order is the plan's order. So
+inserting a phase changes no other phase, and moving a phase past another changes the one that
+moved. The file is `"version": 2`. A version 1 file, whose hashes also covered each phase's
+position, is still read exactly, and the next `clear` rewrites it.
 
 ## Reviewing a ledger diff
 

@@ -113,6 +113,7 @@ export default defineConfig({
                 { slug: "campaigns/manifest/phases" },
                 { slug: "campaigns/manifest/attested" },
                 { slug: "campaigns/manifest/detectors" },
+                { slug: "campaigns/manifest/planning" },
               ],
             },
             {

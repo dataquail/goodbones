@@ -1427,6 +1427,24 @@
                                   "paydown"
                                 ]
                               },
+                              "grows": {
+                                "anyOf": [
+                                  {
+                                    "$ref": "#/$defs/Include"
+                                  },
+                                  {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "allOf": [
+                                        {
+                                          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              },
                               "endState": {
                                 "type": "object"
                               },

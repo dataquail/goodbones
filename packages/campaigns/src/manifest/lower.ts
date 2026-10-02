@@ -592,6 +592,7 @@ const lowerCampaign = (
       objectives: expanded,
       attested: phase.attested === true,
       ...(phase.onTouch === undefined ? {} : { onTouch: phase.onTouch }),
+      ...(phase.grows === undefined || phase.grows.length === 0 ? {} : { grows: [...phase.grows] }),
       ...(phase.endState === undefined ? {} : { endState: phase.endState }),
       concessions: [...(phase.concessions ?? [])],
       hash: "",
@@ -617,6 +618,42 @@ const lowerCampaign = (
       );
     }
   }
+  // `grows` loosens a ratchet, so it is held to what it can mean: a scalar
+  // the campaign declares, in window at the phase, and a phase with an end —
+  // an open phase has nothing a rise is on the way to.
+  for (const [index, phase] of phases.entries()) {
+    for (const objectiveId of phase.grows ?? []) {
+      const objective = objectives.find((one) => one.id === objectiveId);
+      if (objective === undefined) {
+        return refuse(
+          `phase "${phase.id}" grows an objective "${objectiveId}" the campaign does not declare.`,
+        );
+      }
+      if (objective.measure === undefined) {
+        return refuse(
+          `phase "${phase.id}" grows "${objectiveId}", which is not a scalar objective. A ` +
+            `holdout is conceded by name, with a reason; only a number can be expected to rise.`,
+        );
+      }
+      if (phase.objectives.length === 0 && !phase.attested) {
+        refuse(
+          `phase "${phase.id}" is open and grows "${objectiveId}". An open phase has no end a ` +
+            `rise is on the way to; define the phase, or concede the rise.`,
+        );
+      }
+      const from = phases.findIndex((one) => one.id === namedBy.get(objectiveId));
+      const to =
+        objective.until === undefined
+          ? Number.POSITIVE_INFINITY
+          : phases.findIndex((one) => one.id === objective.until);
+      if (index < from || index >= to) {
+        refuse(
+          `phase "${phase.id}" grows "${objectiveId}", which is not in window there; the ` +
+            `entry would never apply.`,
+        );
+      }
+    }
+  }
   const hashed = phases.map((phase, index) => ({
     ...phase,
     hash: digest({
@@ -624,6 +661,9 @@ const lowerCampaign = (
       id: phase.id,
       attested: phase.attested,
       endState: phase.endState ?? null,
+      // Only when present, so a phase that grows nothing hashes as it did
+      // before the key existed and no committed plan reads as changed.
+      ...(phase.grows === undefined ? {} : { grows: [...phase.grows].sort() }),
       objectives: phase.objectives.map((objectiveId) => {
         const objective = objectives.find((one) => one.id === objectiveId);
         return {

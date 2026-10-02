@@ -151,7 +151,9 @@ under `ratchet` or `paydown` those two directions always give a `back` verdict.
   sector with fewer holdouts.
 
 A [scalar objective](/goodbones/campaigns/manifest/scalars/) goes back only when it worsens past
-its tolerance, and `paydown` treats it as `ratchet`. Scalars are listed under `measures`.
+its tolerance, and `paydown` treats it as `ratchet`. Scalars are listed under `measures`. A rise
+in a phase that [`grows`](/goodbones/campaigns/manifest/phases/#a-phase-that-grows) the scalar
+is not `back`: the line reads `grows in <phase>`, and `measures[].grows` is `true`.
 
 ## JSON
 
@@ -232,8 +234,8 @@ its tolerance, and `paydown` treats it as `ratchet`. Scalars are listed under `m
   of the sector itself, which have no file.
 - `conceded`: with `--base`, growth against the base tree that the head's ledger carries.
 - `measures`: each scalar's `before`, `after` and `recorded` (what the ledger holds the sector
-  to), with `back` for a rise past the tolerance that no record covers and `conceded` for one a
-  record does.
+  to), with `back` for a rise past the tolerance that no record covers, `conceded` for one a
+  record does, and `grows` for one the judged phase expects.
 - `belongsInSector`: files the diff added inside the scope that no sector claims.
 - `unmatchedOwns`: globs the sector's marker owns that no file matches.
 - `unbirths`: markers the diff deleted, and the sector each returns to the legacy.

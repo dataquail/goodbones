@@ -14,6 +14,7 @@ import {
   EMPTY_SECTOR_RECORD,
   type Ledger,
   ledgerPathOf,
+  measureStandingOf,
   planDiffOf,
   planOf,
   planPathOf,
@@ -30,6 +31,7 @@ import {
 import { LEGACY_SECTOR } from "../core/sectors.js";
 import type { PhaseRule } from "../domain/config.js";
 import { campaignsOf } from "../load/extension.js";
+import { ledgerPhaseOf } from "./ledger-phase.js";
 import { entriesOf, ledgerOf, measureLedgerOf, recordOf, writeJson } from "./ledgers.js";
 
 // `objectives clear`: the ledgers reconciled with the code wherever that is
@@ -44,11 +46,13 @@ export type ClearOutcome = {
   readonly entered: ReadonlyArray<string>;
   readonly rebaselined: ReadonlyArray<string>;
   readonly left: number;
-  // For a scalar objective: the sectors whose record improved, and what the
-  // open sectors are held to now, summed. `cleared`, `rewritten` and `left`
-  // are 0; `closed` counts sectors.
+  // For a scalar objective: the sectors whose record improved, those whose
+  // number rose in a phase that `grows` it, and what the open sectors are
+  // held to now, summed. `cleared`, `rewritten` and `left` are 0; `closed`
+  // counts sectors.
   readonly measure?: {
     readonly improved: ReadonlyArray<{ sector: string; from: number; to: number }>;
+    readonly grown: ReadonlyArray<{ sector: string; from: number; to: number; phase: string }>;
     readonly recorded: number;
   };
 };
@@ -57,7 +61,10 @@ export type ClearOutcome = {
 // at its value; one inside it whose value improved past the tolerance is
 // held to that value from now; one past it, or no longer born, is closed;
 // and a receipted phase change re-baselines the sectors in window to what
-// they measure, with a concession. A rise is left where it is.
+// they measure, with a concession. A rise is left where it is — unless the
+// phase the ledgers place the sector at `grows` the objective, and then the
+// rise is recorded with a concession naming the phase: the plan is the
+// receipt, and the arithmetic still holds.
 const clearMeasure = (
   policy: LoadedPolicy,
   evaluation: CampaignEvaluation,
@@ -73,6 +80,7 @@ const clearMeasure = (
   const entered: Array<string> = [];
   const rebaselined: Array<string> = [];
   const improved: Array<{ sector: string; from: number; to: number }> = [];
+  const grown: Array<{ sector: string; from: number; to: number; phase: string }> = [];
   let closed = 0;
   for (const [name, state] of evaluation.sectors) {
     const value = state.values[objective.id] ?? Number.NaN;
@@ -107,6 +115,19 @@ const clearMeasure = (
       ledger = next;
       continue;
     }
+    const at = rule.phases[ledgerPhaseOf(policy, rule, name)];
+    if (
+      at?.grows?.includes(objective.id) === true &&
+      measureStandingOf(ledger, name, value, objective.tolerance) === "breached"
+    ) {
+      ledger = concededMeasure(ledger, name, value, {
+        at: policy.now,
+        by,
+        reason: `phase ${at.id} grows ${objective.id}`,
+      });
+      grown.push({ sector: name, from: own.recorded, to: value, phase: at.id });
+      continue;
+    }
     const next = clearedMeasure(ledger, name, value, objective.tolerance, policy.now, "inside");
     if (next !== ledger) {
       improved.push({
@@ -139,7 +160,7 @@ const clearMeasure = (
     entered,
     rebaselined,
     left: 0,
-    measure: { improved, recorded: recordedOf(ledger) },
+    measure: { improved, grown, recorded: recordedOf(ledger) },
   };
 };
 

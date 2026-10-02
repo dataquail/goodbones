@@ -186,6 +186,7 @@ export {
   type ViolationKind,
 } from "./domain/violation.js";
 export { makeFileSystemLive } from "./infrastructure/file-system-live.js";
+export { importFresh } from "./infrastructure/import-fresh.js";
 export {
   findManifestFile,
   formatManifestYaml,

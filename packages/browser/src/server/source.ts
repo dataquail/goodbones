@@ -1,3 +1,5 @@
+import { gitPathsOf } from "@goodbones/campaigns";
+
 import { collect, type Collected, type CollectOptions } from "./collect.js";
 import { watchRepository } from "./watch.js";
 
@@ -47,12 +49,16 @@ export const makeSource = (options: SourceOptions): Source => {
 
   let stopWatching: (() => void) | null = null;
   if (options.watch === true) {
+    // A commit redraws too: the nudge compares the working tree to `HEAD`.
+    const git = gitPathsOf(options.repoRoot);
+    const also = git === null ? [] : [git.head, git.index];
     // The extensions and the ledger directory come from the policy, once it
     // has loaded; until then every change under the roots counts.
     stopWatching = watchRepository({
       repoRoot: options.repoRoot,
       extensions: [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"],
       ledgerDir: ".architecture-campaigns",
+      also,
       debounceMs: options.debounceMs,
       onChange: invalidate,
     });
@@ -63,6 +69,7 @@ export const makeSource = (options: SourceOptions): Source => {
           repoRoot: options.repoRoot,
           extensions: [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"],
           ledgerDir: collected.campaigns.ledgerDir,
+          also,
           debounceMs: options.debounceMs,
           onChange: invalidate,
         });

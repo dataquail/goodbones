@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { gitPathsOf } from "@goodbones/campaigns";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -204,6 +205,14 @@ afterAll(() => {
 });
 
 describe.sequential("the nudge is judged by the phase the diff found the sector at", () => {
+  it("finds where git keeps HEAD and the index, for a host that redraws on a commit", () => {
+    expect(gitPathsOf(root)).toEqual({
+      head: path.join(root, ".git/HEAD"),
+      index: path.join(root, ".git/index"),
+    });
+    expect(gitPathsOf(path.join(root, "..", "no-such-folder"))).toBeNull();
+  });
+
   it("counts a paydown that enters the next window as forward, not as growth", async () => {
     // The role check goes: todo derives to `mirrored`, whose two raw writes
     // no ledger has seen. They were there all along.

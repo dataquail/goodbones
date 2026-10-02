@@ -13,7 +13,7 @@ import {
   sectorProgressOf,
 } from "../core/ledger.js";
 import { isDefinedPhase, ladderPositionOf, stepsOf } from "../core/phases.js";
-import { LEGACY_SECTOR } from "../core/sectors.js";
+import { isShared, LEGACY_SECTOR, SHARED_SECTOR } from "../core/sectors.js";
 import { count, ledgerOf, measureLedgerOf, phaseIdOf, recordOf } from "./ledgers.js";
 import { campaignReportsOf } from "./report.js";
 
@@ -39,6 +39,7 @@ export const snapshotCampaignsOf = (
       const ledger = ledgers[j];
       const own = report.objectives[j];
       const phase = rule.phases.find((one) => one.objectives.includes(objective.id))?.id ?? null;
+      const over = objective.overShared ? { over: "shared" as const } : {};
       if (objective.measure !== null) {
         // A scalar: the holdout counts are all 0, and the number is under
         // `measure`. Met when every sector in window is at its target.
@@ -51,6 +52,7 @@ export const snapshotCampaignsOf = (
         return {
           id: objective.id,
           phase,
+          ...over,
           initial: 0,
           allowed: 0,
           count: 0,
@@ -80,6 +82,7 @@ export const snapshotCampaignsOf = (
         return {
           id: objective.id,
           phase,
+          ...over,
           initial: own?.count ?? 0,
           allowed: 0,
           count: own?.count ?? 0,
@@ -97,6 +100,7 @@ export const snapshotCampaignsOf = (
       return {
         id: objective.id,
         phase,
+        ...over,
         initial: sectors.reduce((sum, one) => sum + one.initial, 0),
         allowed: ledger.concessions.reduce(
           (sum, one) => sum + Math.max(0, "delta" in one ? one.delta : one.to - one.from),
@@ -118,8 +122,13 @@ export const snapshotCampaignsOf = (
       0,
     );
     const totalCount = objectives.reduce((sum, one) => sum + one.count, 0);
-    const sectors = [...evaluation.sectors.values()].filter((one) => one.name !== LEGACY_SECTOR);
+    // The legacy and the shared files stand on no rung of their own: neither is
+    // among the sectors the ladder counts.
+    const sectors = [...evaluation.sectors.values()].filter(
+      (one) => one.name !== LEGACY_SECTOR && !isShared(rule, one.name),
+    );
     const legacy = evaluation.sectors.get(LEGACY_SECTOR);
+    const sharedFiles = rule.shared === null ? undefined : evaluation.sectors.get(SHARED_SECTOR);
     // Each sector's position on the ladder: the phases behind it, plus the
     // share of the one it stands in that the ledgers say is paid.
     const steps = stepsOf(rule);
@@ -130,13 +139,15 @@ export const snapshotCampaignsOf = (
           const at = rule.objectives.findIndex((one) => one.id === objectiveId);
           const objective = rule.objectives[at];
           if (objective === undefined) return 0;
+          // A prerequisite is paid where it is ledgered: on the shared files.
+          const paidBy = objective.overShared ? SHARED_SECTOR : state.name;
           return objective.measure !== null
             ? measureSectorProgressOf(
                 measureLedgerOf(policy, rule, objective),
-                state.name,
+                paidBy,
                 objective.target,
               )
-            : sectorProgressOf(ledgers[at], state.name);
+            : sectorProgressOf(ledgers[at], paidBy);
         }),
       ]),
     );
@@ -195,6 +206,16 @@ export const snapshotCampaignsOf = (
                 .filter(([id]) => !scalar.has(id))
                 .reduce((a, [, n]) => a + n, 0),
       },
+      ...(sharedFiles === undefined
+        ? {}
+        : {
+            shared: {
+              files: evaluation.index.shared.length,
+              holdouts: Object.entries(sharedFiles.residue)
+                .filter(([id]) => !scalar.has(id))
+                .reduce((a, [, n]) => a + n, 0),
+            },
+          }),
       plan: report.plan,
       stalled: report.stalled,
       complete: report.complete,
@@ -240,7 +261,8 @@ export const renderCampaignRows = (
                   `${phase.id}${phase.defined ? (phase.attested ? " (attested)" : "") : " (open)"} ${String(phase.sectors)}`,
               )
               .join(" → ")}` +
-              (one.legacy.files > 0 ? `  · legacy ${count(one.legacy.files, "file")}` : ""),
+              (one.legacy.files > 0 ? `  · legacy ${count(one.legacy.files, "file")}` : "") +
+              (one.shared === undefined ? "" : `  · shared ${count(one.shared.files, "file")}`),
           ]),
       ...one.objectives.map((objective) =>
         objective.measure !== undefined
@@ -254,6 +276,7 @@ export const renderCampaignRows = (
               ? "  no sector has entered its window"
               : `  ${String(objective.cleared)} cleared  ${String(objective.allowed)} conceded` +
                 (objective.closed > 0 ? `  ${String(objective.closed)} closed` : "")) +
+            (objective.over === undefined ? "" : "  over the shared files") +
             (objective.ledgered ? "" : "  no ledger"),
       ),
     ];

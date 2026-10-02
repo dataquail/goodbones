@@ -7,14 +7,12 @@ import {
   campaignsSelecting,
   type CompiledCampaign,
   type CompiledObjective,
-  derivePhase,
   detectorCandidatesOf,
   detectorOf,
-  distanceToTarget,
   evaluateObjectives,
+  isShared,
   ledgerKeyOf,
-  LEGACY_PHASE,
-  LEGACY_SECTOR,
+  ledgerPhaseOf,
   membershipOf,
   needsSyntax,
   objectivesInWindow,
@@ -22,6 +20,7 @@ import {
   reconcileSector,
   sectorEntryOf,
   type SectorIndex,
+  sharedWindow,
 } from "@goodbones/campaigns";
 import { formatMessage, type LoadedPolicy, ReportUnavailable } from "@goodbones/core";
 import { sourceFactsOf } from "@goodbones/typescript";
@@ -81,36 +80,25 @@ const unledgered = (
   return hits.filter((hit) => !carried.has(hit));
 };
 
-// The objectives in window for the sector, read off the ledgers. A sector
-// no `clear` has placed — no record of it — stands at the first phase, as
-// the legacy does, rather than deriving to the end from ledgers that
-// carry nothing for it.
+// The objectives in window for the sector, read off the ledgers: the phase
+// they place it at (a sector no `clear` has placed stands at the first, as
+// the legacy does), with a prerequisite counted by what the shared files'
+// ledger carries. On the shared files themselves, which stand on no phase, it is
+// what is read over it. A prerequisite is never reported on a sector's own
+// file — its holdouts are the shared files'.
 const inWindowFor = (
   policy: LoadedPolicy,
   rule: CompiledCampaign,
   sector: string,
 ): ReadonlyArray<CompiledObjective> => {
-  const record = campaignsOf(policy).sectorRecords.get(ledgerKeyOf(rule.id, sector));
-  const position = positionOf(rule, record);
-  // A scalar objective's residue is its recorded value's distance to its
-  // target: the plugin sees one file and cannot sum a sector, so the record
-  // `clear` last wrote is what places the sector, as the holdout count is.
-  const counts = (objectiveId: string): number => {
-    const key = ledgerKeyOf(rule.id, objectiveId);
-    const objective = rule.objectives.find((one) => one.id === objectiveId);
-    if (objective !== undefined && objective.measure !== null) {
-      const own = campaignsOf(policy).measureLedgers.get(key)?.sectors[sector];
-      return own === undefined || own.closed !== null
-        ? 0
-        : distanceToTarget(objective, own.recorded);
-    }
-    return campaignsOf(policy).ledgers.get(key)?.sectors[sector]?.holdouts.length ?? 0;
-  };
-  const phase =
-    sector === LEGACY_SECTOR || record === undefined
-      ? Math.min(LEGACY_PHASE, rule.phases.length)
-      : derivePhase(rule, counts, position);
-  return objectivesInWindow(rule, phase, position).filter((one) => one.detect !== null);
+  const window = isShared(rule, sector)
+    ? sharedWindow(rule)
+    : objectivesInWindow(
+        rule,
+        ledgerPhaseOf(policy, rule, sector),
+        positionOf(rule, campaignsOf(policy).sectorRecords.get(ledgerKeyOf(rule.id, sector))),
+      ).filter((one) => !one.overShared);
+  return window.filter((one) => one.detect !== null);
 };
 
 // A `report` a campaign names that cannot be read — a command the kernel

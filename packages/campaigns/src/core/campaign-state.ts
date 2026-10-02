@@ -22,14 +22,18 @@ import type { SectorRecord } from "./ledger.js";
 import { positionOf } from "./ledger.js";
 import {
   derivePhase,
+  donePhaseOf,
   LEGACY_PHASE,
   objectivesInWindow,
   type Residue,
   type SectorPosition,
+  sharedWindow,
+  UNPLACED,
 } from "./phases.js";
 import {
   discoverSectors,
   entryOf,
+  isShared,
   LEGACY_SECTOR,
   rootOf,
   type Sector,
@@ -37,6 +41,7 @@ import {
   type SectorDiscovery,
   type SectorIndex,
   sectorNamed,
+  SHARED_SECTOR,
 } from "./sectors.js";
 
 // One campaign over the files in its scope: its sectors discovered, every
@@ -139,6 +144,7 @@ export const evaluateCampaign = (
         : undefined,
   });
 
+  const overShared = new Set(rule.objectives.filter((one) => one.overShared).map((one) => one.id));
   const hits: Array<ObjectiveHit> = [];
   const perFile = perFileObjectivesOf(rule);
   if (perFile.length > 0) {
@@ -147,6 +153,9 @@ export const evaluateCampaign = (
       for (const hit of evaluateObjectives(perFile, inputOf(file))) {
         const sector = index.sectorOfHit(file, hit.violation.subject);
         if (sector === null) continue;
+        // An objective is read over the shared files or over the sectors,
+        // never both: a hit on the other side is not one.
+        if (isShared(rule, sector) !== overShared.has(hit.objective)) continue;
         const own = sectorNamed(index, sector);
         const root = own === null ? "" : rootOf(own, file);
         hits.push({ ...hit, sector, entry: entryOf(hit.violation, root) });
@@ -175,11 +184,18 @@ export const evaluateCampaign = (
     }
   }
 
-  const names = [...index.sectors.keys(), ...(index.legacy.length > 0 ? [LEGACY_SECTOR] : [])];
+  // The shared files are there whenever the campaign declares them, files or
+  // not: a prerequisite over shared files nothing is in yet is not met.
+  const names = [
+    ...index.sectors.keys(),
+    ...(index.legacy.length > 0 ? [LEGACY_SECTOR] : []),
+    ...(rule.shared !== null ? [SHARED_SECTOR] : []),
+  ];
   for (const name of names) {
     const sector = sectorNamed(index, name);
     if (sector === null) continue;
     for (const objective of rule.objectives) {
+      if (isShared(rule, name) !== objective.overShared) continue;
       const term = objective.sector;
       if (term !== null) {
         let holds: boolean;
@@ -202,7 +218,7 @@ export const evaluateCampaign = (
         continue;
       }
       if (objective.endState !== null && input.endStateOf !== undefined) {
-        if (name === LEGACY_SECTOR || sector.roots.length !== 1) continue;
+        if (name === LEGACY_SECTOR || isShared(rule, name) || sector.roots.length !== 1) continue;
         const phase = rule.phases.find((one) => one.id === objective.endState?.phase);
         if (phase === undefined) continue;
         const root = sector.roots[0] ?? "";
@@ -219,10 +235,8 @@ export const evaluateCampaign = (
     }
   }
 
-  const sectors = new Map<string, SectorState>();
-  for (const name of names) {
-    const sector = sectorNamed(index, name);
-    if (sector === null) continue;
+  // What each sector counts over its own files.
+  const tally = (name: string) => {
     const counts: Record<string, number> = {};
     const values: Record<string, number> = {};
     for (const objective of rule.objectives) counts[objective.id] = 0;
@@ -238,6 +252,43 @@ export const evaluateCampaign = (
           : valueOfParts(measure, parts.get(name)?.get(objective.id) ?? ZERO_PARTS);
       values[objective.id] = value;
       counts[objective.id] = distanceToTarget(objective, value);
+    }
+    return { counts, values };
+  };
+  const shared = rule.shared === null ? null : tally(SHARED_SECTOR);
+
+  const sectors = new Map<string, SectorState>();
+  for (const name of names) {
+    const sector = sectorNamed(index, name);
+    if (sector === null) continue;
+    if (isShared(rule, name) && shared !== null) {
+      // On no phase: its window is what is read over it, wherever the
+      // sectors stand.
+      const inWindow = sharedWindow(rule);
+      const residue: Record<string, number> = {};
+      for (const objective of inWindow) residue[objective.id] = shared.counts[objective.id] ?? 0;
+      sectors.set(name, {
+        name,
+        sector,
+        phase: donePhaseOf(rule),
+        position: UNPLACED,
+        inWindow,
+        counts: shared.counts,
+        values: shared.values,
+        residue,
+      });
+      continue;
+    }
+    const { counts, values } = tally(name);
+    // A prerequisite is the shared files' to meet, and every sector's to wait
+    // on: what the shared files count for it is what each sector counts.
+    if (shared !== null) {
+      for (const objective of rule.objectives) {
+        if (!objective.overShared) continue;
+        counts[objective.id] = shared.counts[objective.id] ?? 0;
+        const value = shared.values[objective.id];
+        if (value !== undefined) values[objective.id] = value;
+      }
     }
     const position = positionOf(rule, input.recordOf(name));
     const phase =

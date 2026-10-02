@@ -365,6 +365,7 @@ button.small:hover {
 .legend .key.open::before,
 .legend .key.sector::before,
 .legend .key.legacy::before,
+.legend .key.shared::before,
 .legend .key.done::before,
 .legend .key.nudged::before {
   width: 12px;
@@ -385,6 +386,10 @@ button.small:hover {
   background: var(--orange-low);
   border-color: var(--orange);
   border-style: dashed;
+}
+.legend .key.shared::before {
+  border-color: var(--ink-2);
+  border-style: dotted;
 }
 .legend .key.done::before {
   background: var(--green-low);
@@ -1044,6 +1049,11 @@ details summary {
 .ladder .sector-box.legacy .sector-name,
 .ladder .sector-box.legacy .sector-count {
   fill: var(--orange);
+}
+.ladder .sector-box.shared .sector {
+  fill: transparent;
+  stroke: var(--ink-2);
+  stroke-dasharray: 1 3;
 }
 .ladder .sector-box.done .sector {
   fill: var(--green-low);

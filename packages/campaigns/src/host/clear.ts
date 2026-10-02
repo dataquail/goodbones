@@ -28,11 +28,11 @@ import {
   serializePlanRecord,
   serializeSectorRecord,
 } from "../core/ledger.js";
-import { isDefinedPhase } from "../core/phases.js";
-import { LEGACY_SECTOR } from "../core/sectors.js";
+import { isDefinedPhase, ledgeredFor } from "../core/phases.js";
+import { isShared, LEGACY_SECTOR } from "../core/sectors.js";
 import type { PhaseRule } from "../domain/config.js";
 import { campaignsOf } from "../load/extension.js";
-import { ledgerPhaseOf } from "./ledger-phase.js";
+import { growsFor, ledgerPhaseOf } from "./ledger-phase.js";
 import { entriesOf, ledgerOf, measureLedgerOf, recordOf, writeJson } from "./ledgers.js";
 
 // `objectives clear`: the ledgers reconciled with the code wherever that is
@@ -53,7 +53,13 @@ export type ClearOutcome = {
   // counts sectors.
   readonly measure?: {
     readonly improved: ReadonlyArray<{ sector: string; from: number; to: number }>;
-    readonly grown: ReadonlyArray<{ sector: string; from: number; to: number; phase: string }>;
+    // `phase` is `null` on the shared files, which hold no number.
+    readonly grown: ReadonlyArray<{
+      sector: string;
+      from: number;
+      to: number;
+      phase: string | null;
+    }>;
     readonly recorded: number;
   };
 };
@@ -81,9 +87,10 @@ const clearMeasure = (
   const entered: Array<string> = [];
   const rebaselined: Array<string> = [];
   const improved: Array<{ sector: string; from: number; to: number }> = [];
-  const grown: Array<{ sector: string; from: number; to: number; phase: string }> = [];
+  const grown: Array<{ sector: string; from: number; to: number; phase: string | null }> = [];
   let closed = 0;
   for (const [name, state] of evaluation.sectors) {
+    if (!ledgeredFor(rule, objective, name)) continue;
     const value = state.values[objective.id] ?? Number.NaN;
     const own = ledger.sectors[name];
     if (!state.inWindow.some((one) => one.id === objective.id)) {
@@ -116,17 +123,24 @@ const clearMeasure = (
       ledger = next;
       continue;
     }
-    const at = rule.phases[ledgerPhaseOf(policy, rule, name)];
     if (
-      at?.grows?.includes(objective.id) === true &&
+      growsFor(policy, rule, name, objective.id) &&
       measureStandingOf(ledger, name, value, objective.tolerance) === "breached"
     ) {
+      // On the shared files, which hold no number; elsewhere, in a phase that
+      // grows this one.
+      const at = isShared(rule, name)
+        ? null
+        : (rule.phases[ledgerPhaseOf(policy, rule, name)]?.id ?? null);
       ledger = concededMeasure(ledger, name, value, {
         at: policy.now,
         by,
-        reason: `phase ${at.id} grows ${objective.id}`,
+        reason:
+          at === null
+            ? `the shared files hold no number: ${objective.id} is measured there`
+            : `phase ${at} grows ${objective.id}`,
       });
-      grown.push({ sector: name, from: own.recorded, to: value, phase: at.id });
+      grown.push({ sector: name, from: own.recorded, to: value, phase: at });
       continue;
     }
     const next = clearedMeasure(ledger, name, value, objective.tolerance, policy.now, "inside");
@@ -201,6 +215,7 @@ export const clear = (
     const rebaselined: Array<string> = [];
     let rewritten = 0;
     for (const [name, state] of evaluation.sectors) {
+      if (!ledgeredFor(rule, objective, name)) continue;
       const inWindow = state.inWindow.some((one) => one.id === objective.id);
       const entries = entriesOf(counted, objective.id, name);
       if (!inWindow) {
@@ -250,7 +265,8 @@ export const clear = (
   }
   if (only === null) {
     for (const [name, state] of evaluation.sectors) {
-      if (name === LEGACY_SECTOR) continue;
+      // Neither stands on the ladder, so neither has a record of reaching.
+      if (name === LEGACY_SECTOR || isShared(rule, name)) continue;
       const before = recordOf(policy, rule, name) ?? EMPTY_SECTOR_RECORD(rule.id, name, policy.now);
       const after = reachedRecord(before, rule, state.phase, policy.now);
       if (after !== before || recordOf(policy, rule, name) === undefined) {
@@ -295,7 +311,8 @@ export const sectorMovesOf = (
   const moves: Array<SectorMove> = [];
   for (const [name, state] of evaluation.sectors) {
     // A sector no `clear` has placed has not moved: it is placed.
-    if (name === LEGACY_SECTOR || recordOf(policy, rule, name) === undefined) continue;
+    if (name === LEGACY_SECTOR || isShared(rule, name)) continue;
+    if (recordOf(policy, rule, name) === undefined) continue;
     const from = ledgerPhaseOf(policy, rule, name);
     if (from === state.phase) continue;
     moves.push({

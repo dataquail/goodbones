@@ -8,6 +8,7 @@ import type {
 import {
   campaignsOf,
   isDefinedPhase,
+  isShared,
   ledgerKeyOf,
   LEGACY_SECTOR,
   snapshotCampaignsOf,
@@ -101,6 +102,8 @@ export type HitCard = {
 export type SectorCard = {
   readonly name: string;
   readonly legacy: boolean;
+  // The campaign's shared: the files every sector shares, on no phase.
+  readonly shared: boolean;
   // Index into `phases`; `phases.length` when every phase is done. For a
   // campaign with no phases, `0` and `done` says whether residue is nil.
   readonly phase: number;
@@ -149,6 +152,8 @@ export type CampaignCard = {
   readonly objectives: ReadonlyArray<ObjectiveCard>;
   readonly sectors: ReadonlyArray<SectorCard>;
   readonly legacy: { readonly files: number; readonly holdouts: number };
+  // `null` for a campaign that declares no shared files.
+  readonly shared: { readonly files: number; readonly holdouts: number } | null;
   readonly drift: ReadonlyArray<{ readonly file: string; readonly sectors: ReadonlyArray<string> }>;
   readonly plan: {
     readonly refined: ReadonlyArray<string>;
@@ -325,10 +330,13 @@ export const campaignViewOf = (input: CampaignViewInput): CampaignView => {
       return {
         name: sectorState.name,
         legacy: sectorState.name === LEGACY_SECTOR,
+        shared: isShared(rule, sectorState.name),
         phase: sectorState.phase,
         phaseId: rule.phases[sectorState.phase]?.id ?? null,
-        done:
-          rule.phases.length === 0
+        // The shared files stand on no phase, so it is never past them.
+        done: isShared(rule, sectorState.name)
+          ? false
+          : rule.phases.length === 0
             ? residueTotal === 0 && !scalarOpen
             : sectorState.phase >= rule.phases.length,
         reached: record?.reached ?? null,
@@ -370,6 +378,7 @@ export const campaignViewOf = (input: CampaignViewInput): CampaignView => {
       objectives,
       sectors,
       legacy: snapshot.legacy,
+      shared: snapshot.shared ?? null,
       drift: report.drift,
       plan: report.plan,
     };

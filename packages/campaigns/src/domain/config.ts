@@ -259,6 +259,8 @@ export const ObjectiveRule = Schema.Struct({
   // The phase at which the objective stops counting, exclusive; absent, it
   // counts to the end.
   until: Schema.optionalKey(Schema.String),
+  // Read off the campaign's shared files in place of each sector's own files.
+  over: Schema.optionalKey(Schema.Literal("shared")),
   probes: CampaignProbes,
 });
 
@@ -342,6 +344,8 @@ export const CampaignRule = Schema.Struct({
   // What the remainder of the scope counts as; absent, everything no sector
   // claims is legacy.
   legacy: Schema.optionalKey(PatternList),
+  // The files every sector shares: on no phase, claimed by no sector.
+  shared: Schema.optionalKey(PatternList),
   perimeter: Schema.optionalKey(PerimeterRule),
   onTouch: Schema.optionalKey(OnTouch),
   phases: Schema.Array(PhaseRule),

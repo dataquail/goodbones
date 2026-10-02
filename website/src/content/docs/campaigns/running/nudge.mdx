@@ -25,17 +25,40 @@ billing-ddd
     toward the next phase: no-raw-queries-outside-repository 7 · has-integration-test 1
       no-raw-queries-outside-repository — A query outside the repository is one the port cannot see.
       has-integration-test — A context with no integration test cannot be cut over safely.
-    in the files you touched, nearest your change (3 of 8):
+    of the sector as a whole:
+      has-integration-test: Add an integration test for the context.
+    in the files you touched, nearest your change (2 of 2; 8 in the sector):
       src/billing/InvoiceService.ts#reconcile:41  no-raw-queries-outside-repository
       src/billing/InvoiceService.ts#void:58       no-raw-queries-outside-repository
-      src/billing/context.ts                      has-integration-test
     this diff: −no-raw-queries-outside-repository: InvoiceService.ts#refund#4b02a9e1  forward
     onTouch: ratchet — ok
     ask: hold — leave the sector no worse; paydown is welcome in its own commit, not asked for
+
+ok
 ```
 
 The phase's `intent` is printed wherever one is stated, and each objective's own `intent`
-beside its count, so the why is read where the check is.
+beside its count, so the why is read where the check is. A holdout of the sector itself
+(`holdout: sector`) has no file, so it is listed apart from the files you touched. When the
+sector's marker owns a glob that no file matches, that is said there too: it is a folder not
+written yet, or a typo.
+
+When the diff **moves the sector on**, the next phase's objectives come into window. What they
+count was there all along, so it is listed as now counted, and it is not growth:
+
+```
+strangle-hapi
+  todo — phase routes-moved (6 of 9)
+    this diff moves it from served: it is judged by the phase it was found at
+    toward the next phase: no-hapi-routes 2
+    this diff: −routes-still-local: todo-routes.ts#todoRoutes#9c1e44d0  forward
+    now counted: no-hapi-routes 2 — in window from routes-moved, not growth
+    hapi-lines: recorded 454 → now 93 (tolerance 20)
+    onTouch: ratchet (of served) — ok
+    ask: hold — leave the sector no worse; paydown is welcome in its own commit, not asked for
+
+ok
+```
 
 At an **attested phase**, nothing is detected, so the sector is never quiet: the nudge names the
 phase as attested and prints the command that leaves it. See
@@ -66,9 +89,9 @@ billing-ddd
     ask: note
 ```
 
-With nothing to say, a sector gets one line. It shows at most five holdouts per sector, nearest
-first: `match` and `declaration` holdouts by distance from your change, then `file` holdouts, then
-the sector's own.
+With nothing to say, a sector gets one line. It shows at most five holdouts per sector from the
+files you touched, nearest first: `match` and `declaration` holdouts by distance from your change,
+then `file` holdouts. The last line is `ok` or `not ok`.
 
 ## Before and after
 
@@ -76,7 +99,20 @@ the sector's own.
 you fixed but haven't cleared counts as progress, and one the ledger already carries is not growth.
 
 In CI, use `--base <ref>`: the base commit is checked out and evaluated, including rerunning
-`report` tools. Results are cached per commit under `node_modules/.cache/goodbones/`.
+`report` tools. Results are cached per commit under `node_modules/.cache/goodbones/`. A scalar
+then prints the base tree's value with the ledger's record beside it
+(`402 → 409 (recorded 400, tolerance 20)`); without `--base` the record is the "before", and the
+line says so (`recorded 400 → now 409`).
+
+**A diff is judged by the phase the sector stood at before it.** That is the base tree's phase
+with `--base`, and the phase the ledgers place the sector at otherwise. Only the objectives in
+that phase's window are scored, and that phase's `onTouch` is what applies. So the diff that
+finishes a phase is judged by the phase it finished, not by the next one, and a phase whose
+`onTouch` is `advise` covers its own last change.
+
+**A concession is a receipt in both modes.** Growth that `objectives concede` recorded on the
+branch is in the head's ledger, with its reason. With `--base` it is printed as conceded rather
+than added, and it does not make the verdict `back`.
 
 ## `ask` and `verdict`
 
@@ -97,18 +133,20 @@ Hooks should read these two fields, not the prose.
 | `back`       | some objective's count got worse under `ratchet` or `paydown` | non-zero |
 | `no-paydown` | `paydown-required`, and the sector did not shrink             | non-zero |
 
-`direction` is **forward** (nothing worse, something better), **back** (the reverse) or **mixed**.
-Counts are compared per objective, never summed.
+`direction` is **forward** (nothing worse, something better), **back** (the reverse), **mixed**
+or **neutral**. Counts are compared per objective, never summed. The verdict and the direction are
+read off the same judgement: a `back` verdict always comes with a `back` or `mixed` direction, and
+under `ratchet` or `paydown` those two directions always give a `back` verdict.
 
 ## `onTouch`
 
 `onTouch` sets what a touched sector must do. Set it on the campaign, and override it per phase.
 
-- **`advise`**: nudge only. New holdouts still fail `check` until conceded. Default for open
-  phases.
-- **`ratchet`**: any count getting worse in a touched sector fails, even with a concession in the
-  same diff. The only escape is `--hotfix "<reason>"`. Moving a holdout to a neighbouring sector
-  sends that sector back instead. Default for defined phases.
+- **`advise`**: nudge only. `onTouch` governs the nudge and nothing else: new holdouts still fail
+  `check` until conceded. Default for open phases.
+- **`ratchet`**: any count getting worse in a touched sector fails, until the growth is fixed or
+  conceded with a reason. `--hotfix "<reason>"` concedes it in the same run. Moving a holdout to a
+  neighbouring sector sends that sector back instead. Default for defined phases.
 - **`paydown`**: `ratchet`, plus a diff that edits a declaration carrying a holdout must leave the
   sector with fewer holdouts.
 
@@ -137,6 +175,7 @@ its tolerance, and `paydown` treats it as `ratchet`. Scalars are listed under `m
         "attested": false,
         "since": "2026-09-22T00:00:00.000Z"
       },
+      "judged": { "id": "repository", "index": 1 },
       "intent": "a repository behind a port",
       "objectives": [
         {
@@ -153,6 +192,7 @@ its tolerance, and `paydown` treats it as `ratchet`. Scalars are listed under `m
       "toward": { "no-raw-queries": 7 },
       "holdouts": {
         "total": 8,
+        "touched": 1,
         "cap": 5,
         "shown": [
           {
@@ -162,12 +202,16 @@ its tolerance, and `paydown` treats it as `ratchet`. Scalars are listed under `m
             "line": 41,
             "message": "Move the call behind the port."
           }
-        ]
+        ],
+        "sector": []
       },
       "added": [],
       "removed": ["no-raw-queries: InvoiceService.ts#refund#4b02a9e1"],
+      "conceded": [],
+      "entered": [],
       "measures": [],
-      "belongsInSector": []
+      "belongsInSector": [],
+      "unmatchedOwns": []
     }
   ],
   "unbirths": [],
@@ -179,9 +223,21 @@ its tolerance, and `paydown` treats it as `ratchet`. Scalars are listed under `m
 - `intent`: the phase's, at any phase that states one; `objectives`: those in `toward`, each
   with its own `intent` (`null` where it states none).
 - `phase.attested`: the sector waits on `campaigns attest`; nothing in the diff can move it.
+- `phase` is where the sector stands with the diff applied; `judged` is where it stood before,
+  which is the phase whose window fills `residue` and whose `onTouch` is reported.
+- `entered`: objectives that came into window because the diff moved the sector on, with what
+  each counts. They are in no dimension of the verdict.
+- `holdouts.total` counts every holdout in window in the sector and `holdouts.touched` those in
+  the files the diff touched; `shown` is the nearest of those. `holdouts.sector` lists holdouts
+  of the sector itself, which have no file.
+- `conceded`: with `--base`, growth against the base tree that the head's ledger carries.
+- `measures`: each scalar's `before`, `after` and `recorded` (what the ledger holds the sector
+  to), with `back` for a rise past the tolerance that no record covers and `conceded` for one a
+  record does.
 - `belongsInSector`: files the diff added inside the scope that no sector claims.
+- `unmatchedOwns`: globs the sector's marker owns that no file matches.
 - `unbirths`: markers the diff deleted, and the sector each returns to the legacy.
-- `testsChecked`: always `unknown`; the tool runs no tests.
+- `testsChecked`: always `unknown`; the tool runs no tests. The text output no longer prints it.
 
 ## Wiring it in
 

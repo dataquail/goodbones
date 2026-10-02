@@ -32,6 +32,9 @@ export type Sector = {
   // declaration the perimeter matched.
   readonly marker: string | null;
   readonly declaration: { readonly file: string; readonly anchor: string } | null;
+  // For a marker sector: the globs its `owns` lists that no file matches —
+  // a folder not written yet, or a typo nothing else would point at.
+  readonly unmatchedOwns?: ReadonlyArray<string>;
 };
 
 export type SectorIndex = {
@@ -215,6 +218,7 @@ export const discoverSectors = (rule: CompiledCampaign, input: SectorDiscovery):
             ...known,
             roots: [...new Set([...known.roots, ...sector.roots])],
             files: [...new Set([...known.files, ...sector.files])].sort(),
+            unmatchedOwns: [...(known.unmatchedOwns ?? []), ...(sector.unmatchedOwns ?? [])],
           },
     );
     for (const file of sector.files) claim(file, sector.name, rootOf(sector, file));
@@ -278,7 +282,10 @@ export const discoverSectors = (rule: CompiledCampaign, input: SectorDiscovery):
             patterns.some((pattern) => pattern.test(file)) ||
             file === marker,
         );
-        add({ name, roots, files: own, marker, declaration: null });
+        const unmatchedOwns = owns.filter(
+          (_glob, at) => !files.some((file) => patterns[at]?.test(file) ?? false),
+        );
+        add({ name, roots, files: own, marker, declaration: null, unmatchedOwns });
       }
       break;
     }

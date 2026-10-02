@@ -278,7 +278,8 @@ describe.sequential("a scalar objective", () => {
       ],
     });
     const text = await capture(campaigns(await policyAt(), ["src"], ["status", "--changed"]));
-    expect(text.output).toContain("lines: 7 → 9 (target 4)  back");
+    // The ledger mode reads its "before" off the record, and says so.
+    expect(text.output).toContain("lines: recorded 7 → now 9 (target 4)  back");
 
     const { exit, report } = await check();
     expect(Exit.isFailure(exit)).toBe(true);

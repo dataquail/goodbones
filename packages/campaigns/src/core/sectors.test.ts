@@ -106,6 +106,20 @@ describe("the marker", () => {
     expect(index.drift).toEqual([]);
   });
 
+  it("names the globs a marker owns that no file matches", () => {
+    const rule = campaign({ perimeter: { kind: "marker", marker: "^.*/context\\.ts$" } });
+    const index = discoverSectors(
+      rule,
+      discovery(["src/billing/context.ts", "src/controllers/billingController.ts"], {
+        readText: () =>
+          'export const sector = { name: "billing", owns: ["src/controllers/billing*", "src/nest/billing/**"] };',
+      }),
+    );
+    // A folder not written yet, or a typo: either way the sector's `has`
+    // objectives wait on files it will never see, and nothing else says so.
+    expect(index.sectors.get("billing")?.unmatchedOwns).toEqual(["src/nest/billing/**"]);
+  });
+
   it("refuses a marker that does not read, naming it", () => {
     const rule = campaign({ perimeter: { kind: "marker", marker: "^.*/context\\.ts$" } });
     expect(() =>

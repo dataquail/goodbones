@@ -1,7 +1,6 @@
 import * as path from "node:path";
-import { pathToFileURL } from "node:url";
 
-import { ConfigInvalid } from "@goodbones/core";
+import { ConfigInvalid, importFresh } from "@goodbones/core";
 
 import type { CampaignPredicate } from "../ports/campaign-predicate.js";
 
@@ -55,7 +54,9 @@ export const loadCampaignFunctions = async (
     const at = path.resolve(root, module);
     let loaded: unknown;
     try {
-      loaded = await import(pathToFileURL(at).href);
+      // As it is on disk now: a host that lives long must not go on
+      // answering with the function it imported first.
+      loaded = await importFresh(at);
     } catch (cause) {
       return refuse(
         `the \`fn\` term ${JSON.stringify(reference)} names a module that does not load: ${String(cause)}`,

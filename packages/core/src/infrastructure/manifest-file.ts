@@ -1,6 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
 import * as path from "node:path";
-import { pathToFileURL } from "node:url";
 
 import {
   type Document,
@@ -21,6 +20,7 @@ import type {
   ManifestPath,
   ManifestPosition,
 } from "../domain/manifest-location.js";
+import { importFresh } from "./import-fresh.js";
 import { expandIncludes, type SourceDocument } from "./manifest-include.js";
 
 // The manifest, as the files on disk state it, before any decoding. A data
@@ -109,7 +109,7 @@ export const readManifestFile = async (configPath: string): Promise<ManifestFile
 };
 
 const readModule = async (configPath: string): Promise<SourceDocument> => {
-  const module: unknown = await import(pathToFileURL(configPath).href).catch((cause: unknown) => {
+  const module: unknown = await importFresh(configPath).catch((cause: unknown) => {
     throw new ConfigInvalid({ configPath, detail: String(cause) });
   });
   const value =

@@ -214,6 +214,7 @@ export {
   commitsTouching,
   type Diff,
   distanceToHunks,
+  gitPathsOf,
   type Hunk,
   materializeTree,
   parseDiff,

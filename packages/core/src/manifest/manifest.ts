@@ -255,6 +255,19 @@ const CoverageFloors = Schema.Struct({
   graph: Schema.optionalKey(Schema.Finite),
 });
 
+// The same reach, as a count: per family, how many walked files it may leave
+// unreached. A fraction moves when the tree does — deleting files a rule
+// reached lowers it, and so does a folder the policy leaves open growing —
+// while this moves only when a file no rule reaches is added. Lowered when
+// the number falls, never raised to make a red run green.
+const UnreachedCeilings = Schema.Struct({
+  imports: Schema.optionalKey(Schema.Finite),
+  structure: Schema.optionalKey(Schema.Finite),
+  members: Schema.optionalKey(Schema.Finite),
+  surface: Schema.optionalKey(Schema.Finite),
+  graph: Schema.optionalKey(Schema.Finite),
+});
+
 // Ceilings on the conformance measures — what `architecture conformance`
 // counts and `check` does not otherwise gate: the files no family reaches,
 // the nodes no file is under, the allowances nothing imports through, and
@@ -272,7 +285,14 @@ const Limits = Schema.Struct({
   unrestricted: Schema.optionalKey(Schema.Finite),
   partial: Schema.optionalKey(Schema.Finite),
   coverage: Schema.optionalKey(CoverageFloors),
+  unreached: Schema.optionalKey(UnreachedCeilings),
   conformance: Schema.optionalKey(ConformanceCeilings),
+  // Files the limits do not count: a package that is open by design — one
+  // being strangled, a vendored tree — whose files would otherwise move
+  // every floor and ceiling as it grows and shrinks. Alias-aware globs, each
+  // naming a subtree. The rules still judge these files; only the counts the
+  // limits hold skip them.
+  outside: Schema.optionalKey(Globs),
 });
 
 

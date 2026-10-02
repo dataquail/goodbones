@@ -67,8 +67,9 @@ the target grants that nothing would use. The snapshot's `manifest.path` names t
 `--json` prints one document to stdout, defined by
 [`/schema/conformance.schema.json`](/goodbones/schema/conformance.schema.json). It extends
 [`check --json`](/goodbones/architecture-rules/enforcement/cli/#check): `version`, `manifest`,
-`roots`, `files`, `ok`, `coverage`, `conformance`, `violations`, `unresolved`, `stale` and
-`adoption` mean the same there. `ok` is what `check` would exit with.
+`roots`, `files`, `outside`, `ok`, `coverage`, `conformance`, `violations`, `unresolved`, `stale`
+and `adoption` mean the same there. `ok` is what `check` would exit with. `outside` counts the
+walked files under the manifest's `limits.outside`; `coverage` and `residue` leave them out.
 
 ```json
 {
@@ -76,8 +77,9 @@ the target grants that nothing would use. The snapshot's `manifest.path` names t
   "manifest": { "path": "architecture.yaml", "sha256": "…" },
   "roots": ["packages"],
   "files": 94,
+  "outside": 0,
   "ok": true,
-  "coverage": { "imports": { "covered": 94, "total": 94, "floor": 1 } },
+  "coverage": { "imports": { "covered": 94, "total": 94, "floor": 1, "ceiling": 0 } },
   "conformance": {
     "residue": { "count": 0, "ceiling": 0 },
     "vacant": { "count": 0, "ceiling": 0 },

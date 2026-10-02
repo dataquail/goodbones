@@ -28,6 +28,7 @@ import {
   serializePlanRecord,
   serializeSectorRecord,
 } from "../core/ledger.js";
+import { isDefinedPhase } from "../core/phases.js";
 import { LEGACY_SECTOR } from "../core/sectors.js";
 import type { PhaseRule } from "../domain/config.js";
 import { campaignsOf } from "../load/extension.js";
@@ -269,4 +270,45 @@ export const clear = (
     if (legacy !== undefined) rmSync(path.resolve(policy.repoRoot, legacy), { force: true });
   }
   return outcomes;
+};
+
+// A sector the working tree has carried to another phase than the one the
+// ledgers placed it at: what the `clear` about to run will record. The
+// defined phases strictly between the two were entered and left in that one
+// clear — nothing in them was ever counted for the sector, which is worth
+// saying: a phase every sector passes this way recognizes nothing.
+export type SectorMove = {
+  readonly campaign: string;
+  readonly sector: string;
+  readonly from: string | null;
+  // `null` past every phase.
+  readonly to: string | null;
+  readonly back: boolean;
+  readonly passed: ReadonlyArray<string>;
+};
+
+export const sectorMovesOf = (
+  policy: LoadedPolicy,
+  evaluation: CampaignEvaluation,
+): ReadonlyArray<SectorMove> => {
+  const { rule } = evaluation;
+  const moves: Array<SectorMove> = [];
+  for (const [name, state] of evaluation.sectors) {
+    // A sector no `clear` has placed has not moved: it is placed.
+    if (name === LEGACY_SECTOR || recordOf(policy, rule, name) === undefined) continue;
+    const from = ledgerPhaseOf(policy, rule, name);
+    if (from === state.phase) continue;
+    moves.push({
+      campaign: rule.id,
+      sector: name,
+      from: rule.phases[from]?.id ?? null,
+      to: rule.phases[state.phase]?.id ?? null,
+      back: state.phase < from,
+      passed: rule.phases
+        .slice(from + 1, Math.max(from + 1, state.phase))
+        .filter((phase) => isDefinedPhase(phase))
+        .map((phase) => phase.id),
+    });
+  }
+  return moves;
 };

@@ -414,6 +414,29 @@ export const ledgeredFilter = (
   return (hit) => carried.has(hit);
 };
 
+// The sectors standing in a window no ledger has recorded for them, each
+// with the phase it is at. A campaign with no ledger at all has never been
+// cleared; one with ledgers has a sector that moved on since the last clear.
+const unrecordedSectorsOf = (campaign: CampaignReport): ReadonlyArray<string> =>
+  [
+    ...new Set(
+      campaign.objectives.flatMap((objective) =>
+        objective.sectors
+          .filter(
+            (one) =>
+              one.unrecorded && (one.count > 0 || objective.ledgered || one.measure !== undefined),
+          )
+          .map((one) => one.sector),
+      ),
+    ),
+  ].map((name) => {
+    const phase = campaign.sectors.find((one) => one.name === name)?.phase ?? null;
+    return phase === null ? name : `${name} (at ${phase})`;
+  });
+
+const neverCleared = (campaign: CampaignReport): boolean =>
+  !campaign.objectives.some((objective) => objective.ledgered);
+
 // Why a campaign report is not ok, in the order `check` explains it.
 export const campaignFailuresOf = (
   campaigns: ReadonlyArray<CampaignReport>,
@@ -429,7 +452,13 @@ export const campaignFailuresOf = (
     .map((one) => `campaign ${one.id}: a scalar objective measured no number`),
   ...campaigns.filter((one) => one.stale.length > 0).map(() => "stale ledger entries"),
   ...campaigns.filter((one) => !one.arithmetic).map(() => "ledger arithmetic does not hold"),
-  ...campaigns.filter((one) => one.missingLedger).map((one) => `campaign ${one.id} has no ledger`),
+  ...campaigns
+    .filter((one) => one.missingLedger)
+    .map((one) =>
+      neverCleared(one)
+        ? `campaign ${one.id} has no ledger`
+        : `campaign ${one.id}: ${unrecordedSectorsOf(one).join(", ")} entered a window no ledger has recorded`,
+    ),
   ...campaigns
     .filter((one) => !one.missingLedger && one.new.length > 0)
     .map(() => "unrecorded campaign growth"),
@@ -488,7 +517,9 @@ export const renderCampaignReports = (
       );
       say(
         "",
-        `campaign ${campaign.id}: ${count(unrecorded.length, "sector")} in an objective's window that no ledger has seen. Record them before they count as growth:`,
+        neverCleared(campaign)
+          ? `campaign ${campaign.id}: ${count(unrecorded.length, "sector")} in an objective's window that no ledger has seen. Record them before they count as growth:`
+          : `campaign ${campaign.id}: ${unrecordedSectorsOf(campaign).join(", ")} entered a window since the last clear, and its objectives have no ledger entries for it yet. Record what is there before it counts as growth:`,
         ...unrecorded,
         "",
         `  architecture objectives clear ${campaign.id}`,

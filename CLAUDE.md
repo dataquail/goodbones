@@ -74,24 +74,40 @@ declarations through `SyntaxTree.anchorAt`) and `fn` (`module#export`) terms; or
 place the pattern still occurs, per sector, keyed relative to the sector's root. A **sector** is born
 by the campaign's `perimeter` (`marker`, `glob`, `match`, `file`, `nx`; the scope itself when there is
 none, named `scope`; the unclaimed remainder is `legacy`, pinned at the first phase) —
-`core/sectors.ts`. **Phases** are ordered groups of objectives, defined or open (intent only, and
+`core/sectors.ts`. A campaign's `shared` globs name the files every sector shares and none
+owns: taken out before any sector is born, on no phase, ledgered under the reserved sector name
+`shared`; an objective with `over: shared` is a prerequisite, and a phase naming one holds every
+sector there until the shared files meet it (their count is each sector's count in
+`core/campaign-state.ts`). **Phases** are ordered groups of objectives, defined or open (intent only, and
 then last); a sector's phase is derived (first phase with residue — `core/phases.ts`), `until` opens
 a window, `attested: true` is left by `campaigns attest`, and the per-sector record
 (`sectors/<sector>.json`: `reached`, attestations, notes) plus `plan.json` are written by
-`objectives clear`. The ledger only shrinks on its own: `objectives clear` reconciles (stale leave,
+`objectives clear`. A phase is hashed by what it asks, never by its index, so inserting one changes
+no other; `plan.json` is version 2, a version 1 plan is compared with the old positional digest, and
+a phase moved past another is a change (`planDiffOf`). A phase's `grows` names scalars it is expected
+to raise: for a sector the ledgers place there, `check` reports a rise as stale and `clear` records
+it with a concession naming the phase — `onTouch` governs the nudge only. The ledger only shrinks on its own: `objectives clear` reconciles (stale leave,
 drift rewritten, entering sectors recorded with their initial, passed windows closed, a receipted
 phase change re-baselined), `objectives concede --reason` is the one way a holdout is added, and
 `check` verifies per sector `holdouts.length === initial + Σ delta − cleared − closed`; a defined
 phase changed without a `concessions` entry fails `check`. **The nudge**, `campaigns status
---changed [--base <ref>] [--json] [--hotfix]` (`cli/src/campaigns.ts`, `cli/src/diff.ts`), is the
+--changed [--base <ref>] [--json] [--hotfix]` (`host/nudge.ts`, `host/diff.ts`), is the
 family's deliverable: per touched sector, the phase and what would move it on, `ask`/`verdict`
-enumerated, non-zero under `ratchet`/`paydown`. The plugin reads membership off the perimeter and
+enumerated, non-zero under `ratchet`/`paydown`. A diff is judged by the phase the sector stood at
+before it — the base tree's with `--base`, else the one the ledgers place it at
+(`host/ledger-phase.ts`) — so entering a later window is "now counted", never growth, and a
+concession in the head's ledger is a receipt in both modes. A campaign's progress is its sectors'
+positions on the ladder (`ladderPositionOf`), not cleared-over-ledgered, which fell at every phase
+entry. The host glue is one module per verb (`clear`, `report`, `status`, `nudge`, `explain`, over
+`ledgers.ts`); `host/campaigns.ts` is held to its line count by `host-campaigns-shrinks`, so a new
+verb is a new module. The plugin reads membership off the perimeter and
 the phase off the ledgers (a sector no `clear` has placed stands at the first phase) and parses
 `sourceCode.text` with the same ast-grep matcher the CLI uses — the only family the plugin parses
 with anything but oxlint's tree — so its parity contract is "one engine", pinned by
 `packages/oxlint/src/campaigns-parity.test.ts` and `campaigns-phases.test.ts`. An `endState` is a
-sector-relative node tree lowered per sector (`lowerEndState`), CLI-only. This repository runs one
-campaign on itself (`lowering-reports-not-throws`, the minimal shape); its ledger is committed, and
+sector-relative node tree lowered per sector (`lowerEndState`), CLI-only. This repository runs two
+campaigns on itself (`lowering-reports-not-throws`, the minimal shape, and the scalar
+`host-campaigns-shrinks`); their ledgers are committed, and
 changing the count means clearing or conceding, in the open. `ARCHITECTURE_NOW` pins the clock the
 stall check reads. A campaign's `scope.extensions` widens the walk (`.js` for a JS→TS campaign);
 only that campaign sees the widened files. A `.mjs` manifest and a `fn` module

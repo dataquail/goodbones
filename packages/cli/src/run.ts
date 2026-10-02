@@ -1381,7 +1381,8 @@ const campaignFor = (
       : Result.succeed(found);
   }
   const [only] = campaignsOf(policy).campaignRules;
-  if (campaignsOf(policy).campaignRules.length === 1 && only !== undefined) return Result.succeed(only);
+  if (campaignsOf(policy).campaignRules.length === 1 && only !== undefined)
+    return Result.succeed(only);
   return Result.fail(
     `this policy declares ${String(campaignsOf(policy).campaignRules.length)} campaigns; say which with --campaign <id>.`,
   );
@@ -1425,7 +1426,9 @@ export const objectives = (
         const targets =
           parsed.target === null
             ? campaignsOf(policy).campaignRules
-            : campaignsOf(policy).campaignRules.filter((rule) => rule.id === parsed.target?.campaign);
+            : campaignsOf(policy).campaignRules.filter(
+                (rule) => rule.id === parsed.target?.campaign,
+              );
         const by = authorOf(flagOf(argv, "--by")) ?? "unknown";
         const all = evaluations();
         const lines: Array<string> = [];
@@ -1472,6 +1475,16 @@ export const objectives = (
                         .join(", ")})`,
                     ]
                   : []),
+                ...(outcome.measure.grown.length > 0
+                  ? [
+                      `${count(outcome.measure.grown.length, "sector")} grown (${outcome.measure.grown
+                        .map(
+                          (one) =>
+                            `${one.sector} ${String(one.from)} → ${String(one.to)}, as ${one.phase} expects`,
+                        )
+                        .join(", ")})`,
+                    ]
+                  : []),
                 ...(outcome.closed > 0 ? [`${count(outcome.closed, "sector")} closed`] : []),
                 ...(outcome.rebaselined.length > 0
                   ? [
@@ -1499,7 +1512,9 @@ export const objectives = (
             ),
           );
         }
-        const rule = campaignsOf(policy).campaignRules.find((one) => one.id === parsed.target?.campaign);
+        const rule = campaignsOf(policy).campaignRules.find(
+          (one) => one.id === parsed.target?.campaign,
+        );
         if (rule === undefined)
           return yield* Effect.fail(fail(`no campaign is named "${parsed.target.campaign}"`));
         const objective = objectiveFor(rule, parsed.target.objective);
@@ -1810,7 +1825,9 @@ export const run = (
       yield* Effect.tryPromise({
         try: () =>
           Promise.all(
-            reportSpecsOf(campaignsOf(policy).campaignRules).map((spec) => campaignsOf(policy).reports.read?.(spec)),
+            reportSpecsOf(campaignsOf(policy).campaignRules).map((spec) =>
+              campaignsOf(policy).reports.read?.(spec),
+            ),
           ),
         catch: (cause) => fail(String(cause)),
       });

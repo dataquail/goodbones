@@ -22,6 +22,7 @@ phases:
 | `objectives`  | the objective ids that recognize this phase                                                            |
 | `attested`    | `true` for a step no detector can see; left with `campaigns attest`                                    |
 | `onTouch`     | overrides the campaign's [`onTouch`](/goodbones/campaigns/running/nudge/) for this phase               |
+| `grows`       | scalar objective ids this phase is expected to raise; see [A phase that grows](#a-phase-that-grows)    |
 | `endState`    | a node tree for the sector; see [The end state](#the-end-state)                                        |
 | `concessions` | `[{ reason, at, by? }]`, required when a defined phase changes; see [below](#changing-a-defined-phase) |
 
@@ -47,6 +48,37 @@ during `dual-write` and be gone from `cutover`.
 - A window ending at or before the sector's `reached` never reopens for it.
 
 The loader refuses an `until` naming an unknown phase, or one at or before the listing phase.
+
+## A phase that grows
+
+Some steps make a number worse before it gets better: a dual-write adds lines to the module it
+will later delete. Say so on the phase, and the rise is not refused:
+
+```yaml
+phases:
+  - id: mirrored
+    intent: Every write is mirrored to the new server.
+    objectives: [writes-not-mirrored]
+    grows: [legacy-lines]
+```
+
+While a sector stands in that phase, a rise of `legacy-lines` past its tolerance is not growth
+to concede. `check` reports the ledger as behind and asks for `objectives clear`, which records
+the rise with a receipt naming the phase (`phase mirrored grows legacy-lines`). The nudge prints
+`grows in mirrored` beside the number, and does not call it `back`.
+
+- The phase is the one the sector stood at before the change, so the change that completes the
+  phase is covered too.
+- Everywhere else the scalar ratchets as before, including at the open phase.
+- `grows` takes [scalar objectives](/goodbones/campaigns/manifest/scalars/) only. A holdout is
+  conceded by name, with a reason.
+- The loader refuses `grows` on an open phase, and an objective that is not in window at the
+  phase.
+- `grows` is part of what a phase asks, so adding or removing it on a defined phase
+  [needs a concession](#changing-a-defined-phase).
+
+`onTouch: advise` does not do this. It quiets the nudge and nothing else: `check` still wants a
+rise conceded.
 
 ## Attested phases
 

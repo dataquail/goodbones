@@ -313,6 +313,9 @@ export const PhaseRule = Schema.Struct({
   objectives: Schema.Array(Schema.String),
   attested: Schema.Boolean,
   onTouch: Schema.optionalKey(OnTouch),
+  // The scalar objectives the phase is expected to raise: for a sector
+  // standing in it, `clear` records a rise and `check` does not refuse one.
+  grows: Schema.optionalKey(Schema.Array(Schema.String)),
   // The sector-relative node tree, carried as written; expanded per sector
   // by the host that evaluates it.
   endState: Schema.optionalKey(Schema.Unknown),

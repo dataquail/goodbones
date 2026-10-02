@@ -2,7 +2,7 @@ import type { LoadedPolicy } from "@goodbones/core";
 
 import { type CompiledCampaign, distanceToTarget } from "../core/campaigns.js";
 import { positionOf } from "../core/ledger.js";
-import { derivePhase, LEGACY_PHASE } from "../core/phases.js";
+import { derivePhase, growsAt, LEGACY_PHASE } from "../core/phases.js";
 import { LEGACY_SECTOR } from "../core/sectors.js";
 import { campaignsOf, ledgerKeyOf } from "../load/extension.js";
 
@@ -35,3 +35,13 @@ export const ledgerPhaseOf = (
   };
   return derivePhase(rule, counts, positionOf(rule, record));
 };
+
+// Whether the phase the ledgers place a sector at expects a scalar objective
+// to rise. A rise there is `clear`'s to record, as an improvement is — never
+// growth someone must concede.
+export const growsFor = (
+  policy: LoadedPolicy,
+  rule: CompiledCampaign,
+  sector: string,
+  objectiveId: string,
+): boolean => growsAt(rule, ledgerPhaseOf(policy, rule, sector), objectiveId);

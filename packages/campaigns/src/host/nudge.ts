@@ -9,6 +9,7 @@ import { concededSector, ledgerPathOf, reconcileSector, serializeLedger } from "
 import {
   type Direction,
   directionOf,
+  growsAt,
   isOpenPhase,
   objectivesInWindow,
   onTouchOf,
@@ -17,20 +18,18 @@ import {
 import { LEGACY_SECTOR, parseSectorMarker, SECTOR_HOLDOUT } from "../core/sectors.js";
 import type { OnTouch } from "../domain/config.js";
 import { campaignsOf } from "../load/extension.js";
+import { concedeMeasure, evaluateCampaigns, widenedExtensions } from "./campaigns.js";
+import { commitOf, type Diff, distanceToHunks, materializeTree, textAt } from "./diff.js";
+import { ledgerPhaseOf } from "./ledger-phase.js";
 import {
-  concedeMeasure,
   count,
-  evaluateCampaigns,
   HOLDOUT_CAP,
   ledgerOf,
   measureLedgerOf,
   phaseIdOf,
   recordOf,
-  widenedExtensions,
   writeJson,
-} from "./campaigns.js";
-import { commitOf, type Diff, distanceToHunks, materializeTree, textAt } from "./diff.js";
-import { ledgerPhaseOf } from "./ledger-phase.js";
+} from "./ledgers.js";
 
 // The nudge, `campaigns status --changed`: what a diff touches, which
 // campaign and phase each touched sector is in, and what would move it on.
@@ -111,7 +110,8 @@ export type SectorNudge = {
   // after. `before` is the base tree's value in the exact mode and the
   // ledger's record otherwise; `recorded` is what the ledger holds the
   // sector to, wherever `before` came from. `back` is a rise past the
-  // tolerance that no record covers; `conceded`, one a record does.
+  // tolerance that no record covers; `conceded`, one a record does; and
+  // `grows`, one the judged phase expects, which `clear` records.
   readonly measures: ReadonlyArray<{
     readonly objective: string;
     readonly direction: "down" | "up";
@@ -122,6 +122,7 @@ export type SectorNudge = {
     readonly tolerance: number;
     readonly back: boolean;
     readonly conceded: boolean;
+    readonly grows: boolean;
   }>;
   // Files this diff added inside the scope that no sector claims.
   readonly belongsInSector: ReadonlyArray<string>;
@@ -303,6 +304,8 @@ export const nudgeOf = (
           // A rise the head's ledger has receipted: conceded up to, so the
           // sector is within what it is held to.
           const conceded = rose && recorded !== null && !past(recorded);
+          // A rise the judged phase expects: `clear` records it.
+          const grows = rose && !conceded && growsAt(rule, judgedAt, objective.id);
           measures.push({
             objective: objective.id,
             direction: objective.direction,
@@ -311,8 +314,9 @@ export const nudgeOf = (
             recorded,
             target: objective.target,
             tolerance: objective.tolerance,
-            back: rose && !conceded,
+            back: rose && !conceded && !grows,
             conceded,
+            grows,
           });
           continue;
         }
@@ -699,7 +703,13 @@ export const renderNudge = (nudge: Nudge, now: number): ReadonlyArray<string> =>
       say(
         `    ${measure.objective}: ${was} → ${is}` +
           (bounds.length === 0 ? "" : ` (${bounds.join(", ")})`) +
-          (measure.back ? "  back" : measure.conceded ? "  conceded" : ""),
+          (measure.back
+            ? "  back"
+            : measure.conceded
+              ? "  conceded"
+              : measure.grows
+                ? `  grows in ${one.judged.id ?? "this phase"}`
+                : ""),
       );
     }
     for (const file of one.belongsInSector)

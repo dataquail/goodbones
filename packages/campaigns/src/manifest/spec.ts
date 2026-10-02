@@ -393,13 +393,17 @@ const EndStateSpec = Schema.Record(Schema.String, Schema.Unknown);
 // intent, and then it is last. `intent` is what the phase is for, in a
 // sentence, on any phase: the nudge, `explain` and the browser show it
 // wherever they name the phase. Required only on an open one, where it is
-// all there is.
+// all there is. `grows` names the scalar objectives this phase is expected
+// to raise — a dual-write adds lines before it removes any — so that, for a
+// sector standing in it, a rise is recorded by `clear` rather than refused
+// until someone concedes it.
 const Phase = Schema.Struct({
   id: KebabId,
   intent: Schema.optionalKey(Schema.String),
   objectives: Schema.optionalKey(Schema.Array(KebabId)),
   attested: Schema.optionalKey(Schema.Boolean),
   onTouch: Schema.optionalKey(OnTouchSpec),
+  grows: Schema.optionalKey(Schema.Array(KebabId)),
   endState: Schema.optionalKey(EndStateSpec),
   concessions: Schema.optionalKey(Schema.Array(PhaseConcessionSpec)),
 });

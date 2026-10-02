@@ -57,6 +57,8 @@ moves past `tolerance`, `check` fails:
 
 - Worse: accept it with `objectives concede --sector <sector> --reason …` (`--holdouts` is refused).
 - Better: run `objectives clear` to record it, so the gain can't be given back.
+- Worse, in a phase that [`grows`](/goodbones/campaigns/manifest/phases/#a-phase-that-grows) the
+  objective: run `objectives clear`. The plan expected the rise, and `clear` records it.
 
 A phase may name only a scalar with a `target`; the sector leaves the phase when the value
 reaches it. A scalar no phase names only ratchets. The editor rule never reports scalars.

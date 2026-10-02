@@ -43,6 +43,10 @@ export type LoweredRules = {
     readonly parity: ReadonlyArray<StructureParity>;
     readonly naming: ReadonlyArray<StructureNaming>;
   };
+  // What the lowering refuses, as sentences. Reported as a value, and made a
+  // `ConfigInvalid` by `loadPolicy`, which knows the path the manifest was
+  // read from — the way every refusal here is meant to travel.
+  readonly refusals: ReadonlyArray<string>;
 };
 
 const FOLDER_KEY = /\/$/;
@@ -361,6 +365,7 @@ export const lowerManifest = (
   const surface: Array<SurfaceRule> = [];
   const unrestrictedNodes: Array<string> = [];
   const partialNodes: Array<string> = [];
+  const refusals: Array<string> = [];
   const roots: Array<StructureRoot> = [];
   const folders: Array<StructureFolder> = [];
   const parity: Array<StructureParity> = [];
@@ -371,11 +376,12 @@ export const lowerManifest = (
     node: ManifestNode,
     parent: Frame,
     name: string,
-    siblings: ReadonlyArray<string>,
+    siblingNodes: ReadonlyArray<readonly [string, ManifestNode]>,
     // Where this node sits in the expanded document, so its `imports` keys
     // can be traced back through any `use` that carried them.
     nodePath: ManifestPath,
   ): void => {
+    const siblings = siblingNodes.map(([siblingKey]) => siblingKey);
     const literalSiblings = siblings
       .filter((sibling) => sibling !== key)
       .flatMap(alternativesOf)
@@ -627,9 +633,8 @@ export const lowerManifest = (
           files: admitted,
         });
       }
-      const siblingKeys = childKeys.map(([childKey]) => childKey);
       for (const [childKey, child] of childKeys) {
-        walk(childKey, child, frame, `${name}/${alternativesOf(childKey)[0] ?? ""}`, siblingKeys, [
+        walk(childKey, child, frame, `${name}/${alternativesOf(childKey)[0] ?? ""}`, childKeys, [
           ...nodePath,
           "children",
           childKey,
@@ -668,8 +673,55 @@ export const lowerManifest = (
       );
     }
 
+    // Two file kinds in one folder may both select a file: `*.test.ts` also
+    // matches what `*.integration.test.ts` does. Each states an allowlist,
+    // and a file under both would be held to their intersection — the test
+    // of one kind judged by the rules of the other. So the narrower kind
+    // wins, as an overriding child wins over its folder: the wider kind's
+    // allowlist steps aside for the files the narrower one selects. Which is
+    // narrower is read off the probes — this pattern matches that key's
+    // probe, and that one does not match this key's. Two that match each
+    // other's are one kind written twice, and are refused. Prohibitions are
+    // untouched: a `deny` composes, and nothing opts out of one.
+    const narrowerSiblings: Array<string> = [];
+    if (emitsOwnImports && !isFolder) {
+      for (const [siblingKey, sibling] of siblingNodes) {
+        if (siblingKey === key || sibling.imports === undefined) continue;
+        if (isFolderKey(siblingKey) || sibling.children !== undefined) continue;
+        for (const alternative of alternativesOf(siblingKey)) {
+          const theirGlob = expandAliases(alternative, aliases);
+          const theirSource = globToRegexSource(theirGlob, parent.captures, {
+            declaring: true,
+            nextGroup: parent.nextGroup,
+          }).source;
+          const theirs = anchored(
+            parent.pathSource === "" ? theirSource : `${parent.pathSource}/${theirSource}`,
+          );
+          const theirProbe = probePathOf(
+            parent.pathGlob === "" ? theirGlob : `${parent.pathGlob}/${theirGlob}`,
+            "",
+          );
+          const selectsTheirs = new RegExp(selfPattern).test(theirProbe);
+          if (!selectsTheirs) continue;
+          if (new RegExp(theirs).test(scopeProbe)) {
+            // Said once, from the key that sorts first.
+            if (key < siblingKey) {
+              refusals.push(
+                `"${name}" and its sibling "${siblingKey}" select the same files, and each states ` +
+                  `an \`imports\` policy. A file under both would be held to both allowlists at ` +
+                  `once; make them one key, or narrow one of them.`,
+              );
+            }
+            continue;
+          }
+          narrowerSiblings.push(theirs);
+        }
+      }
+    }
+
     if (emitsOwnImports) {
-      const exemptions = overridingChildren.length > 0 ? { fromNot: overridingChildren } : {};
+      const stepAside = [...overridingChildren, ...narrowerSiblings];
+      const exemptions = stepAside.length > 0 ? { fromNot: stepAside } : {};
 
       if (hasAllowlist) {
         imports.push({
@@ -947,7 +999,7 @@ export const lowerManifest = (
       stripSlash(key)
         .replace(/[^a-zA-Z0-9]+/g, "-")
         .replace(/^-|-$/g, ""),
-      Object.keys(manifest.tree),
+      Object.entries(manifest.tree),
       ["tree", key],
     );
   }
@@ -1058,5 +1110,6 @@ export const lowerManifest = (
     graph,
     adoption: { unrestricted: unrestrictedNodes, partial: partialNodes },
     structure: { roots, folders, parity, naming: namingRules },
+    refusals,
   };
 };

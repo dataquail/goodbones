@@ -135,6 +135,10 @@ limits:
   # `vitest.config.ts` are the remainder), graph 64/109 (every non-test file
   # under a `src/`). A campaign joins no coverage row: its reach is its scope.
   coverage: { imports: 1, members: 0.6, surface: 0.95, graph: 0.57 }
+  # The same reach as a count, which deleting files cannot move: no file is
+  # outside every import allowlist. The other families keep their fractions
+  # until there is a reason to hold them by count.
+  unreached: { imports: 0 }
   # Ceilings on what `architecture conformance` measures, at the numbers on
   # 2026-09-17: no file is outside every family, no allowlist selects
   # nothing, and five allowances are unused — `architecture conformance`

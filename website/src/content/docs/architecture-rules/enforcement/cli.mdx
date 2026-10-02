@@ -47,7 +47,8 @@ architecture check [--json] [roots…]
 | `--json` | Print one JSON object on stdout. The failure reason still goes to stderr. |
 
 Exits `1` on any unbaselined violation, unresolved import, stale baseline entry, coverage below a
-floor, conformance measure above a ceiling, or failing campaign. Each finding names its rule by its
+floor, more files unreached than a ceiling allows, conformance measure above a ceiling, or failing
+campaign. Each finding names its rule by its
 node path in the manifest.
 
 ```
@@ -92,7 +93,8 @@ In scripts, assert on `--json` output, not the text:
 | `manifest`    | The manifest path and a hash of it (the root file only, when split with `include`). |
 | `violations`  | Every finding, baselined included. `fingerprint` is the baseline key.               |
 | `stale`       | Baseline entries the code no longer produces.                                       |
-| `coverage`    | Per family, as [`coverage`](#coverage) prints, with `floor` when one is set.        |
+| `coverage`    | Per family, as [`coverage`](#coverage) prints, with `floor` and `ceiling` when set. |
+| `outside`     | Walked files under `limits.outside`, which `coverage` and the residue leave out.    |
 | `conformance` | Per measure, with `ceiling` when `limits.conformance` sets one.                     |
 | `version`     | The shape's version.                                                                |
 

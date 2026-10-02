@@ -59,8 +59,9 @@ Every family is in it, deliberately — `imports` and `structure` for the layeri
 between tiers", `surface` for "no default exports, no `export *`", `graph` for no cycles, no dead
 modules, "the pure tiers reach no adapter", "the core reaches no other package" and "the two hosts
 never reach each other", `limits` with both adoption ceilings at zero, coverage floors at the
-numbers the day they were written and conformance ceilings (residue, vacant, slack,
-concentration) at theirs, and one `campaigns` entry with a real ledger — so a family whose
+numbers the day they were written, an `unreached` ceiling (the same reach as a count, which
+deleting files cannot move) and conformance ceilings (residue, vacant, slack, concentration) at
+theirs, and one `campaigns` entry with a real ledger — so a family whose
 extraction quietly narrows breaks this lint run, not a user's.
 
 **The campaigns family tracks a refactor as an object.** A campaign (`campaigns.<id>` in the

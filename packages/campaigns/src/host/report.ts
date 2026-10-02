@@ -20,7 +20,8 @@ import {
   sectorClockOf,
   type SectorRecord,
 } from "../core/ledger.js";
-import type { Residue as ResidueVector } from "../core/phases.js";
+import { ledgeredFor, type Residue as ResidueVector } from "../core/phases.js";
+import { isShared } from "../core/sectors.js";
 import { campaignsOf } from "../load/extension.js";
 import { growsFor } from "./ledger-phase.js";
 import {
@@ -136,7 +137,7 @@ export const campaignReportsOf = (
       let recordedAll = true;
       for (const name of sectorNames(evaluation)) {
         const state = evaluation.sectors.get(name);
-        if (state === undefined) continue;
+        if (state === undefined || !ledgeredFor(rule, objective, name)) continue;
         const measured = state.values[objective.id] ?? Number.NaN;
         const own = ledger?.sectors[name];
         if (!state.inWindow.some((one) => one.id === objective.id)) {
@@ -180,7 +181,11 @@ export const campaignReportsOf = (
         const grown = standing === "breached" && growsFor(policy, rule, name, objective.id);
         const line =
           `measured ${describeValue(measured)}, recorded ${String(own.recorded)}` +
-          (grown ? " — a rise its phase grows" : "");
+          (grown
+            ? isShared(rule, name)
+              ? " — measured, not held"
+              : " — a rise its phase grows"
+            : "");
         if (standing === "breached" && !grown) {
           scalarNew.push({ objective: objective.id, sector: name, entry: line });
         }
@@ -228,7 +233,7 @@ export const campaignReportsOf = (
       const sectors: Array<SectorObjectiveReport> = [];
       for (const name of sectorNames(evaluation)) {
         const state = evaluation.sectors.get(name);
-        if (state === undefined) continue;
+        if (state === undefined || !ledgeredFor(rule, objective, name)) continue;
         const inWindow = state.inWindow.some((one) => one.id === objective.id);
         const entries = entriesOf(counted, objective.id, name);
         const recorded = ledger?.sectors[name] !== undefined;

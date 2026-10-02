@@ -755,6 +755,13 @@
                     }
                   ]
                 },
+                "over": {
+                  "type": "string",
+                  "enum": [
+                    "shared"
+                  ],
+                  "description": "Present on an objective read over the campaign's shared files — a prerequisite — which is ledgered there alone."
+                },
                 "entered": {
                   "type": "number",
                   "allOf": [
@@ -1012,6 +1019,33 @@
             ],
             "additionalProperties": false,
             "description": "The unclaimed remainder of the scope, which stands at the first phase and is not a sink."
+          },
+          "shared": {
+            "type": "object",
+            "properties": {
+              "files": {
+                "type": "number",
+                "allOf": [
+                  {
+                    "description": "Files in the scope the campaign's `shared` names."
+                  }
+                ]
+              },
+              "holdouts": {
+                "type": "number",
+                "allOf": [
+                  {
+                    "description": "Holdouts of the objectives read over the shared: the prerequisites not yet met."
+                  }
+                ]
+              }
+            },
+            "required": [
+              "files",
+              "holdouts"
+            ],
+            "additionalProperties": false,
+            "description": "The files every sector shares, on no phase and in no sector. Absent from a campaign that declares none."
           },
           "plan": {
             "type": "object",

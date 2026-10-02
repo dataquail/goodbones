@@ -358,7 +358,20 @@ const lowerCampaign = (
         ...(spec.intent === undefined ? {} : { intent: spec.intent }),
         ...(spec.holdout === undefined ? {} : { holdout: spec.holdout }),
         ...(spec.until === undefined ? {} : { until: spec.until }),
+        ...(spec.over === undefined ? {} : { over: spec.over }),
       };
+      if (spec.over !== undefined && campaign.shared === undefined) {
+        refuse(
+          `(${objectiveId}) is \`over: shared\`, and the campaign declares no \`shared\`. ` +
+            `Name the files every sector shares, or drop \`over\`.`,
+        );
+      }
+      if (spec.over !== undefined && spec.until !== undefined) {
+        refuse(
+          `(${objectiveId}) is \`over: shared\` and runs \`until: ${spec.until}\`. The ` +
+            `shared files stand on no phase, so they never pass one: a window there has no end to reach.`,
+        );
+      }
       if (spec.measure !== undefined) {
         const measure = spec.measure;
         if ("command" in measure && campaign.perimeter !== undefined) {
@@ -651,6 +664,9 @@ const lowerCampaign = (
           match: objective?.match ?? null,
           sector: objective?.sector ?? null,
           until: objective?.until ?? null,
+          // Only when present, as `grows` is: what an objective is read
+          // over is part of what the phase asks.
+          ...(objective?.over === undefined ? {} : { over: objective.over }),
           // Only when present, so a phase with no scalar hashes as it did
           // before scalars existed and no committed plan reads as changed.
           ...(objective?.measure === undefined
@@ -690,6 +706,7 @@ const lowerCampaign = (
     scope: scopeGlobs.map(asPath),
     extensions,
     ...(campaign.legacy === undefined ? {} : { legacy: globsOf(campaign.legacy).map(asPath) }),
+    ...(campaign.shared === undefined ? {} : { shared: globsOf(campaign.shared).map(asPath) }),
     ...(perimeter === undefined ? {} : { perimeter }),
     ...(campaign.onTouch === undefined ? {} : { onTouch: campaign.onTouch }),
     phases: hashed,

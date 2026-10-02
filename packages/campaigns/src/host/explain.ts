@@ -2,6 +2,7 @@ import type { LoadedPolicy } from "@goodbones/core";
 
 import { type CampaignEvaluation, hitsInWindow } from "../core/campaign-state.js";
 import { isOpenPhase } from "../core/phases.js";
+import { isShared } from "../core/sectors.js";
 import { describeValue, HOLDOUT_CAP, measureLedgerOf, recordOf } from "./ledgers.js";
 
 // ---------------------------------------------------------------------------
@@ -18,8 +19,9 @@ export const explainCampaignLines = (
   const state = evaluation.sectors.get(sector);
   if (state === undefined) return [];
   const phase = rule.phases[state.phase];
-  const at =
-    rule.phases.length === 0
+  const at = isShared(rule, sector)
+    ? " — held by every sector, on no phase"
+    : rule.phases.length === 0
       ? ""
       : ` — phase ${phase?.id ?? "done"} (${String(state.phase + 1)} of ${String(rule.phases.length)}${phase !== undefined && isOpenPhase(phase) ? ", open" : phase?.attested === true ? ", attested" : ""})`;
   const own = hitsInWindow(evaluation)

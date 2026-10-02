@@ -54,7 +54,8 @@ export const columnOfSector = (
   sector: SectorCard,
 ): number => {
   if (sector.done) return columns.length - 1;
-  if (campaign.phases.length === 0) return 0;
+  // On no phase: it stands before the ladder, in the first column.
+  if (campaign.phases.length === 0 || sector.shared) return 0;
   const at = columns.findIndex((one) => one.kind === "phase" && one.index === sector.phase);
   return at === -1 ? 0 : at;
 };
@@ -177,7 +178,7 @@ export const Ladder = ({
                 end state
               </text>
               <text x={cx + 12} y={PHASE_Y + PHASE_H + 20} className="small muted">
-                {done} of {campaign.sectors.length} sectors there
+                {done} of {campaign.sectors.filter((one) => !one.shared).length} sectors there
               </text>
             </g>
           );
@@ -289,7 +290,13 @@ export const Ladder = ({
         const cy = laneY + 6 + row * (SECTOR_H + SECTOR_GAP);
         const left = Object.entries(sector.residue).reduce((sum, [, n]) => sum + n, 0);
         const pick: Pick = { kind: "sector", name: sector.name };
-        const kind = sector.done ? "done" : sector.legacy ? "legacy" : "sector";
+        const kind = sector.done
+          ? "done"
+          : sector.legacy
+            ? "legacy"
+            : sector.shared
+              ? "shared"
+              : "sector";
         return (
           <g
             key={sector.name}
@@ -310,7 +317,11 @@ export const Ladder = ({
             </text>
             <title>
               {sector.name}: {String(sector.files.length)} files
-              {sector.phaseId === null ? "" : `, at ${sector.phaseId}`}
+              {sector.shared
+                ? ", shared by every sector, on no phase"
+                : sector.phaseId === null
+                  ? ""
+                  : `, at ${sector.phaseId}`}
               {sector.stalled ? ", stalled" : ""}
             </title>
           </g>

@@ -43,6 +43,7 @@ const sector = (
 ): CampaignCard["sectors"][number] => ({
   name,
   legacy: name === "legacy",
+  shared: false,
   phase,
   phaseId: null,
   done,
@@ -123,6 +124,7 @@ const campaign = (): CampaignCard => ({
     sector("shipping", 3, true, {}),
   ],
   legacy: { files: 1, holdouts: 1 },
+  shared: null,
   drift: [],
   plan: { refined: [], changed: [], unreceipted: [] },
 });

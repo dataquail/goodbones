@@ -192,30 +192,20 @@ export {
 export {
   attest,
   authorOf,
-  campaignFailuresOf,
-  type CampaignReport,
-  campaignReportsOf,
-  clear,
-  type ClearOutcome,
   concede,
   type ConcedeOutcome,
   evaluateCampaigns,
   explainCampaignLines,
   historyOf,
   type HistoryRow,
-  HOLDOUT_CAP,
-  ledgeredFilter,
   note,
-  type ObjectiveReport,
   type Readers,
-  renderCampaignReports,
   renderCampaignRows,
   renderHistory,
-  type SectorObjectiveReport,
-  type SectorReport,
   snapshotCampaignsOf,
   widenedExtensions,
 } from "./host/campaigns.js";
+export { clear, type ClearOutcome } from "./host/clear.js";
 export {
   type Commit,
   commitOf,
@@ -229,6 +219,7 @@ export {
   textAt,
 } from "./host/diff.js";
 export { ledgerPhaseOf } from "./host/ledger-phase.js";
+export { HOLDOUT_CAP } from "./host/ledgers.js";
 export {
   type Ask,
   type BaseSide,
@@ -241,6 +232,16 @@ export {
   type SectorNudge,
   type Verdict,
 } from "./host/nudge.js";
+export {
+  campaignFailuresOf,
+  type CampaignReport,
+  campaignReportsOf,
+  ledgeredFilter,
+  type ObjectiveReport,
+  renderCampaignReports,
+  type SectorObjectiveReport,
+  type SectorReport,
+} from "./host/report.js";
 export {
   loadCampaignFunctions,
   type LoadedCampaignFunctions,

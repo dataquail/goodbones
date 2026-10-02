@@ -27,6 +27,26 @@ Set `reset: true` to start a narrower allowlist from scratch:
         allow: ["@/modules/{module}/domain/**"]
 ```
 
+### File kinds that overlap
+
+Two file kinds in one folder can both match a file: `*.test.ts` also matches every
+`*.integration.test.ts`. When each states its own `imports`, the narrower kind's allowlist is the
+one that applies, in either order:
+
+```yaml
+"platform/":
+  children:
+    "*.test.ts": { imports: { use: unit-test-file } }
+    "*.integration.test.ts": { imports: { use: integration-test-file } } # wins for its files
+```
+
+- A `deny` on the wider kind still applies to the narrower kind's files. Prohibitions compose.
+- `members`, `surface` and `name` rules on both kinds still apply; see below.
+- Two keys that match exactly the same files, each with an `imports` policy, are refused at load,
+  naming both.
+- Two kinds that overlap only in part, such as `*-live.ts` and `todos.*.ts`, are not told apart:
+  a file under both is held to both allowlists. Narrow one of the patterns.
+
 ## `members`, `surface` and `name`
 
 A `members` or `surface` rule on a folder covers every file under it. A descendant's own rule

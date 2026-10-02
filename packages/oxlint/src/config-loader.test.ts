@@ -296,6 +296,30 @@ describe("loadPolicy", () => {
     ).rejects.toThrow(/adoption ceiling.*unrestricted: 2 nodes against a ceiling of 1/);
   });
 
+  it("refuses two file kinds that select the same files with an imports policy each", async () => {
+    const tree = (second: string) => `tree: {
+      "packages/web/src/": {
+        children: {
+          "*.test.ts": { imports: { message: "…", allow: ["packages/web/src/**"] } },
+          "${second}": { imports: { message: "…", allow: ["packages/api/src/**"] } },
+        },
+      },
+    }`;
+    // Narrower: it wins for its own files, and the policy loads.
+    const loaded = await loadPolicy(
+      repoRoot,
+      writeConfig(`export default { ${RESOLVE}, ${tree("*.integration.test.ts")} };`),
+    );
+    expect(loaded.importRules).toHaveLength(2);
+    // The same files under another key: a load error, naming both.
+    await expect(
+      loadPolicy(
+        repoRoot,
+        writeConfig(`export default { ${RESOLVE}, ${tree("*.test.ts | *.spec.ts")} };`),
+      ),
+    ).rejects.toThrow(/select the same files, and each states an `imports` policy/);
+  });
+
   it("compiles the repo's own policy, so this suite fails if that config breaks", async () => {
     const policy = await loadPolicy(repoRoot);
     expect(policy.importRules.length).toBeGreaterThan(0);
@@ -349,9 +373,9 @@ describe("loadPolicy reads every report at load", () => {
     );
     expect(readFileSync(stamp, "utf8").split("").sort().join("")).toBe("ab");
     // The same diagnostic from both commands is one, and nothing runs again.
-    expect(campaignsOf(policy).reports.diagnosticsOf({ command, format: "tsc" }, "packages/x.ts")).toHaveLength(
-      1,
-    );
+    expect(
+      campaignsOf(policy).reports.diagnosticsOf({ command, format: "tsc" }, "packages/x.ts"),
+    ).toHaveLength(1);
     expect(readFileSync(stamp, "utf8")).toHaveLength(2);
   });
 
@@ -363,7 +387,10 @@ describe("loadPolicy reads every report at load", () => {
       ),
     );
     expect(() =>
-      campaignsOf(policy).reports.diagnosticsOf({ file: "no-such-report.txt", format: "tsc" }, "packages/x.ts"),
+      campaignsOf(policy).reports.diagnosticsOf(
+        { file: "no-such-report.txt", format: "tsc" },
+        "packages/x.ts",
+      ),
     ).toThrow(ReportUnavailable);
   });
 });

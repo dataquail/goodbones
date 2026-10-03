@@ -136,11 +136,13 @@ export {
   isDefinedPhase,
   isOpenPhase,
   isShut,
+  ledgeredFor,
   LEGACY_PHASE,
   objectivesInWindow,
   onTouchOf,
   type Residue as ResidueVector,
   type SectorPosition,
+  sharedWindow,
   UNPLACED,
   type Window,
   windowOf,
@@ -150,6 +152,7 @@ export {
   discoverSectors,
   fixedPrefixOf,
   IMPLICIT_SECTOR,
+  isShared,
   LEGACY_SECTOR,
   membershipOf,
   parseSectorMarker,
@@ -162,6 +165,7 @@ export {
   type SectorIndex,
   type SectorMarker,
   sectorNamed,
+  SHARED_SECTOR,
   withoutExtension,
 } from "./core/sectors.js";
 export {
@@ -196,7 +200,6 @@ export {
   concede,
   type ConcedeOutcome,
   evaluateCampaigns,
-  explainCampaignLines,
   historyOf,
   type HistoryRow,
   note,
@@ -217,6 +220,7 @@ export {
   readDiff,
   textAt,
 } from "./host/diff.js";
+export { explainCampaignLines } from "./host/explain.js";
 export { growsFor, ledgerPhaseOf } from "./host/ledger-phase.js";
 export { HOLDOUT_CAP } from "./host/ledgers.js";
 export {

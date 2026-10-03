@@ -8,10 +8,14 @@ import {
   entryOf,
   fixedPrefixOf,
   IMPLICIT_SECTOR,
+  isShared,
   LEGACY_SECTOR,
+  membershipOf,
   parseSectorMarker,
   rootOf,
   type SectorDiscovery,
+  sectorNamed,
+  SHARED_SECTOR,
   withoutExtension,
 } from "./sectors.js";
 
@@ -118,6 +122,53 @@ describe("the marker", () => {
     // A folder not written yet, or a typo: either way the sector's `has`
     // objectives wait on files it will never see, and nothing else says so.
     expect(index.sectors.get("billing")?.unmatchedOwns).toEqual(["src/nest/billing/**"]);
+  });
+
+  it("takes the shared files out before any sector is born", () => {
+    const rule = campaign({
+      perimeter: { kind: "marker", marker: "^.*/context\\.ts$" },
+      shared: ["^src/platform/", "^src/.*/proxy\\.ts$"],
+    });
+    const files = [
+      "src/billing/context.ts",
+      "src/billing/invoice.ts",
+      "src/billing/proxy.ts",
+      "src/platform/guard.ts",
+      "src/stray.ts",
+    ];
+    const index = discoverSectors(rule, discovery(files, { readText: () => "" }));
+    // `proxy.ts` sits under the marker's folder and is the shared files' all
+    // the same: what every sector shares is never one sector's, nor legacy.
+    expect(index.shared).toEqual(["src/billing/proxy.ts", "src/platform/guard.ts"]);
+    expect(index.sectors.get("billing")?.files).toEqual([
+      "src/billing/context.ts",
+      "src/billing/invoice.ts",
+    ]);
+    expect(index.legacy).toEqual(["src/stray.ts"]);
+    expect(index.sectorOf("src/billing/proxy.ts")).toBe(SHARED_SECTOR);
+    expect(index.drift).toEqual([]);
+    expect(sectorNamed(index, SHARED_SECTOR)?.files).toEqual(index.shared);
+    // A host that sees one file places it the same way, index or none.
+    expect(membershipOf(rule, "src/platform/guard.ts", null, [])(null)).toEqual({
+      sector: SHARED_SECTOR,
+      root: "",
+    });
+    expect(isShared(rule, SHARED_SECTOR)).toBe(true);
+  });
+
+  it("keeps the name for the shared files only where a campaign declares one", () => {
+    const marker = { kind: "marker", marker: "^.*/context\\.ts$" } as const;
+    const files = ["src/shared/context.ts", "src/shared/a.ts"];
+    const free = campaign({ perimeter: marker });
+    // No shared files declared: a folder may be called anything.
+    expect(isShared(free, SHARED_SECTOR)).toBe(false);
+    expect(
+      discoverSectors(free, discovery(files, { readText: () => "" })).sectors.get("shared")?.files,
+    ).toEqual([...files].sort());
+    const declared = campaign({ perimeter: marker, shared: "^src/platform/" });
+    expect(() => discoverSectors(declared, discovery(files, { readText: () => "" }))).toThrow(
+      /a sector is named "shared"/,
+    );
   });
 
   it("refuses a marker that does not read, naming it", () => {

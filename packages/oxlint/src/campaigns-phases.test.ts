@@ -127,6 +127,42 @@ const rules: ReadonlyArray<CampaignRule> = [
     ],
     onComplete: "keep",
   },
+  // A prerequisite: read over the shared files, and named by the first phase,
+  // where it holds every sector until the shared files meet it.
+  {
+    name: "campaign/shared",
+    id: "shared",
+    scope: "^shared/",
+    extensions: [],
+    shared: "^shared/platform/",
+    perimeter: { kind: "glob", glob: "^shared/[^/]+/" },
+    phases: [
+      { id: "ready", objectives: ["no-stub"], attested: false, concessions: [], hash: "r" },
+      { id: "ported", objectives: ["no-knex"], attested: false, concessions: [], hash: "p" },
+    ],
+    objectives: [
+      {
+        name: "campaign/shared/no-stub",
+        id: "no-stub",
+        campaign: "shared",
+        message: "Build the guard.",
+        holdout: "match",
+        match: { syntax: { rule: { pattern: "stub($$$)" } } },
+        over: "shared",
+        probes: { fires: [], ignores: [] },
+      },
+      {
+        name: "campaign/shared/no-knex",
+        id: "no-knex",
+        campaign: "shared",
+        message: "Behind the port.",
+        holdout: "match",
+        match: { syntax: { rule: { pattern: "knex($$$)" } } },
+        probes: { fires: [], ignores: [] },
+      },
+    ],
+    onComplete: "keep",
+  },
 ];
 
 const compiled = compileCampaignRules(rules);
@@ -318,6 +354,70 @@ new RuleTester({ cwd: repoRoot }).run(
         code: "export const x = knex('y');",
         filename: scalarFile,
         errors: [{ message: "[campaign/shrink/no-knex] Behind the port." }],
+      },
+    ],
+  },
+);
+
+// A prerequisite is the shared files' to meet. The plugin places a sector by
+// what the shared files' ledger carries for it, reports it on the shared files'
+// own files, and never on a sector's.
+const shared = compiled.success[2];
+if (shared === undefined) throw new Error("no campaign");
+const sharedFile = path.join(repoRoot, "shared/billing/service.ts");
+const platformFile = path.join(repoRoot, "shared/platform/guard.ts");
+const SHARED_CODE = "export function f() { stub('guard'); return knex('y'); }\n";
+const stubLedger = (holdouts: ReadonlyArray<string>): ReadonlyMap<string, Ledger> =>
+  new Map([
+    [
+      ledgerKeyOf("shared", "no-stub"),
+      clearedSector(EMPTY_LEDGER("shared", "no-stub", 0), "shared", holdouts, "match", 0, "inside"),
+    ],
+  ]);
+const sharedPlaced: ReadonlyMap<string, SectorRecord> = new Map([
+  [
+    ledgerKeyOf("shared", "shared/billing"),
+    reachedRecord(EMPTY_SECTOR_RECORD("shared", "shared/billing", 0), shared, 0, 0),
+  ],
+]);
+
+new RuleTester({ cwd: repoRoot }).run(
+  "shared: an unmet prerequisite holds the sector, and is not reported on its files",
+  makeCampaignsRule(policyWith(stubLedger(["shared/platform/guard.ts#f#00000000"]), sharedPlaced)),
+  {
+    // The stub call in a sector's file is not the shared files'; the knex call
+    // belongs to the next phase, which the sector has not reached.
+    valid: [{ code: SHARED_CODE, filename: sharedFile }],
+    invalid: [],
+  },
+);
+
+new RuleTester({ cwd: repoRoot }).run(
+  "shared: a prerequisite the shared files have met lets every sector on",
+  makeCampaignsRule(policyWith(stubLedger([]), sharedPlaced)),
+  {
+    valid: [],
+    invalid: [
+      {
+        code: SHARED_CODE,
+        filename: sharedFile,
+        errors: [{ message: "[campaign/shared/no-knex] Behind the port." }],
+      },
+    ],
+  },
+);
+
+new RuleTester({ cwd: repoRoot }).run(
+  "shared: its own files answer to what is read over it, and to nothing else",
+  makeCampaignsRule(policyWith(stubLedger([]))),
+  {
+    // No sector's objective counts on the shared files.
+    valid: [{ code: "export const x = knex('y');", filename: platformFile }],
+    invalid: [
+      {
+        code: SHARED_CODE,
+        filename: platformFile,
+        errors: [{ message: "[campaign/shared/no-stub] Build the guard." }],
       },
     ],
   },

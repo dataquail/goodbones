@@ -188,6 +188,8 @@ export type CompiledObjective = {
   readonly tolerance: number;
   readonly target: number | null;
   readonly until: string | null;
+  // Read off the shared files, and ledgered under it alone.
+  readonly overShared: boolean;
   readonly probes: {
     readonly fires: ReadonlyArray<CampaignProbe>;
     readonly ignores: ReadonlyArray<CampaignProbe>;
@@ -225,6 +227,8 @@ export type CompiledCampaign = {
   readonly scope: ReadonlyArray<RegExp>;
   readonly extensions: ReadonlyArray<string>;
   readonly legacy: ReadonlyArray<RegExp> | null;
+  // `null` for a campaign that declares none.
+  readonly shared: ReadonlyArray<RegExp> | null;
   readonly perimeter: CompiledPerimeter | null;
   readonly onTouch: OnTouch | null;
   readonly phases: ReadonlyArray<PhaseRule>;
@@ -502,6 +506,7 @@ export const compileObjective = (
     tolerance: rule.tolerance ?? 0,
     target: rule.target ?? null,
     until: rule.until ?? null,
+    overShared: rule.over === "shared",
     probes: rule.probes,
   });
 };
@@ -563,6 +568,8 @@ export const compileCampaignRule = (
   if (Result.isFailure(scope)) return Result.fail(scope.failure);
   const legacy = compilePatterns(rule.name, "legacy", rule.legacy);
   if (Result.isFailure(legacy)) return Result.fail(legacy.failure);
+  const sharedFiles = compilePatterns(rule.name, "shared", rule.shared);
+  if (Result.isFailure(sharedFiles)) return Result.fail(sharedFiles.failure);
   let perimeter: CompiledPerimeter | null = null;
   if (rule.perimeter !== undefined) {
     const compiled = compilePerimeter(rule.name, rule.perimeter);
@@ -584,6 +591,7 @@ export const compileCampaignRule = (
     scope: scope.success,
     extensions: rule.extensions,
     legacy: rule.legacy === undefined ? null : legacy.success,
+    shared: rule.shared === undefined ? null : sharedFiles.success,
     perimeter,
     onTouch: rule.onTouch ?? null,
     phases: rule.phases,

@@ -333,6 +333,63 @@ describe("loadPolicy with campaigns", () => {
     expect(detailOf(one({ probes: { fires: [] } }))).toMatch(/at least one source it must report/);
   });
 
+  it("refuses `over: shared` with no shared files to read, or with a window that could never end", () => {
+    const detailOf = (manifest: unknown): string => {
+      try {
+        const loaded = load(manifest, [go()]);
+        if (!Result.isFailure(loaded)) throw new Error("expected the manifest to be refused");
+        return loaded.failure.detail;
+      } catch (cause) {
+        return String(cause);
+      }
+    };
+    expect(detailOf(one({ over: "shared" }))).toMatch(
+      /is `over: shared`, and the campaign declares no `shared`/,
+    );
+    expect(
+      detailOf(
+        withCampaigns({
+          "js-to-go": {
+            scope: ["svc/**"],
+            shared: ["svc/platform/**"],
+            phases: [
+              { id: "a", objectives: ["port-it"] },
+              { id: "b", intent: "later" },
+            ],
+            objectives: {
+              "port-it": objective({
+                over: "shared",
+                until: "b",
+                probes: { fires: [{ path: "svc/platform/util.js" }] },
+              }),
+            },
+          },
+        }),
+      ),
+    ).toMatch(/is `over: shared` and runs `until: b`/);
+    // Written properly, it lowers, and carries what it is read over.
+    const policy = unwrap(
+      load(
+        withCampaigns({
+          "js-to-go": {
+            scope: ["svc/**"],
+            shared: ["svc/platform/**"],
+            objectives: {
+              "port-it": objective({
+                over: "shared",
+                probes: { fires: [{ path: "svc/platform/util.js" }] },
+              }),
+            },
+          },
+        }),
+        [go()],
+      ),
+    );
+    const [rule] = stateOf(policy).campaignRules;
+    expect(rule?.shared?.map((one) => one.source)).toHaveLength(1);
+    expect(rule?.objectives[0]?.overShared).toBe(true);
+  });
+
   // `grows` loosens a ratchet, so it is held to what it can mean.
   it("holds a phase's `grows` to a scalar in window at a phase with an end", () => {
     const ladder = (phases: ReadonlyArray<unknown>, shims: Record<string, unknown> = {}) =>

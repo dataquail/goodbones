@@ -27,6 +27,7 @@ Set exactly one of `match`, `sector` and `measure`.
 | `sector`  | A term over the whole sector: `has`, `oneRoot` or `oneHost`. See [Sectors](/goodbones/campaigns/manifest/sectors/#sector-terms). |
 | `measure` | A number per sector. See [Scalar objectives](/goodbones/campaigns/manifest/scalars/).                                            |
 | `until`   | The phase at which the objective stops counting (exclusive). See [Phases](/goodbones/campaigns/manifest/phases/).                |
+| `over`    | `shared`: read over the campaign's [shared files](/goodbones/campaigns/manifest/sectors/#the-shared-files), as a prerequisite.   |
 | `intent`  | What this check is for, in a sentence. Shown beside the objective by the nudge, `explain` and the browser; never inherited.      |
 | `how`     | What to do at a holdout. Overrides the campaign's `how` for this objective.                                                      |
 | `probes`  | Sources it must fire on, and stay silent on. Required with `match`.                                                              |

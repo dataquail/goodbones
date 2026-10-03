@@ -10,8 +10,10 @@ import {
   inWindow,
   isOpenPhase,
   ladderPositionOf,
+  ledgeredFor,
   objectivesInWindow,
   onTouchOf,
+  sharedWindow,
   stepsOf,
   UNPLACED,
   windowOf,
@@ -110,6 +112,60 @@ describe("windows", () => {
       "no-flag",
       "legacy-lines",
     ]);
+  });
+});
+
+describe("the shared files' window", () => {
+  // A prerequisite named by the second phase, a rule of the shared files' own
+  // named by none, and a scalar no phase names.
+  const shared = (): CompiledCampaign => {
+    const compiled = compileCampaignRule({
+      name: "campaign/c",
+      id: "c",
+      scope: "^src/",
+      extensions: [],
+      shared: "^src/platform/",
+      phases: [phase("fenced", ["no-io"]), phase("rebuilt", ["has-guard"])],
+      objectives: [
+        objective("no-io"),
+        { ...objective("has-guard"), over: "shared" },
+        { ...objective("no-raw-sql"), over: "shared" },
+        {
+          name: "campaign/c/lines",
+          id: "lines",
+          campaign: "c",
+          message: "m",
+          measure: { lines: true },
+          probes: { fires: [], ignores: [] },
+        },
+      ],
+      onComplete: "keep",
+    });
+    if (Result.isFailure(compiled)) throw compiled.failure;
+    return compiled.success;
+  };
+
+  it("is everything read over it, and every scalar no phase names", () => {
+    expect(sharedWindow(shared()).map((one) => one.id)).toEqual([
+      "has-guard",
+      "no-raw-sql",
+      "lines",
+    ]);
+  });
+
+  it("puts a prerequisite in a sector's window from the phase naming it, and the shared files' own rules in none", () => {
+    const rule = shared();
+    const ids = (at: number) => objectivesInWindow(rule, at, UNPLACED).map((one) => one.id);
+    expect(ids(0)).toEqual(["no-io", "lines"]);
+    // Named by `rebuilt`: every sector there waits on it.
+    expect(ids(1)).toEqual(["no-io", "has-guard", "lines"]);
+    // The prerequisite places a sector as its own objectives do.
+    expect(derivePhase(rule, (id) => (id === "has-guard" ? 1 : 0), UNPLACED)).toBe(1);
+    expect(derivePhase(rule, () => 0, UNPLACED)).toBe(2);
+    // And it is ledgered in one place.
+    expect(ledgeredFor(rule, find(rule, "has-guard"), "billing")).toBe(false);
+    expect(ledgeredFor(rule, find(rule, "has-guard"), "shared")).toBe(true);
+    expect(ledgeredFor(rule, find(rule, "no-io"), "billing")).toBe(true);
   });
 });
 

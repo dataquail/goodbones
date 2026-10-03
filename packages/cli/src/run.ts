@@ -1484,7 +1484,7 @@ export const objectives = (
                       `${count(outcome.measure.grown.length, "sector")} grown (${outcome.measure.grown
                         .map(
                           (one) =>
-                            `${one.sector} ${String(one.from)} → ${String(one.to)}, as ${one.phase} expects`,
+                            `${one.sector} ${String(one.from)} → ${String(one.to)}, ${one.phase === null ? "measured, not held" : `as ${one.phase} expects`}`,
                         )
                         .join(", ")})`,
                     ]

@@ -131,6 +131,16 @@ const CampaignDetail = ({
           {campaign.legacy.files} file{campaign.legacy.files === 1 ? "" : "s"} no sector claims
           {campaign.legacy.holdouts > 0 ? `, ${String(campaign.legacy.holdouts)} holdouts` : ""}
         </dd>
+        {campaign.shared === null ? null : (
+          <>
+            <dt>shared</dt>
+            <dd>
+              {campaign.shared.files} file{campaign.shared.files === 1 ? "" : "s"} every sector
+              shares
+              {campaign.shared.holdouts > 0 ? `, ${String(campaign.shared.holdouts)} holdouts` : ""}
+            </dd>
+          </>
+        )}
       </dl>
       {campaign.plan.changed.length +
         campaign.plan.unreceipted.length +
@@ -513,18 +523,27 @@ const SectorDetail = ({
       <h2 className="mono">
         {sector.name}
         {sector.legacy ? <span className="flag warn">legacy</span> : null}
+        {sector.shared ? <span className="flag">shared</span> : null}
         {sector.done ? <span className="flag good">done</span> : null}
         {sector.stalled ? <span className="flag bad">stalled</span> : null}
       </h2>
       {sector.legacy ? (
         <p className="muted">What no sector has claimed. It stands at the first phase.</p>
       ) : null}
+      {sector.shared ? (
+        <p className="muted">
+          What every sector shares. It stands on no phase; an objective read over it is a
+          prerequisite, and a phase naming one holds every sector until it is met here.
+        </p>
+      ) : null}
       <dl className="facts">
         <dt>phase</dt>
         <dd>
           {sector.done
             ? "end state"
-            : (sector.phaseId ?? (campaign.phases.length === 0 ? "standing" : "—"))}
+            : sector.shared
+              ? "none"
+              : (sector.phaseId ?? (campaign.phases.length === 0 ? "standing" : "—"))}
         </dd>
         <dt>reached</dt>
         <dd>

@@ -250,7 +250,10 @@ const measureNeedsProbe = (measure: MeasureSpec): boolean => {
 // and `sector` a term over the sector's files, exactly one of them.
 // `until` names the phase at which it stops counting. A scalar objective
 // has a `measure` in place of both, a `direction`, a `tolerance` either side
-// of its record, and the `target` at which it is met.
+// of its record, and the `target` at which it is met. `over: shared`
+// reads the objective off the campaign's shared files — the files every sector
+// shares — in place of each sector's own: a prerequisite, which a phase
+// naming it holds every sector to.
 const Objective = Schema.Struct({
   // What the objective is for, in a sentence: the why of this one check,
   // which travels with it — the nudge, `explain` and the browser show it
@@ -268,6 +271,7 @@ const Objective = Schema.Struct({
   tolerance: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
   target: Schema.optionalKey(Schema.Finite),
   until: Schema.optionalKey(KebabId),
+  over: Schema.optionalKey(Schema.Literal("shared")),
   probes: Schema.optionalKey(CampaignProbes),
 }).check(
   Schema.makeFilter((objective) => {
@@ -429,6 +433,11 @@ const Campaign = Schema.Struct({
   scope: Schema.optionalKey(ScopeSpec),
   // What the unclaimed remainder of the scope counts as; absent, all of it.
   legacy: Schema.optionalKey(Globs),
+  // The files in the scope that belong to every sector and so to none: what
+  // the campaign builds or leans on before any sector can move — the
+  // destination's platform, the scaffolding a strangling shares. They are on
+  // no phase, no sector claims them, and they are never the legacy.
+  shared: Schema.optionalKey(Globs),
   perimeter: Schema.optionalKey(PerimeterSpec),
   onTouch: Schema.optionalKey(OnTouchSpec),
   phases: Schema.optionalKey(Schema.Array(Phase)),

@@ -1,5 +1,6 @@
 import type { OnTouch, PhaseRule } from "../domain/config.js";
 import type { CompiledCampaign, CompiledObjective } from "./campaigns.js";
+import { isShared } from "./sectors.js";
 
 // A phase is a named, ordered group of objectives: defined when it names
 // one (or is attested, or carries an end state), open when it has only an
@@ -58,6 +59,10 @@ export const isShut = (
   return Number.isFinite(until) && until <= position.reached;
 };
 
+// An objective read over the shared files counts for a sector only through
+// the phase that names it — a prerequisite, which holds every sector at
+// that phase until the shared files meet it. One no phase names is the
+// shared files' own, and in no sector's window.
 export const inWindow = (
   rule: CompiledCampaign,
   objective: CompiledObjective,
@@ -66,8 +71,27 @@ export const inWindow = (
 ): boolean => {
   if (isShut(rule, objective, position)) return false;
   const { from, until } = windowOf(rule, objective);
+  if (objective.overShared && from === -1) return false;
   return phase >= from && phase < until;
 };
+
+// Whether an objective is ledgered for a sector at all. One read over the
+// shared files is ledgered under them alone, however many sectors
+// wait on it: there is one thing to pay, and one place it is paid.
+export const ledgeredFor = (
+  rule: CompiledCampaign,
+  objective: CompiledObjective,
+  sector: string,
+): boolean => !objective.overShared || isShared(rule, sector);
+
+// What counts on the shared files, which stands on no phase: every objective
+// read over it, and every scalar no phase names — those are measured there
+// as they are everywhere, and never held.
+export const sharedWindow = (rule: CompiledCampaign): ReadonlyArray<CompiledObjective> =>
+  rule.objectives.filter(
+    (objective) =>
+      objective.overShared || (objective.measure !== null && windowOf(rule, objective).from === -1),
+  );
 
 export const objectivesInWindow = (
   rule: CompiledCampaign,

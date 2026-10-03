@@ -55,6 +55,10 @@ Keys are relative to the sector's root, so moving a sector's folder changes no e
 the entry; if the matched text itself changes, `objectives clear` updates the hash without
 counting it as progress. A top-level match has no anchor and is keyed by its hash.
 
+The same text matched twice in one declaration is two entries: the second is `file#Anchor#hash~2`,
+the third `~3`. Paying one down clears one. The same text in two declarations, or in two sectors,
+is already two keys.
+
 ### Mixing term levels
 
 File-level terms are `path`, `imports`, `requires`, `content` and a boolean `fn`.

@@ -41,11 +41,20 @@ const Path = describe(Schema.String, "Repo-relative, with forward slashes.");
 
 const FamilyCoverage = Schema.Struct({
   covered: describe(Schema.Finite, "Files this family reaches."),
-  total: describe(Schema.Finite, "Files walked."),
+  total: describe(
+    Schema.Finite,
+    "Files the limits count: those walked, less the ones under `limits.outside`.",
+  ),
   floor: Schema.optionalKey(
     describe(
       Schema.Finite,
       "The fraction the manifest's `limits.coverage` states for this family, when it states one.",
+    ),
+  ),
+  ceiling: Schema.optionalKey(
+    describe(
+      Schema.Finite,
+      "The most files this family may leave unreached (`total - covered`), as the manifest's `limits.unreached` states it, when it states one.",
     ),
   ),
 });
@@ -347,6 +356,10 @@ export const Snapshot = Schema.Struct({
   ),
   roots: describe(Schema.Array(Path), "The directories walked."),
   files: describe(Schema.Finite, "Files walked."),
+  outside: describe(
+    Schema.Finite,
+    "Walked files under the manifest's `limits.outside`: judged by every rule, and left out of `coverage` and `residue`.",
+  ),
   ok: describe(
     Schema.Boolean,
     "What `check` would exit with: true when no reportable violation, unresolved import, stale baseline entry or coverage shortfall exists.",

@@ -19,6 +19,7 @@ const SAMPLE: Snapshot = {
   manifest: { path: "architecture.yaml", sha256: "abc" },
   roots: ["src"],
   files: 3,
+  outside: 0,
   ok: false,
   coverage: {
     imports: { covered: 2, total: 3, floor: 1 },

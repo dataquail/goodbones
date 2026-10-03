@@ -2,6 +2,7 @@ import * as Result from "effect/Result";
 import { describe, expect, it } from "vitest";
 
 import {
+  countedFiles,
   type Coverage,
   coverageOf,
   coverageShortfalls,
@@ -247,5 +248,15 @@ describe("vacancyOf", () => {
       { node: "src/core", allowances: 1 },
       { node: "src/ghost", allowances: 2 },
     ]);
+  });
+});
+
+describe("countedFiles", () => {
+  it("leaves out what the limits' `outside` names, and nothing when it names nothing", () => {
+    const files = ["src/a.ts", "legacy/b.ts", "legacy/deep/c.ts", "legacy.ts"];
+    expect(countedFiles(files, [])).toBe(files);
+    // A pattern names a subtree.
+    expect(countedFiles(files, [/^legacy\//])).toEqual(["src/a.ts", "legacy.ts"]);
+    expect(countedFiles(files, [/^src\//, /^legacy/])).toEqual([]);
   });
 });

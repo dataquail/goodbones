@@ -55,6 +55,10 @@ limits:
     members: 0.2
     surface: 0.5
     graph: 1
+  unreached: # ceilings, as counts of files a family does not reach
+    structure: 40
+    surface: 12
+  outside: ["~/legacy-api/**"] # files none of these numbers count
   conformance: # ceilings, as counts
     residue: 0
     vacant: 2
@@ -67,6 +71,7 @@ limits:
 | `unrestricted` | the plugin and `check`, at load | more `unrestricted` tiers than allowed; names them |
 | `partial`      | the plugin and `check`, at load | more `partial` folders than allowed; names them    |
 | `coverage`     | `check`                         | a family's fraction is under its floor             |
+| `unreached`    | `check`                         | a family leaves more files unreached than allowed  |
 | `conformance`  | `check`                         | a measure's count is over its ceiling              |
 
 **Coverage floors.** A file counts toward a family when:
@@ -79,6 +84,20 @@ limits:
 | `surface`   | a `surface` rule selects it                                                |
 | `graph`     | it is in the scope of a `cycles` or `orphans` rule                         |
 
+**Unreached ceilings** hold the same reach as a count: the files a family does not reach. Prefer
+them where the tree is changing.
+
+- A fraction moves when the tree does. Deleting files a rule reached lowers it, and so does a
+  folder the policy leaves open growing, though the policy reaches exactly what it did.
+- The count moves only when a file no rule reaches is added. Deleting reached files leaves it
+  alone, and deleting unreached ones lowers it.
+- State either or both per family. `architecture coverage` prints the count beside the fraction,
+  and says when a ceiling can be lowered.
+
+**`outside`** names files none of these numbers count: a package that is open by design, such as
+one being strangled, or a vendored tree. Every rule still judges those files. They are left out
+of the coverage floors, the unreached ceilings and `residue`.
+
 **Conformance ceilings** cap the measures
 [`architecture conformance`](/goodbones/architecture-rules/enforcement/conformance/) reports:
 
@@ -90,6 +109,8 @@ limits:
 | `concentration` | `defs` entries used at fewer than half the nodes granted them |
 
 Set each ceiling to today's count and lower it as the count falls. Raise floors as coverage rises.
+A ceiling going up is a signal, not noise: slack that rose because an allowance lost its only
+user is fixed by deleting the allowance.
 For cycles, use a [`cycles` rule](/goodbones/architecture-rules/manifest/graph/) and baseline each one.
 
 ## `coverage`
@@ -104,7 +125,7 @@ $ architecture coverage packages
   imports       61/61  100%  under an import allowlist  ≥ 100% ✓
   structure     61/61  100%  in an enumerated folder (0 in an open one, 0 in none)
   members       21/61   34%  selected by a members rule
-  surface       58/61   95%  selected by a surface rule
+  surface       58/61   95%  selected by a surface rule  3 unreached ≤ 3 ✓
   graph         48/61   78%  in a cycles or orphans scope
 
   unrestricted tiers: (none)

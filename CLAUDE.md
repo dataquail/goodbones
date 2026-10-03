@@ -94,8 +94,10 @@ sector-relative node tree lowered per sector (`lowerEndState`), CLI-only. This r
 campaign on itself (`lowering-reports-not-throws`, the minimal shape); its ledger is committed, and
 changing the count means clearing or conceding, in the open. `ARCHITECTURE_NOW` pins the clock the
 stall check reads. A campaign's `scope.extensions` widens the walk (`.js` for a JS→TS campaign);
-only that campaign sees the widened files. A `.mjs` manifest is cached by the module loader for
-the life of the process, so a test that edits the plan writes JSON.
+only that campaign sees the widened files. A `.mjs` manifest and a `fn` module
+are imported through `importFresh` (the file's mtime and size in the URL's query), so a host that
+lives long — the browser's server — sees an edited one; a module either imports in turn is still
+cached for the life of the process.
 
 ## Commands
 

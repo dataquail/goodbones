@@ -39,7 +39,10 @@ pnpm exec goodbones-browser --open     # and opens it
 
 Run it from the repository's root, as you run `architecture`. It reads the same manifest
 (`ARCHITECTURE_CONFIG` names another) and walks the same roots (`packages` by default; pass others
-as arguments). The page redraws whenever a source file, a manifest file or a ledger changes.
+as arguments). The page redraws whenever a source file, a manifest file or a ledger changes, and on a commit,
+a checkout or a `git add`, since those change what the working tree is compared to. A campaign's
+`fn` module and a `.mjs` manifest are imported again when they change; a module those import in
+turn is not, and a change there needs a restart.
 
 ```bash
 pnpm exec goodbones-browser serve src lib --port 4000

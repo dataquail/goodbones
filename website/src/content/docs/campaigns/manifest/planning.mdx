@@ -1,0 +1,110 @@
+---
+title: Writing a plan
+description: What moving a real sector through a campaign taught about objectives, phases and pull requests.
+---
+
+These are the lessons from walking one module of a strangled API from its first phase to its open
+one, over fourteen pull requests. None is a rule the loader enforces. Each cost a round of
+rework to learn.
+
+## Count where you can
+
+An objective's `holdout` decides what an agent, or a person, can stop at.
+
+- **A counting objective** (`holdout: match`, `declaration` or `file`) names units. Eight routes
+  still served locally are eight holdouts, each with a file and a line, and a pull request can
+  say which ones it moved.
+- **A presence objective** (`holdout: sector`) is binary. It gives nothing to stop at, so the work
+  arrives whole: one objective cleared by a 57-file pull request that could have been five.
+
+Prefer a count wherever the domain admits one. Count operations, not files: a relational `syntax`
+rule does it.
+
+```yaml
+routes-still-local:
+  intent: A route hapi still answers itself is a route the new server has not taken.
+  holdout: match
+  match:
+    syntax:
+      kind: pair
+      has: { field: key, regex: "^handler$" }
+      not: { has: { field: value, pattern: proxyToNest($$$) } }
+```
+
+Where only presence makes sense, say what a reasonable unit is in the phase's `intent`. The nudge
+prints it to whoever touches the sector.
+
+```yaml
+- id: served
+  intent: One operation per pull request, the new endpoint and its proxy together, reads first.
+  objectives: [has-nest-endpoints, routes-still-local]
+```
+
+## A detector matches text, not intent
+
+A `syntax` term finds a shape. `$USER.isSuperAdmin()` matches the permission check you are
+removing, and it also matches the response body that reports the flag.
+
+- Write an `ignores` probe for the false positive you can think of. If it fires there, narrow the
+  rule with `inside`, `has` or `not` before the ledger records the hit.
+- A detector that keys on a name present for another reason is already satisfied where it should
+  not be. "The method names `backendClient`" read as mirrored in a module that used the client
+  for something else.
+- [`architecture explain <file>`](/goodbones/architecture-rules/enforcement/cli/#explain) prints each objective's verdict
+  on one file. Use it while writing a detector, before any `clear`.
+
+## Order phases by what is left to detect
+
+A sector's phase is the first one with residue, so a phase is only ever stood in when there is
+something for it to count.
+
+- A phase recognized by "nothing is left" is empty when the phases before it already deleted
+  everything. `objectives clear` says so: it names a phase a sector entered and left in the same
+  clear. If every sector passes a phase that way, remove it.
+- A presence objective for scaffolding needs an `until`. Without one, deleting the scaffolding
+  later reopens a holdout in a phase the sector left.
+
+## Say where a number is expected to rise
+
+`onTouch: advise` quiets the nudge and nothing else. If a phase makes a number worse before it
+gets better, as a dual-write does, name the number in the phase's
+[`grows`](/goodbones/campaigns/manifest/phases/#a-phase-that-grows). Otherwise every pull request
+in that phase needs a concession, and a ratchet that is conceded on sight corrects nothing.
+
+## Give shared work a place
+
+Some of the most consequential work belongs to no sector: the authenticator every module will
+need, the gateway that routes clients, the proxy and mirroring a strangling shares.
+
+- Name those files as [shared](/goodbones/campaigns/manifest/sectors/#the-shared-files), and
+  widen the `scope` to reach them.
+- Make what must exist first a prerequisite (`over: shared`), named by the phase that needs it.
+- A cutover has a client-side half the sectors cannot see: the web proxy, a server-side fetch on
+  an internal URL, a CLI's default base URL. Put those files in `shared` too, or the phase's
+  `intent` names one client and the campaign misses the others.
+
+## A marker's `owns` is the only tie to a folder
+
+A sector is its marker's `owns` globs and nothing else. A sector named `todo` whose new module
+lives in `modules/todos` works only because `owns` lists that folder.
+
+- A typo there leaves the sector waiting on files it will never see.
+- The nudge names any `owns` glob that no file matches, beside the sector's own holdouts. A glob
+  for a folder not written yet shows the same way, and goes quiet when the folder exists.
+
+## Attest in its own commit
+
+An attestation cites evidence, and it is committed with the ledgers. The evidence has to exist
+first.
+
+1. Commit the work, such as the backfill script.
+2. Run it, or open the pull request, so there is a URL to cite.
+3. `campaigns attest <sector> <phase> --reason "…" --evidence <url>`, then `objectives clear`, in a
+   second commit.
+
+## Clear in every pull request
+
+Run `objectives clear` at the end of each pull request and commit what it writes. The ledger diff
+then reads as the change's effect on the campaign: which holdouts left, which sector moved, what
+was conceded and why. It is also the best place for a fresh session to start from: the ledger
+says which phase each sector is in and what stands between it and the next.

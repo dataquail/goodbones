@@ -55,6 +55,12 @@ export type ObjectiveCard = {
   // `match`, `file`, `declaration`, `sector` — or `measure` for a scalar.
   readonly holdout: string;
   readonly phase: string | null;
+  // Read over the shared files, and ledgered there: a prerequisite, which
+  // the phase naming it holds every sector to.
+  readonly prerequisite: boolean;
+  // For a prerequisite: the sectors standing at the phase that names it,
+  // which it holds there while it has residue.
+  readonly waiting: ReadonlyArray<string>;
   readonly position: AtlasPosition | null;
   readonly count: number;
   readonly initial: number;
@@ -84,6 +90,10 @@ export type PhaseCard = {
   readonly intent: string | null;
   readonly attested: boolean;
   readonly objectives: ReadonlyArray<string>;
+  // The phase's own `onTouch`; `null` when it takes the campaign's.
+  readonly onTouch: "advise" | "ratchet" | "paydown" | null;
+  // The scalars the phase is expected to raise.
+  readonly grows: ReadonlyArray<string>;
   // Sectors derived to stand here.
   readonly sectors: number;
   readonly concessions: number;
@@ -259,12 +269,26 @@ export const campaignViewOf = (input: CampaignViewInput): CampaignView => {
           measure: sector.measure ?? null,
         };
       });
+      const namedAt = rule.phases.findIndex((phase) => phase.objectives.includes(objective.id));
       return {
         id: objective.id,
         message: objective.message,
         intent: objective.intent,
         holdout: objective.measure !== null ? "measure" : (objective.holdout ?? "match"),
         phase: summary?.phase ?? null,
+        prerequisite: objective.overShared,
+        waiting:
+          !objective.overShared || namedAt === -1
+            ? []
+            : [...evaluation.sectors.values()]
+                .filter(
+                  (one) =>
+                    one.phase === namedAt &&
+                    one.name !== LEGACY_SECTOR &&
+                    !isShared(rule, one.name),
+                )
+                .map((one) => one.name)
+                .sort(),
         position: position(["campaigns", rule.id, "objectives", objective.id]),
         count: summary?.count ?? own?.count ?? 0,
         initial: summary?.initial ?? 0,
@@ -297,6 +321,8 @@ export const campaignViewOf = (input: CampaignViewInput): CampaignView => {
       intent: phase.intent ?? null,
       attested: phase.attested,
       objectives: [...phase.objectives],
+      onTouch: phase.onTouch ?? null,
+      grows: [...(phase.grows ?? [])],
       sectors: snapshot.phases[i]?.sectors ?? 0,
       concessions: phase.concessions.length,
       position: position(["campaigns", rule.id, "phases", i]),

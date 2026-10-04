@@ -247,7 +247,7 @@ export const Ladder = ({
               return (
                 <g
                   key={objective.id}
-                  className={`chip-box ${objectiveLit(objective) ? "lit" : ""} ${objective.complete ? "complete" : ""} ${same(selected, objectivePick) ? "selected" : ""} ${objective.ledgered ? "" : "unledgered"}`}
+                  className={`chip-box ${objectiveLit(objective) ? "lit" : ""} ${objective.complete ? "complete" : ""} ${same(selected, objectivePick) ? "selected" : ""} ${objective.ledgered ? "" : "unledgered"} ${objective.prerequisite ? "prerequisite" : ""}`}
                   onMouseEnter={() => {
                     onHover(objectivePick);
                   }}
@@ -263,6 +263,7 @@ export const Ladder = ({
                     {scalarLabel(objective)}
                   </text>
                   <title>
+                    {objective.prerequisite ? "prerequisite, met on the shared files — " : ""}
                     {objective.message}
                     {objective.measure === null
                       ? ` — ${String(objective.count)} holdout(s), ${objective.progress === null ? "no sector has entered its window" : `${String(Math.round(objective.progress * 100))}% cleared`}`

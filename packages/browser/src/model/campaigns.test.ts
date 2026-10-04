@@ -183,6 +183,8 @@ describe("campaignViewOf", () => {
         intent: null,
         attested: false,
         objectives: ["port-it"],
+        onTouch: null,
+        grows: [],
         sectors: 1,
         concessions: 0,
         position: null,
@@ -194,13 +196,55 @@ describe("campaignViewOf", () => {
         intent: "something after",
         attested: false,
         objectives: [],
+        onTouch: null,
+        grows: [],
         sectors: 0,
         concessions: 0,
         position: null,
       },
     ]);
     expect(card?.objectives[0]?.phase).toBe("port");
+    expect(card?.objectives[0]).toMatchObject({ prerequisite: false, waiting: [] });
     expect(card?.sectors[0]).toMatchObject({ phase: 0, phaseId: "port", done: false });
+  });
+
+  it("marks a prerequisite, the sectors it holds, and what a phase grows", () => {
+    // The adapters are the shared files; a rule read over them is named by
+    // the first phase, and the one sector stands there until it is met.
+    const [card] = viewOf({
+      shared: ["svc/adapters/**"],
+      phases: [
+        { id: "ready", objectives: ["port-it", "has-pg"], grows: ["lines"], onTouch: "advise" },
+        { id: "then", intent: "something after" },
+      ],
+      objectives: {
+        "port-it": {
+          holdout: "file",
+          match: { path: { file: "\\.js$" } },
+          probes: { fires: [{ path: STRAGGLER }], ignores: [{ path: "svc/main.go" }] },
+        },
+        "has-pg": {
+          over: "shared",
+          holdout: "sector",
+          sector: { has: { path: { file: "mysql" } } },
+        },
+        lines: { measure: { lines: true }, direction: "down" },
+      },
+    }).campaigns;
+    expect(card?.phases[0]).toMatchObject({ onTouch: "advise", grows: ["lines"] });
+    expect(card?.objectives.find((one) => one.id === "has-pg")).toMatchObject({
+      prerequisite: true,
+      phase: "ready",
+      waiting: ["scope"],
+    });
+    expect(card?.objectives.find((one) => one.id === "port-it")).toMatchObject({
+      prerequisite: false,
+      waiting: [],
+    });
+    const shared = card?.sectors.find((one) => one.name === "shared");
+    expect(shared).toMatchObject({ shared: true, done: false, phaseId: null });
+    expect(shared?.files).toEqual(["svc/adapters/pg.go"]);
+    expect(card?.shared).toEqual({ files: 1, holdouts: 1 });
   });
 
   it("carries the nudge through untouched", () => {

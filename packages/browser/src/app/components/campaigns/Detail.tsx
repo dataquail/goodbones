@@ -304,6 +304,29 @@ const PhaseDetail = ({
           .
         </p>
       ) : null}
+      {phase.onTouch !== null || phase.grows.length > 0 ? (
+        <dl className="facts">
+          {phase.onTouch !== null ? (
+            <>
+              <dt>onTouch</dt>
+              <dd>{phase.onTouch}</dd>
+            </>
+          ) : null}
+          {phase.grows.length > 0 ? (
+            <>
+              <dt>grows</dt>
+              <dd>
+                <span className="mono">{phase.grows.join(", ")}</span>
+                <span className="muted small">
+                  {" "}
+                  — expected to rise here; <code>clear</code> records it, <code>check</code> does
+                  not refuse it
+                </span>
+              </dd>
+            </>
+          ) : null}
+        </dl>
+      ) : null}
       {phase.concessions > 0 ? (
         <p className="muted small">
           {phase.concessions} recorded change{phase.concessions === 1 ? "" : "s"} to this phase.
@@ -328,6 +351,7 @@ const PhaseDetail = ({
                 <span className="muted small">
                   {" "}
                   {objective.count} left · {pct(objective.progress)}
+                  {objective.prerequisite ? " · prerequisite, met on the shared files" : ""}
                 </span>
               )}
             </li>
@@ -377,14 +401,41 @@ const ObjectiveDetail = ({
   const measure = objective.measure;
   return (
     <>
-      <h2 className="mono">{objective.id}</h2>
+      <h2 className="mono">
+        {objective.id}
+        {objective.prerequisite ? <span className="flag">prerequisite</span> : null}
+      </h2>
       <p className="muted small">
         holdout: {objective.holdout}
-        {objective.phase === null ? " · in window everywhere" : ` · phase ${objective.phase}`}
+        {objective.phase === null
+          ? objective.prerequisite
+            ? " · named by no phase: a standing rule of the shared files"
+            : " · in window everywhere"
+          : ` · phase ${objective.phase}`}
         {objective.position === null ? "" : ` · ${at(objective.position)}`}
       </p>
       {objective.intent !== null ? <p className="message">“{objective.intent}”</p> : null}
       <p className={objective.intent === null ? "message" : "muted"}>{objective.message}</p>
+      {objective.prerequisite ? (
+        <p className="muted">
+          Read over the shared files and ledgered there, under{" "}
+          <button
+            type="button"
+            className="link mono"
+            onClick={() => {
+              onPick({ kind: "sector", name: "shared" });
+            }}
+          >
+            shared
+          </button>
+          .
+          {objective.phase === null
+            ? ""
+            : objective.waiting.length === 0
+              ? ` No sector stands at ${objective.phase} waiting on it.`
+              : ` Held at ${objective.phase} until it is met: ${objective.waiting.join(", ")}.`}
+        </p>
+      ) : null}
       {measure === null ? (
         <>
           <div
@@ -586,6 +637,9 @@ const SectorDetail = ({
                   : count === undefined
                     ? "not in window"
                     : `${String(count)} left`}
+                {objective.prerequisite && count !== undefined && !sector.shared
+                  ? " · a prerequisite: the shared files' to meet"
+                  : ""}
               </span>
             </li>
           );
@@ -639,6 +693,53 @@ const SectorDetail = ({
                 </li>
               ) : null}
             </ul>
+          ) : null}
+          {nudge.measures.some((one) => one.before !== one.after || one.back) ? (
+            <ul className="list compact">
+              {nudge.measures
+                .filter((one) => one.before !== one.after || one.back)
+                .map((one) => (
+                  <li key={one.objective} className="small">
+                    <span className="mono">{one.objective}</span>{" "}
+                    {one.before === null ? "unrecorded" : String(one.before)} →{" "}
+                    {one.after === null ? "no number" : String(one.after)}
+                    {one.tolerance === 0 ? "" : ` (tolerance ${String(one.tolerance)})`}
+                    {one.back ? (
+                      <span className="flag bad">back</span>
+                    ) : one.conceded ? (
+                      <span className="flag warn">conceded</span>
+                    ) : one.grows ? (
+                      <span className="flag">
+                        {nudge.shared
+                          ? "measured, not held"
+                          : `grows in ${nudge.judged.id ?? "this phase"}`}
+                      </span>
+                    ) : null}
+                  </li>
+                ))}
+            </ul>
+          ) : null}
+          {nudge.conceded.length > 0 ? (
+            <p className="muted small">Conceded on this branch: {nudge.conceded.join(" · ")}</p>
+          ) : null}
+          {nudge.prerequisites.some((one) => one.count > 0) ? (
+            <>
+              <p className="muted small">
+                Prerequisites, which hold every sector at the phase that names them:
+              </p>
+              <ul className="list compact">
+                {nudge.prerequisites
+                  .filter((one) => one.count > 0)
+                  .map((one) => (
+                    <li key={one.objective} className="small">
+                      <span className="mono">{one.objective}</span> {one.count}
+                      {one.phase === null
+                        ? " — named by no phase"
+                        : ` — ${one.phase}: ${one.waiting.length === 0 ? "no sector stands there yet" : one.waiting.join(", ")}`}
+                    </li>
+                  ))}
+              </ul>
+            </>
           ) : null}
           {nudge.belongsInSector.length > 0 ? (
             <p className="bad small">

@@ -662,10 +662,21 @@ export const renderNudge = (nudge: Nudge, now: number): ReadonlyArray<string> =>
         " · ",
       );
       say(`    this diff: ${delta}  ${one.direction}`);
-    } else if (one.direction !== "neutral") {
-      say(
-        `    this diff: ${residueOf(one.residue.before)} → ${residueOf(one.residue.after)}  ${one.direction}`,
+    } else {
+      // No entry to name, but a count that moved — a holdout outside the
+      // files touched, say. Only the dimensions that moved, and only the
+      // holdouts: a scalar has its own line below.
+      const scalar = new Set(one.measures.map((measure) => measure.objective));
+      const moved = Object.keys(one.residue.after).filter(
+        (id) => !scalar.has(id) && (one.residue.before[id] ?? 0) !== (one.residue.after[id] ?? 0),
       );
+      if (moved.length > 0) {
+        const pick = (vector: ResidueVector): ResidueVector =>
+          Object.fromEntries(moved.map((id) => [id, vector[id] ?? 0]));
+        say(
+          `    this diff: ${residueOf(pick(one.residue.before))} → ${residueOf(pick(one.residue.after))}  ${one.direction}`,
+        );
+      }
     }
     if (one.conceded.length > 0) {
       say(`    conceded on this branch, in the ledger: ${one.conceded.join(" · ")}`);

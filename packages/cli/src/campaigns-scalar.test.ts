@@ -280,6 +280,8 @@ describe.sequential("a scalar objective", () => {
     const text = await capture(campaigns(await policyAt(), ["src"], ["status", "--changed"]));
     // The ledger mode reads its "before" off the record, and says so.
     expect(text.output).toContain("lines: recorded 7 → now 9 (target 4)  back");
+    // The number has its own line; no holdout moved, so no residue line.
+    expect(text.output).not.toContain("this diff:");
 
     const { exit, report } = await check();
     expect(Exit.isFailure(exit)).toBe(true);

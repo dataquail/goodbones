@@ -110,7 +110,8 @@ Adding its first objective later is free (**plan refined** in the conformance re
 ## Changing a defined phase
 
 Changing what a defined phase asks fails `check` until the phase carries a new `concessions`
-entry. That is its objectives, an objective's detector, `attested`, `grows` or its `endState`.
+entry. That is its objectives, an objective's detector or its own `onAhead`, `attested`, `grows` or
+its `endState`.
 Moving a phase past another one is a change to the phase that moved, because the order is what
 a sector is asked first.
 

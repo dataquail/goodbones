@@ -256,6 +256,12 @@ describe("behind a window, and ahead of the plan", () => {
     };
     expect(onAheadOf(relaxed, 3)).toBe("advise");
     expect(onAheadOf(relaxed, 2)).toBe("ratchet");
+    // The paid objective's own word beats the phase's and the campaign's;
+    // with none, it defers to them.
+    expect(onAheadOf(relaxed, 3, { onAhead: "ignore" })).toBe("ignore");
+    expect(onAheadOf(relaxed, 2, { onAhead: "advise" })).toBe("advise");
+    expect(onAheadOf(rule, 0, { onAhead: "ratchet" })).toBe("ratchet");
+    expect(onAheadOf(relaxed, 2, { onAhead: null })).toBe("ratchet");
   });
 });
 

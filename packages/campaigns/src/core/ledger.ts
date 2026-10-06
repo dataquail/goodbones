@@ -865,22 +865,32 @@ export const attestedRecord = (
   attested: [...record.attested, { ...entry, at: new Date(entry.at).toISOString() }],
 });
 
-// Notes are capped — the last `NOTE_CAP`, each at most `NOTE_LENGTH`
+// Notes are capped — `NOTE_CAP` of them, each at most `NOTE_LENGTH`
 // characters — since the file is reviewed like any other and the nudge
-// hands them to an agent.
+// hands them to an agent. Past either, the note is refused, never cut or
+// made room for: the one who wrote it splits or prunes on purpose.
 export const NOTE_CAP = 20;
 export const NOTE_LENGTH = 500;
 
 export const notedRecord = (
   record: SectorRecord,
   note: Omit<Note, "at"> & { readonly at: number },
-): SectorRecord => ({
-  ...record,
-  notes: [
-    ...record.notes,
-    { ...note, text: note.text.slice(0, NOTE_LENGTH), at: new Date(note.at).toISOString() },
-  ].slice(-NOTE_CAP),
-});
+): Result.Result<SectorRecord, string> => {
+  if (note.text.length > NOTE_LENGTH) {
+    return Result.fail(
+      `a note is at most ${String(NOTE_LENGTH)} characters, and this one is ${String(note.text.length)}: split it, or say less. Nothing was recorded.`,
+    );
+  }
+  if (record.notes.length >= NOTE_CAP) {
+    return Result.fail(
+      `${record.sector} already holds ${String(NOTE_CAP)} notes, the most a sector keeps: remove one from its record in its own commit, then leave this one. Nothing was recorded.`,
+    );
+  }
+  return Result.succeed({
+    ...record,
+    notes: [...record.notes, { ...note, at: new Date(note.at).toISOString() }],
+  });
+};
 
 // The sector's own clock: when it last advanced, or was attested or noted.
 export const sectorClockOf = (record: SectorRecord): string =>

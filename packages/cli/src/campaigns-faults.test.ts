@@ -238,6 +238,17 @@ describe.sequential("the faults a strangling plants", () => {
     commit("attested");
   });
 
+  it("refuses a note it would have to cut, and stores nothing (C3)", async () => {
+    const recordAt = path.join(ledgerDir, "sectors", "billing.json");
+    const before = readFileSync(recordAt, "utf8");
+    const long = await capture(
+      campaigns(await policyAt(), ["src"], ["note", "billing", "x".repeat(600), "--by", "me"]),
+    );
+    expect(Exit.isFailure(long.exit)).toBe(true);
+    expect(long.failure).toContain("at most 500 characters, and this one is 600");
+    expect(readFileSync(recordAt, "utf8")).toBe(before);
+  });
+
   it("holds the entries a regression put behind their window, rather than calling them stale (R3)", async () => {
     // One import of a peer: billing falls from served to fenced.
     write(

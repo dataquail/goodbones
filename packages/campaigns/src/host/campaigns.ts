@@ -482,12 +482,10 @@ export const note = (
     by,
     at: policy.now,
   });
-  writeJson(
-    policy.repoRoot,
-    sectorRecordPathOf(campaignsOf(policy).ledgerDir, rule.id, sector),
-    serializeSectorRecord(after),
-  );
-  return Result.succeed(sectorRecordPathOf(campaignsOf(policy).ledgerDir, rule.id, sector));
+  if (Result.isFailure(after)) return Result.fail(after.failure);
+  const at = sectorRecordPathOf(campaignsOf(policy).ledgerDir, rule.id, sector);
+  writeJson(policy.repoRoot, at, serializeSectorRecord(after.success));
+  return Result.succeed(at);
 };
 
 // ---------------------------------------------------------------------------

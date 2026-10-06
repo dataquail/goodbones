@@ -91,6 +91,10 @@ afterwards to move the sector on. See
 architecture campaigns note <sector> "<text>" [--by <email>] [--campaign <id>]
 ```
 
+A note is at most 500 characters, and a sector holds at most 20. Past either, `note` refuses and
+records nothing: it never cuts a note or drops an old one to make room. Split a long note, or prune
+the sector's record in its own commit.
+
 `attest` and `note` need `--campaign <id>` when the policy declares more than one campaign.
 
 ## `campaigns history`

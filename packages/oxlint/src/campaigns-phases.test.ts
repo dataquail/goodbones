@@ -14,6 +14,7 @@ import {
   EMPTY_SECTOR_RECORD,
   type Ledger,
   ledgerKeyOf,
+  matchKeyOf,
   type MeasureLedger,
   NO_REPORTS,
   reachedRecord,
@@ -254,6 +255,32 @@ new RuleTester({ cwd: repoRoot }).run(
   {
     valid: [{ code: CODE, filename }],
     invalid: [],
+  },
+);
+
+// A rename of the declaration around a match moves its anchor and keeps its
+// text: the plugin pairs it by file and hash, as `check` does, so a holdout
+// the ledger carries under the old name is still silent. Other text under
+// the new name is a new hit.
+new RuleTester({ cwd: repoRoot }).run(
+  "phases: a holdout whose declaration was renamed is still the ledger's",
+  makeCampaignsRule(
+    policyWith(
+      new Map([
+        ledger("no-io", "phased/billing", [`service.ts#${matchKeyOf("g", "readFileSync('x')")}`]),
+      ]),
+      placed(0),
+    ),
+  ),
+  {
+    valid: [{ code: CODE, filename }],
+    invalid: [
+      {
+        code: "export function f() { readFileSync('z'); }\n",
+        filename,
+        errors: [{ message: "[campaign/ladder/no-io] No I/O." }],
+      },
+    ],
   },
 );
 

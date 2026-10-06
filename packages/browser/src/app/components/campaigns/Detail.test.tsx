@@ -131,7 +131,28 @@ const campaign: CampaignCard = {
     }),
   ],
   sectors: [
-    sector("scope", 0, { "port-it": 1, "has-pg": 1, lines: 0 }, { phaseId: "ready" }),
+    sector(
+      "scope",
+      0,
+      { "port-it": 1, "has-pg": 1, lines: 0 },
+      {
+        phaseId: "ready",
+        attested: [
+          { phase: "ready", reason: "pg reviewed", at: "2026-09-28T00:00:00.000Z", by: "me" },
+          {
+            phase: "backfilled",
+            reason: "backfill ran",
+            at: "2026-09-29T00:00:00.000Z",
+            by: "me",
+            revoked: {
+              at: "2026-09-30T00:00:00.000Z",
+              by: "you",
+              reason: "conceded writes: temporary",
+            },
+          },
+        ],
+      },
+    ),
     sector("shared", 2, { "has-pg": 1, lines: 0 }, { shared: true, files: ["svc/adapters/pg.go"] }),
   ],
   legacy: { files: 0, holdouts: 0 },
@@ -233,6 +254,14 @@ describe("Detail", () => {
   it("marks the prerequisite in a waiting sector's residue", () => {
     const text = show(null, { kind: "sector", name: "scope" });
     expect(text).toContain("has-pg 1 left · a prerequisite: the shared files' to meet");
+  });
+
+  it("marks an attestation a concession revoked, and leaves a live one as it was", () => {
+    const text = show(null, { kind: "sector", name: "scope" });
+    expect(text).toContain("ready — pg reviewed");
+    expect(text).toContain("backfilled — backfill ran");
+    expect(text).toMatch(/Revoked .* by you: conceded writes: temporary/);
+    expect(text.match(/Revoked/g)).toHaveLength(1);
   });
 
   it("lists the shared files' number and prerequisites in the working-tree block", () => {

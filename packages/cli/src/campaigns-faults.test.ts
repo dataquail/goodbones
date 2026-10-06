@@ -335,6 +335,15 @@ describe.sequential("the faults a strangling plants", () => {
         campaigns: [{ id: "strangle", sectors: [{ name: "billing", phase: "served" }] }],
       });
     }
+    // `status` in text without `--changed` is the overview, not a refusal,
+    // and points at the per-sector view.
+    const table = await capture(campaigns(await policyAt(), ["src"], ["status"]));
+    expect(Exit.isSuccess(table.exit), table.failure).toBe(true);
+    expect(table.output).toContain("1 campaign under src");
+    expect(table.output).toContain(
+      "phases: fenced 0 → mirrored 0 → backfilled (attested) 0 → served 1",
+    );
+    expect(table.output).toContain("architecture campaigns status --sector <sector> [--json]");
     // A sector's name where a path belongs is refused, naming `--sector`.
     const named = await capture(campaigns(await policyAt(), ["src"], ["billing"]));
     expect(Exit.isFailure(named.exit)).toBe(true);

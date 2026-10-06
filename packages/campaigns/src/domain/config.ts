@@ -221,6 +221,14 @@ export type Measure = (typeof Measure)["Type"];
 export const MeasureDirection = Schema.Literals(["down", "up"]);
 export type MeasureDirection = (typeof MeasureDirection)["Type"];
 
+// What a diff owes when it pays down a later phase's holdouts in a sector
+// that has not reached that phase: `advise` says so; `ratchet` refuses it,
+// for a ladder whose order is the point — a read served before the
+// backfill it needs has been attested; `ignore` leaves it unsaid, for an
+// objective every phase pays down — one that counts what is left of a sector.
+export const OnAhead = Schema.Literals(["advise", "ratchet", "ignore"]);
+export type OnAhead = (typeof OnAhead)["Type"];
+
 // An objective: a detector, a granularity, probes, and a ledger that only
 // shrinks on its own. Owned by one campaign; named by at most one phase (an
 // objective no phase names is in window in every phase). Exactly one of
@@ -261,6 +269,9 @@ export const ObjectiveRule = Schema.Struct({
   until: Schema.optionalKey(Schema.String),
   // Read off the campaign's shared files in place of each sector's own files.
   over: Schema.optionalKey(Schema.Literal("shared")),
+  // What a diff owes that pays this objective down ahead of the sector's
+  // phase. Overrides the judged phase's and the campaign's.
+  onAhead: Schema.optionalKey(OnAhead),
   probes: CampaignProbes,
 });
 
@@ -294,13 +305,6 @@ export type PerimeterRule = (typeof PerimeterRule)["Type"];
 // declaration must leave the sector with fewer holdouts.
 export const OnTouch = Schema.Literals(["advise", "ratchet", "paydown"]);
 export type OnTouch = (typeof OnTouch)["Type"];
-
-// What a diff owes when it pays down a later phase's holdouts in a sector
-// that has not reached that phase: `advise` says so; `ratchet` refuses it,
-// for a ladder whose order is the point — a read served before the
-// backfill it needs has been attested.
-export const OnAhead = Schema.Literals(["advise", "ratchet"]);
-export type OnAhead = (typeof OnAhead)["Type"];
 
 // A dated receipt for a change to a defined phase, which authorizes the next
 // `clear` to re-baseline the sectors in that phase's window.

@@ -171,9 +171,13 @@ export const onTouchOf = (rule: CompiledCampaign, phase: number): OnTouch => {
 };
 
 // What a diff owes that pays down a later phase's holdouts in a sector
-// standing at `phase`: the phase's word, else the campaign's, else `advise`.
-export const onAheadOf = (rule: CompiledCampaign, phase: number): OnAhead =>
-  rule.phases[phase]?.onAhead ?? rule.onAhead ?? "advise";
+// standing at `phase`: the paid objective's own word, else the phase's,
+// else the campaign's, else `advise`.
+export const onAheadOf = (
+  rule: CompiledCampaign,
+  phase: number,
+  objective?: { readonly onAhead: OnAhead | null },
+): OnAhead => objective?.onAhead ?? rule.phases[phase]?.onAhead ?? rule.onAhead ?? "advise";
 
 // Whether a phase expects a scalar objective to rise: `grows` on the phase.
 // For a sector standing there a rise is recorded, not refused.

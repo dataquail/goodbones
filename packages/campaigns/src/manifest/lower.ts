@@ -359,6 +359,7 @@ const lowerCampaign = (
         ...(spec.holdout === undefined ? {} : { holdout: spec.holdout }),
         ...(spec.until === undefined ? {} : { until: spec.until }),
         ...(spec.over === undefined ? {} : { over: spec.over }),
+        ...(spec.onAhead === undefined ? {} : { onAhead: spec.onAhead }),
       };
       if (spec.over !== undefined && campaign.shared === undefined) {
         refuse(
@@ -610,6 +611,33 @@ const lowerCampaign = (
       );
     }
   }
+  // An objective's `onAhead` is held to what it can mean: a holdout a
+  // sector can pay down before it stands at the phase that names it. A
+  // scalar and the shared files have no such holdout, and an objective no
+  // phase names, or the first names, is never ahead of any sector.
+  for (const objective of objectives) {
+    if (objective.onAhead === undefined) continue;
+    const what = `objective "${objective.id}" sets \`onAhead\``;
+    if (objective.measure !== undefined) {
+      refuse(`${what} and is a scalar objective, which holds nothing out to be paid ahead.`);
+    }
+    if (objective.over !== undefined) {
+      refuse(`${what} and is \`over: shared\`; the shared files stand on no phase to be ahead of.`);
+    }
+    const from = phases.findIndex((one) => one.id === namedBy.get(objective.id));
+    if (from === -1) {
+      refuse(
+        `${what} and no phase names it, so it is in window everywhere and never ahead; the ` +
+          `setting would never apply.`,
+      );
+    }
+    if (from === 0) {
+      refuse(
+        `${what} and is named by the first phase, which every sector has reached; the ` +
+          `setting would never apply.`,
+      );
+    }
+  }
   // `grows` loosens a ratchet, so it is held to what it can mean: a scalar
   // the campaign declares, in window at the phase, and a phase with an end —
   // an open phase has nothing a rise is on the way to.
@@ -668,6 +696,9 @@ const lowerCampaign = (
           // Only when present, as `grows` is: what an objective is read
           // over is part of what the phase asks.
           ...(objective?.over === undefined ? {} : { over: objective.over }),
+          // Only when present: it changes what the nudge refuses, and a
+          // phase whose objectives set none hashes as it did before the key.
+          ...(objective?.onAhead === undefined ? {} : { onAhead: objective.onAhead }),
           // Only when present, so a phase with no scalar hashes as it did
           // before scalars existed and no committed plan reads as changed.
           ...(objective?.measure === undefined

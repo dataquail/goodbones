@@ -191,6 +191,9 @@ export type CompiledObjective = {
   readonly until: string | null;
   // Read off the shared files, and ledgered under it alone.
   readonly overShared: boolean;
+  // Its own word on being paid down ahead of the plan; `null` defers to the
+  // judged phase's and the campaign's.
+  readonly onAhead: OnAhead | null;
   readonly probes: {
     readonly fires: ReadonlyArray<CampaignProbe>;
     readonly ignores: ReadonlyArray<CampaignProbe>;
@@ -509,6 +512,7 @@ export const compileObjective = (
     target: rule.target ?? null,
     until: rule.until ?? null,
     overShared: rule.over === "shared",
+    onAhead: rule.onAhead ?? null,
     probes: rule.probes,
   });
 };

@@ -163,15 +163,19 @@ export type SectorNudge = {
   } | null;
   // Holdouts this diff paid down of objectives whose phase lies past the one
   // the sector stands at after it — work done ahead of the plan — each with
-  // that phase and its count before and after; and what the judged phase
-  // owes for it. Read against the base tree, or HEAD's in the ledger mode;
-  // empty when there is neither.
+  // that phase, its count before and after, and what it owes: the
+  // objective's own `onAhead`, else `onAhead` below. An objective that
+  // resolves to `ignore` is left out. Read against the base tree, or HEAD's
+  // in the ledger mode; empty when there is neither.
   readonly ahead: ReadonlyArray<{
     readonly objective: string;
     readonly phase: string | null;
     readonly before: number;
     readonly after: number;
+    readonly onAhead: Exclude<OnAhead, "ignore">;
   }>;
+  // What the judged phase owes for work done ahead: its word, else the
+  // campaign's — what an objective with no word of its own takes.
   readonly onAhead: OnAhead;
   // Objectives that came into window because this diff moved the sector on,
   // with what each counts there. Now counted, not grown: they are in no
@@ -771,18 +775,20 @@ export const nudgeOf = (
           if (from === -1 || from <= state.phase) continue;
           const was = before_.sectors[name]?.[objective.id];
           const now = state.counts[objective.id] ?? 0;
-          if (was !== undefined && now < was) {
+          const owes = onAheadOf(rule, judgedAt, objective);
+          if (was !== undefined && now < was && owes !== "ignore") {
             ahead.push({
               objective: objective.id,
               phase: rule.phases[from]?.id ?? null,
               before: was,
               after: now,
+              onAhead: owes,
             });
           }
         }
       }
       const onAhead = onAheadOf(rule, judgedAt);
-      if (ahead.length > 0 && onAhead === "ratchet" && verdict === "ok") verdict = "ahead";
+      if (ahead.some((one) => one.onAhead === "ratchet") && verdict === "ok") verdict = "ahead";
       if (verdict !== "ok" && verdict !== "hotfix") ok = false;
       sectors.push({
         campaign: rule.id,
@@ -1065,9 +1071,14 @@ export const renderNudge = (nudge: Nudge, now: number): ReadonlyArray<string> =>
       );
     }
     if (one.ahead.length > 0) {
+      // One weight for the line when every entry owes the same; each its own
+      // when they differ.
+      const weights = new Set(one.ahead.map((a) => a.onAhead));
+      const shared = weights.size === 1 ? [...weights][0] : undefined;
       say(
-        `    ahead of plan: ${one.ahead.map((a) => `${a.objective} −${String(a.before - a.after)} belongs to ${a.phase ?? "no phase"}`).join(" · ")}; ` +
-          `${one.sector} is at ${one.phase.id ?? "done"}${one.phase.attested ? " (not yet attested)" : ""} — onAhead: ${one.onAhead}`,
+        `    ahead of plan: ${one.ahead.map((a) => `${a.objective} −${String(a.before - a.after)} belongs to ${a.phase ?? "no phase"}${shared === undefined ? ` (${a.onAhead})` : ""}`).join(" · ")}; ` +
+          `${one.sector} is at ${one.phase.id ?? "done"}${one.phase.attested ? " (not yet attested)" : ""}` +
+          (shared === undefined ? "" : ` — onAhead: ${shared}`),
       );
     }
     for (const file of one.belongsInSector)

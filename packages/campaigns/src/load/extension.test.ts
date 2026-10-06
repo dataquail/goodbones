@@ -456,6 +456,88 @@ describe("loadPolicy with campaigns", () => {
     expect(phasesOf(["lines"])?.[0]?.hash).not.toBe(phasesOf()?.[0]?.hash);
   });
 
+  // An objective's `onAhead` is held to what it can mean: a holdout a sector
+  // can pay down before it reaches the phase that names it.
+  it("holds an objective's `onAhead` to one a sector can pay ahead, and digests it into its phase", () => {
+    const ladder = (
+      phases: ReadonlyArray<unknown>,
+      settings: Record<string, Record<string, unknown>> = {},
+      extra: Record<string, unknown> = {},
+    ) =>
+      withCampaigns({
+        "js-to-go": {
+          scope: ["svc/**"],
+          ...extra,
+          phases,
+          objectives: {
+            "port-it": objective(settings["port-it"]),
+            "no-shim": objective({
+              match: { path: { file: "shim" } },
+              probes: { fires: [{ path: "svc/shim.go" }] },
+              ...settings["no-shim"],
+            }),
+            lines: { measure: { lines: true }, direction: "down", ...settings.lines },
+          },
+        },
+      });
+    const detailOf = (manifest: unknown): string => {
+      try {
+        const loaded = load(manifest, [go()]);
+        if (!Result.isFailure(loaded)) throw new Error("expected the manifest to be refused");
+        return loaded.failure.detail;
+      } catch (cause) {
+        return String(cause);
+      }
+    };
+    const LADDER = [
+      { id: "a", objectives: ["port-it"] },
+      { id: "b", objectives: ["no-shim"] },
+    ];
+    expect(detailOf(ladder(LADDER, { lines: { onAhead: "ignore" } }))).toMatch(
+      /objective "lines" sets `onAhead` and is a scalar objective/,
+    );
+    expect(
+      detailOf(
+        ladder(
+          LADDER,
+          { "no-shim": { over: "shared", onAhead: "ignore" } },
+          { shared: ["svc/shared/**"] },
+        ),
+      ),
+    ).toMatch(/objective "no-shim" sets `onAhead` and is `over: shared`/);
+    expect(
+      detailOf(
+        ladder([{ id: "a", objectives: ["port-it"] }], { "no-shim": { onAhead: "ignore" } }),
+      ),
+    ).toMatch(/objective "no-shim" sets `onAhead` and no phase names it/);
+    expect(detailOf(ladder(LADDER, { "port-it": { onAhead: "ratchet" } }))).toMatch(
+      /objective "port-it" sets `onAhead` and is named by the first phase/,
+    );
+    expect(detailOf(ladder(LADDER, { "no-shim": { onAhead: "sometimes" } }))).toMatch(/onAhead/);
+
+    const policyOf = (
+      settings: Record<string, Record<string, unknown>> = {},
+      extra: Record<string, unknown> = {},
+    ) => stateOf(unwrap(load(ladder(LADDER, settings, extra), [go()]))).campaignRules[0];
+    const hashesOf = (...args: Parameters<typeof policyOf>) =>
+      policyOf(...args)?.phases.map((phase) => phase.hash);
+    expect(policyOf({ "no-shim": { onAhead: "ignore" } })?.objectives[1]).toMatchObject({
+      id: "no-shim",
+      onAhead: "ignore",
+    });
+    // With no objective `onAhead`, a phase hashes as it did before the key
+    // existed, so no committed plan reads as changed.
+    expect(hashesOf()).toEqual(["e2f5a927", "51a7c8b2"]);
+    // Adding one is a change to the phase that names the objective, and to
+    // no other.
+    const ignored = hashesOf({ "no-shim": { onAhead: "ignore" } });
+    expect(ignored?.[0]).toBe(hashesOf()?.[0]);
+    expect(ignored?.[1]).not.toBe(hashesOf()?.[1]);
+    expect(hashesOf({ "no-shim": { onAhead: "advise" } })?.[1]).not.toBe(ignored?.[1]);
+    // The campaign's and a phase's `onAhead` are, as before, no part of it.
+    expect(hashesOf({}, { onAhead: "ignore" })).toEqual(hashesOf());
+  });
+
   // The shapes the design refuses at load: an open phase that is not last,
   // an objective named twice, an `until` with no phase or an empty window.
   it("refuses a ladder the design does not admit, naming the phase", () => {

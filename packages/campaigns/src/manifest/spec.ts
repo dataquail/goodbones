@@ -245,6 +245,8 @@ const measureNeedsProbe = (measure: MeasureSpec): boolean => {
   return sources.some((one) => "report" in one || "fn" in one);
 };
 
+const OnAheadSpec = Schema.Literals(["advise", "ratchet", "ignore"]);
+
 // An objective: a detector with a ledger that only shrinks on its own. The
 // `holdout` says what one ledger entry is; `match` is a per-file detector
 // and `sector` a term over the sector's files, exactly one of them.
@@ -272,6 +274,11 @@ const Objective = Schema.Struct({
   target: Schema.optionalKey(Schema.Finite),
   until: Schema.optionalKey(KebabId),
   over: Schema.optionalKey(Schema.Literal("shared")),
+  // What a diff owes that pays this objective down in a sector that has not
+  // reached the phase naming it. Overrides the phase's and the campaign's:
+  // `ignore` for an objective that counts what is left of a sector, which
+  // every phase's work pays down.
+  onAhead: Schema.optionalKey(OnAheadSpec),
   probes: Schema.optionalKey(CampaignProbes),
 }).check(
   Schema.makeFilter((objective) => {
@@ -378,7 +385,6 @@ const PerimeterSpec = Schema.Union([
 ]);
 
 const OnTouchSpec = Schema.Literals(["advise", "ratchet", "paydown"]);
-const OnAheadSpec = Schema.Literals(["advise", "ratchet"]);
 
 // A receipt for a change to a defined phase: a reason, dated.
 const PhaseConcessionSpec = Schema.Struct({
@@ -445,7 +451,7 @@ const Campaign = Schema.Struct({
   perimeter: Schema.optionalKey(PerimeterSpec),
   onTouch: Schema.optionalKey(OnTouchSpec),
   // What a diff owes when it pays down holdouts of a phase the sector has
-  // not reached: `advise` (the default) or `ratchet`.
+  // not reached: `advise` (the default), `ratchet`, or `ignore`.
   onAhead: Schema.optionalKey(OnAheadSpec),
   phases: Schema.optionalKey(Schema.Array(Phase)),
   // Sugar for the last phase's end state.

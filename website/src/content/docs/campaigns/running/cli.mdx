@@ -161,3 +161,8 @@ architecture objectives concede <campaign>[/<objective>] --reason "<why>" [--sec
 
 Name the objective when the campaign has more than one. For a scalar objective, `concede` records
 the rise as `{ from, to }`.
+
+A concession counts the holdouts where they belong, so it can send a sector back a phase.
+`concede` says so (`this concession moves billing back served → mirrored.`), and when the move
+crosses an attested phase the sector had passed, it revokes that attestation and prints the
+`attest` command to record it again once it holds.

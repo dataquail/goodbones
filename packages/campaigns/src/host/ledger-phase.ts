@@ -1,7 +1,7 @@
 import type { LoadedPolicy } from "@goodbones/core";
 
 import { type CompiledCampaign, distanceToTarget } from "../core/campaigns.js";
-import { positionOf } from "../core/ledger.js";
+import { type Ledger, type MeasureLedger, positionOf, type SectorRecord } from "../core/ledger.js";
 import { derivePhase, donePhaseOf, growsAt, LEGACY_PHASE, windowOf } from "../core/phases.js";
 import { isShared, LEGACY_SECTOR, SHARED_SECTOR } from "../core/sectors.js";
 import { campaignsOf, ledgerKeyOf } from "../load/extension.js";
@@ -12,15 +12,30 @@ import { campaignsOf, ledgerKeyOf } from "../load/extension.js";
 // sector stood before whatever the working tree has done since, which is
 // what a diff is judged by. A sector no `clear` has placed stands at the
 // first phase, as the legacy does.
+// Ledgers to read in place of the loaded ones, by objective id — those a
+// verb is about to write, or HEAD's — where the question is where they would
+// place the sector. An objective mapped to `undefined` has no ledger there.
+export type LedgerOverrides = {
+  readonly ledgers?: ReadonlyMap<string, Ledger | undefined>;
+  readonly measures?: ReadonlyMap<string, MeasureLedger | undefined>;
+  // The sector's record in place of the loaded one: what it reached, and
+  // which attestations were live.
+  readonly record?: { readonly at: SectorRecord | undefined };
+};
+
 export const ledgerPhaseOf = (
   policy: LoadedPolicy,
   rule: CompiledCampaign,
   sector: string,
+  overrides: LedgerOverrides = {},
 ): number => {
   // The shared files stand on no phase, before a change or after it.
   if (isShared(rule, sector)) return donePhaseOf(rule);
   const state = campaignsOf(policy);
-  const record = state.sectorRecords.get(ledgerKeyOf(rule.id, sector));
+  const record =
+    overrides.record === undefined
+      ? state.sectorRecords.get(ledgerKeyOf(rule.id, sector))
+      : overrides.record.at;
   if (sector === LEGACY_SECTOR || record === undefined) {
     return Math.min(LEGACY_PHASE, rule.phases.length);
   }
@@ -39,11 +54,19 @@ export const ledgerPhaseOf = (
     // never stood at.
     const unentered = (): number => (windowOf(rule, objective).from > position.reached ? 1 : 0);
     if (objective.measure !== null) {
-      const own = state.measureLedgers.get(key)?.sectors[at];
+      const own = (
+        overrides.measures?.has(objectiveId) === true
+          ? overrides.measures.get(objectiveId)
+          : state.measureLedgers.get(key)
+      )?.sectors[at];
       if (own === undefined) return unentered();
       return own.closed !== null ? 0 : distanceToTarget(objective, own.recorded);
     }
-    const own = state.ledgers.get(key)?.sectors[at];
+    const own = (
+      overrides.ledgers?.has(objectiveId) === true
+        ? overrides.ledgers.get(objectiveId)
+        : state.ledgers.get(key)
+    )?.sectors[at];
     return own === undefined ? unentered() : own.holdouts.length;
   };
   return derivePhase(rule, counts, position);

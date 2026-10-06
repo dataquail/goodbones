@@ -180,6 +180,8 @@ type Sector = {
   direction: string;
   added: Array<string>;
   removed: Array<string>;
+  conceded: Array<string>;
+  sentBack: { from: string | null; to: string | null; revoked: Array<string> } | null;
   held: Array<{ objective: string; phase: string | null; onTouch: string }>;
 };
 
@@ -326,6 +328,76 @@ describe.sequential("the faults a strangling plants", () => {
     const before = sectorsOf("routes-local").billing;
     await clear("2026-10-03T00:00:00Z");
     expect(sectorsOf("routes-local").billing).toEqual(before);
+    reset();
+  });
+
+  it("says when a concession sends a sector back, and revokes the attestation it crosses (R2)", async () => {
+    // An unmirrored write at served, cleared, then conceded rather than fixed.
+    const withWrite = SERVICE([
+      '  rawWrite("subscriptions");',
+      '  localRoute("a");',
+      '  return localRoute("b");',
+    ]);
+    write("src/billing/service.ts", withWrite);
+    await clear("2026-10-03T00:00:00Z");
+    const conceded = await capture(
+      objectives(
+        await policyAt("2026-10-03T00:00:00Z"),
+        ["src"],
+        ["concede", "strangle/writes-not-mirrored", "--reason", "temporary", "--by", "me"],
+      ),
+    );
+    expect(Exit.isSuccess(conceded.exit), conceded.failure).toBe(true);
+    expect(conceded.output).toContain("this concession moves billing back served → mirrored.");
+    expect(conceded.output).toContain(
+      "It revokes billing's attestation of backfilled: what was attested no longer holds.",
+    );
+    const record = JSON.parse(
+      readFileSync(path.join(ledgerDir, "sectors", "billing.json"), "utf8"),
+    ) as { attested: Array<{ phase: string; revoked?: { by: string; reason: string } }> };
+    expect(record.attested).toHaveLength(1);
+    expect(record.attested[0]).toMatchObject({
+      phase: "backfilled",
+      revoked: { by: "me", reason: "conceded writes-not-mirrored: temporary" },
+    });
+
+    // The local nudge names the concession and the move, judged where HEAD's
+    // ledgers placed billing.
+    const { billing, ok, text } = await nudge();
+    expect(ok, text).toBe(true);
+    expect(billing).toMatchObject({
+      phase: { id: "mirrored" },
+      judged: { id: "served" },
+      conceded: [expect.stringMatching(/^writes-not-mirrored: service\.ts#create#[0-9a-f]{8}$/)],
+      sentBack: { from: "served", to: "mirrored", revoked: ["backfilled"] },
+    });
+    expect(text).toContain("conceded in the working tree, in the ledger: writes-not-mirrored:");
+    expect(text).toContain(
+      "the concession sends billing back served → mirrored, and revokes the attestation of backfilled",
+    );
+
+    // Paid down, billing stops at backfilled again: the backfill must be
+    // attested anew before served counts.
+    write("src/billing/service.ts", SERVICE(['  localRoute("a");', '  return localRoute("b");']));
+    const view = await capture(
+      campaigns(await policyAt(), ["src"], ["status", "--sector", "billing"]),
+    );
+    expect(view.output).toContain("strangle · billing — phase backfilled (3 of 6, attested)");
+    expect(view.output).toContain(
+      "(revoked 2026-10-03 by me: conceded writes-not-mirrored: temporary)",
+    );
+    const again = await capture(
+      campaigns(
+        await policyAt("2026-10-04T00:00:00Z"),
+        ["src"],
+        ["attest", "billing", "backfilled", "--reason", "backfill rerun", "--by", "me"],
+      ),
+    );
+    expect(Exit.isSuccess(again.exit), again.failure).toBe(true);
+    const after = await capture(
+      campaigns(await policyAt(), ["src"], ["status", "--sector", "billing"]),
+    );
+    expect(after.output).toContain("strangle · billing — phase served (4 of 6)");
     reset();
   });
 

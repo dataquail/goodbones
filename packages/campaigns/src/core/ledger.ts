@@ -774,6 +774,12 @@ const Attestation = Schema.Struct({
   evidence: Schema.optionalKey(Schema.String),
   at: Schema.String,
   by: Schema.String,
+  // Set when a concession sent the sector back below the phase: what was
+  // attested no longer holds, and the sector stops there again until it is
+  // attested anew. Kept, not deleted, so the record says what happened.
+  revoked: Schema.optionalKey(
+    Schema.Struct({ at: Schema.String, by: Schema.String, reason: Schema.String }),
+  ),
 });
 
 const Note = Schema.Struct({
@@ -841,7 +847,9 @@ export const positionOf = (
     record?.reached === null || record === undefined
       ? -1
       : rule.phases.findIndex((phase) => phase.id === record.reached),
-  attested: new Set(record?.attested.map((one) => one.phase) ?? []),
+  attested: new Set(
+    record?.attested.filter((one) => one.revoked === undefined).map((one) => one.phase) ?? [],
+  ),
 });
 
 // `reached` only advances.
@@ -856,6 +864,21 @@ export const reachedRecord = (
   if (phase <= current || id === null) return record;
   return { ...record, reached: id, since: new Date(now).toISOString() };
 };
+
+// The live attestations of `phases` revoked, each with why: a concession
+// sent the sector back below them.
+export const revokedRecord = (
+  record: SectorRecord,
+  phases: ReadonlyArray<string>,
+  revocation: { readonly at: number; readonly by: string; readonly reason: string },
+): SectorRecord => ({
+  ...record,
+  attested: record.attested.map((one) =>
+    one.revoked !== undefined || !phases.includes(one.phase)
+      ? one
+      : { ...one, revoked: { ...revocation, at: new Date(revocation.at).toISOString() } },
+  ),
+});
 
 export const attestedRecord = (
   record: SectorRecord,

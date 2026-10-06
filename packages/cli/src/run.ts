@@ -1653,6 +1653,21 @@ export const objectives = (
           },
         );
         if (Result.isFailure(outcome)) return yield* Effect.fail(fail(outcome.failure));
+        // A concession that sends a sector back a phase says so, and names
+        // the attestations it revoked on the way.
+        const sentBack = outcome.success.sentBack.flatMap((one) => [
+          "",
+          `this concession moves ${one.sector} back ${one.from ?? "done"} → ${one.to ?? "done"}.`,
+          ...(one.revoked.length === 0
+            ? []
+            : [
+                `It revokes ${one.sector}'s attestation of ${one.revoked.join(", ")}: what was attested no longer holds. Once it does again, attest it anew:`,
+                ...one.revoked.map(
+                  (phase) =>
+                    `  architecture campaigns attest ${one.sector} ${phase} --reason "…" --campaign ${rule.id}`,
+                ),
+              ]),
+        ]);
         const scalar =
           rule.objectives.find((one) => one.id === objective.success)?.measure !== null;
         if (scalar) {
@@ -1670,6 +1685,7 @@ export const objectives = (
                   "",
                   `${count(outcome.success.left.length, "sector")} left past the record; check still fails on them.`,
                 ]),
+            ...sentBack,
           ]);
         }
         if (outcome.success.conceded.length === 0) {
@@ -1686,6 +1702,7 @@ export const objectives = (
                 "",
                 `${count(outcome.success.left.length, "hit")} left unrecorded; check still fails on them.`,
               ]),
+          ...sentBack,
         ]);
       }
       default:

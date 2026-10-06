@@ -30,6 +30,8 @@ export type SectorView = {
     readonly at: string;
     readonly by: string;
     readonly reason: string;
+    // A concession that sent the sector back below the phase revoked it.
+    readonly revoked: { readonly at: string; readonly by: string; readonly reason: string } | null;
   }>;
   readonly toward: ResidueVector;
   // Every holdout in window, by objective, with the objective's `how`.
@@ -85,6 +87,7 @@ export const sectorViewOf = (
       at: one.at,
       by: one.by,
       reason: one.reason,
+      revoked: one.revoked ?? null,
     })),
     toward: towardNextOf(rule, state),
     objectives: state.inWindow
@@ -145,7 +148,12 @@ export const renderSectorView = (view: SectorView): ReadonlyArray<string> => {
     );
   }
   for (const one of view.attestations) {
-    lines.push(`  attested ${one.phase}: ${one.at.slice(0, 10)} by ${one.by} — ${one.reason}`);
+    lines.push(
+      `  attested ${one.phase}: ${one.at.slice(0, 10)} by ${one.by} — ${one.reason}` +
+        (one.revoked === null
+          ? ""
+          : ` (revoked ${one.revoked.at.slice(0, 10)} by ${one.revoked.by}: ${one.revoked.reason})`),
+    );
   }
   const toward = Object.entries(view.toward)
     .map(([id, n]) => `${id} ${String(n)}`)

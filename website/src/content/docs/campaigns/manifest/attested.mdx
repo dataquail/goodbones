@@ -26,6 +26,13 @@ ahead and passed through on arrival. It is written to the
 [sector's record](/goodbones/campaigns/running/ledger/#the-sectors-record) with the reason, the
 evidence, the author and the date, and the next `objectives clear` moves the sector on.
 
+**A concession can revoke an attestation.** When `objectives concede` (or the nudge's `--hotfix`)
+records growth that sends a sector back below an attested phase it had passed, what was attested
+no longer holds. Conceding an unmirrored write after the backfill says the backfill missed the rows
+that write will produce. The attestation is kept in the record, marked `revoked` with the
+concession's reason and author, and the sector stops at the attested phase again until someone
+attests it anew. `concede` says which attestations it revoked, and so does the nudge.
+
 An attested phase is defined, not open: it sits anywhere in the ladder, and changing it (removing
 `attested`, giving it objectives) is a [change to a defined phase](/goodbones/campaigns/manifest/phases/#changing-a-defined-phase)
 that needs a concession.

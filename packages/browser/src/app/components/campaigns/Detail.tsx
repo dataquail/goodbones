@@ -759,6 +759,11 @@ const SectorDetail = ({
                   {one.by}, {when(one.at)}
                   {one.evidence === undefined ? "" : ` · ${one.evidence}`}
                 </div>
+                {one.revoked === undefined ? null : (
+                  <div className="bad small">
+                    Revoked {when(one.revoked.at)} by {one.revoked.by}: {one.revoked.reason}
+                  </div>
+                )}
               </li>
             ))}
           </ul>

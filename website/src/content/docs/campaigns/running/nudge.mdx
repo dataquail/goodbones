@@ -136,8 +136,12 @@ nudge says which held it (`went back at an open phase, held by the phase that na
 (moved, ratchet)`), and `held[]` in the JSON lists them.
 
 **A concession is a receipt in both modes.** Growth that `objectives concede` recorded on the
-branch is in the head's ledger, with its reason. With `--base` it is printed as conceded rather
-than added, and it does not make the verdict `back`.
+branch is in the head's ledger, with its reason. It is printed as conceded rather than added, and
+it does not make the verdict `back`. With `--base` that is what the branch conceded. Without it,
+what the working tree's ledgers concede that HEAD's do not, since the working tree's ledgers carry
+it already. In that mode the sector is judged by the phase HEAD's ledgers place it at when that is
+further on. A concession that sends the sector back says so, with any attestation it revoked:
+`the concession sends billing back served → mirrored, and revokes the attestation of backfilled`.
 
 ## `ask` and `verdict`
 

@@ -179,6 +179,7 @@ type Sector = {
   verdict: string;
   direction: string;
   added: Array<string>;
+  removed: Array<string>;
   held: Array<{ objective: string; phase: string | null; onTouch: string }>;
 };
 
@@ -292,15 +293,31 @@ describe.sequential("the faults a strangling plants", () => {
     reset();
   });
 
-  it("refuses a regression at the open last phase, held by the phase that named it (R1)", async () => {
-    // Served paid down, then the model deleted: billing settles.
+  it("shows the sector a diff that only deletes its files carries forward (C1)", async () => {
+    // Served paid down: billing stands at moved, its model the last holdout.
     write("src/billing/service.ts", SERVICE(["  return proxy();"]));
     await clear("2026-10-04T00:00:00Z");
     commit("served");
     unlinkSync(path.join(root, "src/billing/model.ts"));
+    for (const flags of [[], ["--base", "HEAD"]]) {
+      const { billing, ok, text } = await nudge(...flags);
+      expect(ok, text).toBe(true);
+      expect(billing).toMatchObject({
+        phase: { id: "settled" },
+        judged: { id: "moved" },
+        verdict: "ok",
+        direction: "forward",
+        added: [],
+        removed: ["no-models: model.ts"],
+      });
+      expect(text).toContain("this diff moves it from moved");
+      expect(text).toContain("this diff: −no-models: model.ts  forward");
+    }
     await clear("2026-10-05T00:00:00Z");
     commit("moved");
+  });
 
+  it("refuses a regression at the open last phase, held by the phase that named it (R1)", async () => {
     // The model comes back, as if its deletion had been forgotten.
     write("src/billing/model.ts", 'export const subscription = model("subscriptions");\n');
     for (const flags of [[], ["--base", "HEAD"]]) {

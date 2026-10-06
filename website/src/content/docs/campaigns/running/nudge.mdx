@@ -113,6 +113,8 @@ then `file` holdouts. The last line is `ok` or `not ok`.
 
 "Before" is the ledger as of the last `objectives clear`; "after" is your working tree. A holdout
 you fixed but haven't cleared counts as progress, and one the ledger already carries is not growth.
+A file the diff deletes touches the sector it stood in (the one with the deepest root above it),
+so the diff that finishes a sector by deleting its files is shown and counted like any other.
 
 In CI, use `--base <ref>`: the base commit is checked out and evaluated, including rerunning
 `report` tools. Results are cached per commit under `node_modules/.cache/goodbones/`. A scalar

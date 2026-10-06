@@ -24,7 +24,13 @@ import {
   sharedWindow,
   windowOf,
 } from "../core/phases.js";
-import { isShared, LEGACY_SECTOR, parseSectorMarker, SECTOR_HOLDOUT } from "../core/sectors.js";
+import {
+  isShared,
+  LEGACY_SECTOR,
+  parseSectorMarker,
+  SECTOR_HOLDOUT,
+  sectorOfDeleted,
+} from "../core/sectors.js";
 import type { OnTouch } from "../domain/config.js";
 import { campaignsOf } from "../load/extension.js";
 import { concedeMeasure, evaluateCampaigns, widenedExtensions } from "./campaigns.js";
@@ -272,6 +278,12 @@ export const nudgeOf = (
       if (sector === null) continue;
       touchedSectors.add(sector);
       if (sector === LEGACY_SECTOR && diff.added.includes(file)) belongs.push(file);
+    }
+    // A sector finishes by deleting its files, so a diff that only deletes
+    // is touching the sector the files stood in.
+    for (const file of diff.deleted) {
+      const sector = sectorOfDeleted(rule, evaluation.index, file);
+      if (sector !== null) touchedSectors.add(sector);
     }
     for (const name of [...touchedSectors].sort()) {
       const state = evaluation.sectors.get(name);

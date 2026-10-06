@@ -349,6 +349,34 @@ export const discoverSectors = (rule: CompiledCampaign, input: SectorDiscovery):
   return indexOf(rule, files, sharedFiles, sectors, claims);
 };
 
+// The sector a file the tree no longer has stood in. The walk never saw
+// it, so `sectorOf` cannot say; the sector it sat in still stands, unless
+// the deletion un-birthed it, and its deepest root above the file names it.
+// A file under no sector's root is the legacy's when the legacy claims it.
+// A `match` perimeter's sectors are declarations, and a deleted file's
+// declarations are gone with it.
+export const sectorOfDeleted = (
+  rule: CompiledCampaign,
+  index: SectorIndex,
+  file: string,
+): string | null => {
+  if (!rule.scope.some((pattern) => pattern.test(file))) return null;
+  if (rule.shared?.some((pattern) => pattern.test(file)) === true) return SHARED_SECTOR;
+  if (rule.perimeter?.kind === "match") return null;
+  let best: { name: string; depth: number } | null = null;
+  for (const sector of index.sectors.values()) {
+    for (const root of sector.roots) {
+      if (!under(root, file)) continue;
+      if (best === null || root.length > best.depth)
+        best = { name: sector.name, depth: root.length };
+    }
+  }
+  if (best !== null) return best.name;
+  return rule.legacy === null || rule.legacy.some((pattern) => pattern.test(file))
+    ? LEGACY_SECTOR
+    : null;
+};
+
 // The root a file of the sector sits under: the first of the sector's
 // roots that prefixes it, so an entry written relative to it survives the
 // sector moving as one.

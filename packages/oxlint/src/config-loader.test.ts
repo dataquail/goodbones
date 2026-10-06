@@ -320,6 +320,30 @@ describe("loadPolicy", () => {
     ).rejects.toThrow(/select the same files, and each states an `imports` policy/);
   });
 
+  // Only the nudge judges work done ahead of the plan, but the plugin decodes
+  // the same manifest, so an objective's `onAhead` must load here too.
+  it("loads a campaign whose objective sets its own onAhead", async () => {
+    const policy = await loadPolicy(
+      repoRoot,
+      writeConfig(`export default { ${RESOLVE}, campaigns: { strangle: {
+        scope: ["packages/**"], onAhead: "ratchet",
+        phases: [{ id: "fenced", objectives: ["no-reach"] }, { id: "gone", objectives: ["left"] }],
+        objectives: {
+          "no-reach": {
+            holdout: "file", match: { path: { file: "reach" } },
+            probes: { fires: [{ path: "packages/reach.ts" }] },
+          },
+          left: {
+            holdout: "file", onAhead: "ignore", match: { path: { file: "legacy" } },
+            probes: { fires: [{ path: "packages/legacy.ts" }] },
+          },
+        },
+      } }, tree: {} };`),
+    );
+    const [rule] = campaignsOf(policy).campaignRules;
+    expect(rule?.objectives.find((one) => one.id === "left")?.onAhead).toBe("ignore");
+  });
+
   it("compiles the repo's own policy, so this suite fails if that config breaks", async () => {
     const policy = await loadPolicy(repoRoot);
     expect(policy.importRules.length).toBeGreaterThan(0);

@@ -67,7 +67,9 @@ architecture objectives concede <campaign>[/<objective>] --reason "<why>"
 **`clear`** reconciles the ledger with the code, never adding a holdout:
 
 - Holdouts that no longer fire are removed; `cleared` and `lastCleared` move.
-- A `match` holdout whose hash changed in the same declaration is rewritten in place.
+- A `match` holdout whose hash changed in the same declaration is rewritten in place, and so is
+  one whose declaration was renamed: the same file and the same text under another anchor is the
+  same holdout. `check` and the nudge pair them the same way, so a rename is neither cleared nor new.
 - A sector entering a window gets its `initial`. This writes the first ledger; `check` fails until
   it exists.
 - A sector leaving a window, or gone, has its remaining holdouts `closed`. A sector that falls

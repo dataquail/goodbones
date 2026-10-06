@@ -32,6 +32,7 @@ import {
   progressOf,
   reachedRecord,
   rebaselinedSector,
+  reconcileEntries,
   reconcileSector,
   recordedOf,
   sectorArithmeticHolds,
@@ -170,6 +171,34 @@ describe("clear", () => {
     expect(reconcileSector(ledger, "orders", ["z.ts#Foo#1"], "match").unrecorded).toEqual([
       "z.ts#Foo#1",
     ]);
+  });
+
+  it("pairs a match whose declaration was renamed by its file and text, not as fixed and new", () => {
+    const ledger = clearedSector(
+      EMPTY_LEDGER("c", "o", T0),
+      "billing",
+      ["a.ts#applied#11111111", "a.ts#applied#11111111~2", "b.ts#applied#22222222"],
+      "match",
+      T0,
+      "inside",
+    );
+    const now = ["a.ts#outcome#11111111", "a.ts#outcome#11111111~2", "b.ts#other#33333333"];
+    const state = reconcileSector(ledger, "billing", now, "match");
+    expect(state.drifted).toEqual([
+      { from: "a.ts#applied#11111111", to: "a.ts#outcome#11111111" },
+      { from: "a.ts#applied#11111111~2", to: "a.ts#outcome#11111111~2" },
+    ]);
+    // Another name and other text in the same file is a fix and a new holdout.
+    expect(state.stale).toEqual(["b.ts#applied#22222222"]);
+    expect(state.unrecorded).toEqual(["b.ts#other#33333333"]);
+    // The same text in another file is not the same holdout.
+    expect(reconcileEntries(["a.ts#f#11111111"], ["c.ts#f#11111111"], "match")).toMatchObject({
+      stale: ["a.ts#f#11111111"],
+      unrecorded: ["c.ts#f#11111111"],
+    });
+    const after = clearedSector(ledger, "billing", now, "match", T0 + DAY, "inside");
+    expect(after.sectors.billing).toMatchObject({ cleared: 1 });
+    expect(after.sectors.billing?.holdouts).toContain("a.ts#outcome#11111111~2");
   });
 
   it("re-baselines a sector under a phase concession, recording from and to", () => {

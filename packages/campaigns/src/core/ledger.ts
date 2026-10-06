@@ -191,15 +191,27 @@ export const ledgerArithmeticHolds = (ledger: Ledger): boolean =>
 // declaration changes the hash and nothing else, and is the same entry.
 const anchorOf = (entry: string): string => entry.slice(0, entry.lastIndexOf("#"));
 
+// The same entry under another anchor: a rename of the declaration around
+// a match changes the anchor and leaves the file and the text — so the hash,
+// and the ordinal a duplicate carries — where they were.
+const contentOf = (entry: string): string | null => {
+  const first = entry.indexOf("#");
+  const last = entry.lastIndexOf("#");
+  return first === -1 || first === last
+    ? null
+    : `${entry.slice(0, first)}#${entry.slice(last + 1)}`;
+};
+
 export type Reconciliation = {
-  // Entries the ledger already carries, exactly or by anchor.
+  // Entries the ledger already carries, exactly, by anchor or by content.
   readonly ledgered: ReadonlyArray<string>;
   // Entries the ledger does not carry: unrecorded growth.
   readonly unrecorded: ReadonlyArray<string>;
   // Holdouts no entry produces: cleared, and waiting for `clear`.
   readonly stale: ReadonlyArray<string>;
-  // Holdouts whose hash moved under a still-present anchor, with what they
-  // read now. `clear` rewrites them; they count as neither cleared nor new.
+  // Holdouts that moved — a new hash under a still-present anchor, or the
+  // same text under a renamed one — with what they read now. `clear`
+  // rewrites them; they count as neither cleared nor new.
   readonly drifted: ReadonlyArray<{ readonly from: string; readonly to: string }>;
 };
 
@@ -210,8 +222,15 @@ export const reconcileSector = (
   sector: string,
   entries: Iterable<string>,
   unit: CampaignUnit,
+): Reconciliation => reconcileEntries(ledger.sectors[sector]?.holdouts ?? [], entries, unit);
+
+// Holdouts known before against the entries produced now — a ledger's, or
+// a base tree's.
+export const reconcileEntries = (
+  holdouts: ReadonlyArray<string>,
+  entries: Iterable<string>,
+  unit: CampaignUnit,
 ): Reconciliation => {
-  const holdouts = ledger.sectors[sector]?.holdouts ?? [];
   const known = new Set(holdouts);
   const ledgered: Array<string> = [];
   const unmatched: Array<string> = [];
@@ -223,31 +242,41 @@ export const reconcileSector = (
   }
   let stale = holdouts.filter((entry) => !current.has(entry));
   const drifted: Array<{ from: string; to: string }> = [];
-  const unrecorded: Array<string> = [];
+  let unrecorded: Array<string> = [];
 
   if (unit === "match") {
     // Pair each stale holdout with an unmatched entry under the same anchor,
-    // in order, so a declaration with two edited matches keeps two entries.
-    const byAnchor = new Map<string, Array<string>>();
-    for (const entry of stale) {
-      const anchor = anchorOf(entry);
-      byAnchor.set(anchor, [...(byAnchor.get(anchor) ?? []), entry]);
-    }
-    const paired = new Set<string>();
-    for (const entry of unmatched) {
-      const candidates = byAnchor.get(anchorOf(entry));
-      const from = candidates?.shift();
-      if (from === undefined) {
-        unrecorded.push(entry);
-        continue;
+    // in order, so a declaration with two edited matches keeps two entries;
+    // then what is left by its content, across anchors, so a renamed
+    // declaration keeps its holdouts.
+    const pass = (
+      keyOf: (entry: string) => string | null,
+      candidates: ReadonlyArray<string>,
+    ): Array<string> => {
+      const byKey = new Map<string, Array<string>>();
+      for (const entry of stale) {
+        const key = keyOf(entry);
+        if (key !== null) byKey.set(key, [...(byKey.get(key) ?? []), entry]);
       }
-      paired.add(from);
-      drifted.push({ from, to: entry });
-      ledgered.push(entry);
-    }
-    stale = stale.filter((entry) => !paired.has(entry));
+      const paired = new Set<string>();
+      const left: Array<string> = [];
+      for (const entry of candidates) {
+        const key = keyOf(entry);
+        const from = key === null ? undefined : byKey.get(key)?.shift();
+        if (from === undefined) {
+          left.push(entry);
+          continue;
+        }
+        paired.add(from);
+        drifted.push({ from, to: entry });
+        ledgered.push(entry);
+      }
+      stale = stale.filter((entry) => !paired.has(entry));
+      return left;
+    };
+    unrecorded = pass(contentOf, pass(anchorOf, unmatched));
   } else {
-    for (const entry of unmatched) unrecorded.push(entry);
+    unrecorded = unmatched;
   }
 
   return { ledgered, unrecorded: sorted(unrecorded), stale, drifted };

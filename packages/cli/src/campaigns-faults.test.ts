@@ -261,6 +261,37 @@ describe.sequential("the faults a strangling plants", () => {
     reset();
   });
 
+  it("keeps a holdout through a rename of the declaration around it (C6)", async () => {
+    const before = sectorsOf("routes-local").billing?.holdouts ?? [];
+    expect(before).toEqual([
+      expect.stringMatching(/^service\.ts#create#[0-9a-f]{8}$/),
+      expect.stringMatching(/^service\.ts#create#[0-9a-f]{8}$/),
+    ]);
+    write(
+      "src/billing/service.ts",
+      SERVICE(['  localRoute("a");', '  return localRoute("b");']).replace("create", "make"),
+    );
+    for (const flags of [[], ["--base", "HEAD"]]) {
+      const { billing, ok, text } = await nudge(...flags);
+      expect(ok, text).toBe(true);
+      expect(billing).toMatchObject({ verdict: "ok", direction: "neutral", added: [] });
+      expect(text).not.toContain("this diff:");
+    }
+    // No `concede` and no `clear`: the ledger already carries both.
+    const { exit, failure, report } = await check();
+    expect(Exit.isSuccess(exit), failure).toBe(true);
+    expect(report.campaigns[0]?.new).toEqual([]);
+    expect(report.campaigns[0]?.stale).toEqual([]);
+    // `clear` rewrites them under the new name, as neither cleared nor new.
+    const output = await clear("2026-10-03T00:00:00Z");
+    expect(output).toContain("strangle/routes-local: 2 holdouts rewritten; 2 holdouts left.");
+    expect(sectorsOf("routes-local").billing).toMatchObject({ cleared: 0 });
+    expect(sectorsOf("routes-local").billing?.holdouts).toEqual(
+      before.map((entry) => entry.replace("#create#", "#make#")),
+    );
+    reset();
+  });
+
   it("refuses a regression at the open last phase, held by the phase that named it (R1)", async () => {
     // Served paid down, then the model deleted: billing settles.
     write("src/billing/service.ts", SERVICE(["  return proxy();"]));

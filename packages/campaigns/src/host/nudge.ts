@@ -5,7 +5,13 @@ import { breaches, listSourceFiles, type LoadedPolicy } from "@goodbones/core";
 
 import { type CampaignEvaluation, hitsInWindow, towardNextOf } from "../core/campaign-state.js";
 import { distanceToTarget } from "../core/campaigns.js";
-import { concededSector, ledgerPathOf, reconcileSector, serializeLedger } from "../core/ledger.js";
+import {
+  concededSector,
+  ledgerPathOf,
+  reconcileEntries,
+  reconcileSector,
+  serializeLedger,
+} from "../core/ledger.js";
 import {
   type Direction,
   directionOf,
@@ -447,9 +453,12 @@ export const nudgeOf = (
           stale = reconciled?.stale ?? [];
           ledgered = reconciled?.ledgered ?? [];
         } else {
-          // Against the base tree: what it did not have is new, unless the
-          // head's ledger carries it — conceded on this branch.
-          const fresh = entries.filter((entry) => !knownBefore.has(entry));
+          // Against the base tree, reconciled as a ledger is — a holdout
+          // that drifted or was renamed is the same one: what it did not
+          // have is new, unless the head's ledger carries it — conceded on
+          // this branch.
+          const againstBase = reconcileEntries([...knownBefore], entries, objective.unit);
+          const fresh = againstBase.unrecorded;
           const receipted = new Set(
             fresh.filter((entry) => reconciled?.ledgered.includes(entry) ?? false),
           );
@@ -457,8 +466,8 @@ export const nudgeOf = (
             if (receipted.has(entry)) conceded.push(`${objective.id}: ${entry}`);
           }
           unrecorded = fresh.filter((entry) => !receipted.has(entry));
-          stale = [...knownBefore].filter((entry) => !entries.includes(entry));
-          ledgered = entries.filter((entry) => knownBefore.has(entry));
+          stale = againstBase.stale;
+          ledgered = againstBase.ledgered;
         }
         for (const entry of unrecorded) {
           const hit = hits.find((one) => one.entry === entry);

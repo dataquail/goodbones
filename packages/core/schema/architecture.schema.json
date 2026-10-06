@@ -1444,7 +1444,8 @@
                   "type": "string",
                   "enum": [
                     "advise",
-                    "ratchet"
+                    "ratchet",
+                    "ignore"
                   ]
                 },
                 "phases": {
@@ -1509,7 +1510,8 @@
                                 "type": "string",
                                 "enum": [
                                   "advise",
-                                  "ratchet"
+                                  "ratchet",
+                                  "ignore"
                                 ]
                               },
                               "grows": {
@@ -3299,6 +3301,14 @@
                               "type": "string",
                               "enum": [
                                 "shared"
+                              ]
+                            },
+                            "onAhead": {
+                              "type": "string",
+                              "enum": [
+                                "advise",
+                                "ratchet",
+                                "ignore"
                               ]
                             },
                             "probes": {

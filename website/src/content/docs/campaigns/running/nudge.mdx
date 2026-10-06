@@ -161,7 +161,7 @@ Hooks should read these two fields, not the prose.
 | `hotfix`     | growth let through with `--hotfix`, and recorded              | 0        |
 | `back`       | some objective's count got worse under `ratchet` or `paydown` | non-zero |
 | `no-paydown` | `paydown-required`, and the sector did not shrink             | non-zero |
-| `ahead`      | work done ahead of the plan, under `onAhead: ratchet`         | non-zero |
+| `ahead`      | work done ahead of the plan, owing `onAhead: ratchet`         | non-zero |
 
 `direction` is **forward** (nothing worse, something better), **back** (the reverse), **mixed**
 or **neutral**. Counts are compared per objective, never summed. The verdict and the direction are
@@ -203,15 +203,48 @@ starts the next is not ahead. What makes work ahead is something earlier still h
 back: residue in an earlier phase, or an attestation not yet made. The legacy and the shared files
 stand on no rung to be ahead of, and scalars are not compared.
 
-`onAhead` sets what it owes. Set it on the campaign, and override it per phase (the phase the
-sector stood at before the diff):
+`onAhead` sets what it owes. Set it on the campaign, override it per phase (the phase the sector
+stood at before the diff), and override that per objective. Each objective paid ahead is weighed on
+its own: its own `onAhead`, else the judged phase's, else the campaign's, else `advise`.
 
 - **`advise`** (the default): the nudge names it, and the verdict is unchanged.
 - **`ratchet`**: the verdict is `ahead` and the nudge exits non-zero, for a ladder whose order is
   the point. `--hotfix` does not cover it: there is no growth to concede. To do the work anyway,
-  change the plan.
+  change the plan. One objective resolving to `ratchet` is enough.
+- **`ignore`**: the nudge says nothing about it, in the text or the JSON, and the verdict is
+  unchanged.
 
-Like `onTouch`, `onAhead` is not part of what a phase asks, so setting it is no plan change.
+`ignore` is for an objective that counts what is left of a sector — every file still in the old
+folder, every model not yet moved — and is named by the last phase to say that nothing is left.
+Every phase's deletions pay it down, so paying it down is never ahead of the plan, and under a
+ratcheting campaign it would refuse every diff that deletes a file early in the ladder. Set
+`onAhead: ignore` on that objective and keep `ratchet` for the ones whose order matters:
+
+```yaml
+objectives:
+  routes-still-local:
+    holdout: match
+    match: { syntax: { pattern: "localRoute($$$)" } }
+  nothing-left:
+    holdout: file
+    onAhead: ignore
+    match: { path: { file: "^legacy/" } }
+```
+
+When the entries on a line owe different things, each names its own:
+
+```
+    ahead of plan: routes-still-local −1 belongs to served (ratchet) · no-models −1 belongs to moved (advise); billing is at backfilled (not yet attested)
+```
+
+An objective's `onAhead` is held to what it can mean: the manifest is refused when it is set on a
+scalar, on an `over: shared` objective, or on an objective no phase names or the first phase names,
+since none of those can be paid ahead.
+
+Like `onTouch`, the campaign's and a phase's `onAhead` are not part of what a phase asks, so setting
+them is no plan change. An objective's is: it changes what the nudge refuses, so it is part of the
+definition of the phase that names the objective, and adding, changing or removing it needs a
+[`concessions`](/goodbones/campaigns/manifest/phases/#changing-a-defined-phase) entry on that phase.
 
 ## JSON
 
@@ -296,7 +329,9 @@ Like `onTouch`, `onAhead` is not part of what a phase asks, so setting it is no 
 - `held`: at an open judged phase, each dimension that went back, with the phase that named it
   and that phase's `onTouch`.
 - `ahead`: holdouts the diff paid down of a later phase's objectives, each
-  `{ objective, phase, before, after }`; `onAhead` is what the judged phase owes for them.
+  `{ objective, phase, before, after, onAhead }`, the last what that entry owes (`advise` or
+  `ratchet`); an objective that resolves to `ignore` is left out. The sector's `onAhead` is what
+  the judged phase owes, which an objective with no `onAhead` of its own takes.
 - `measures`: each scalar's `before`, `after` and `recorded` (what the ledger holds the sector
   to), with `back` for a rise past the tolerance that no record covers, `conceded` for one a
   record does, and `grows` for one the judged phase expects.

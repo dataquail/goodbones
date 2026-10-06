@@ -20,7 +20,7 @@ import {
   sectorClockOf,
   type SectorRecord,
 } from "../core/ledger.js";
-import { ledgeredFor, type Residue as ResidueVector } from "../core/phases.js";
+import { isBehind, ledgeredFor, type Residue as ResidueVector } from "../core/phases.js";
 import { isShared } from "../core/sectors.js";
 import { campaignsOf } from "../load/extension.js";
 import { growsFor } from "./ledger-phase.js";
@@ -141,8 +141,9 @@ export const campaignReportsOf = (
         const measured = state.values[objective.id] ?? Number.NaN;
         const own = ledger?.sectors[name];
         if (!state.inWindow.some((one) => one.id === objective.id)) {
-          // Past the window: a record still open is closed by `clear`.
-          if (own?.closed === null) {
+          // Behind the window: the record is held for the sector's return.
+          // Past it: a record still open is closed by `clear`.
+          if (own?.closed === null && !isBehind(rule, objective, state.phase, state.position)) {
             scalarStale.push({
               objective: objective.id,
               sector: name,
@@ -239,9 +240,12 @@ export const campaignReportsOf = (
         const recorded = ledger?.sectors[name] !== undefined;
         if (!inWindow) {
           // Past the window: what the ledger still carries is closed by
-          // `clear`, and nothing here counts.
+          // `clear`, and nothing here counts. Behind it — the sector fell
+          // back below the phase naming it — the holdouts are work still
+          // owed, held as they are until the sector returns.
           const carried = ledger?.sectors[name]?.holdouts ?? [];
-          if (ledger !== undefined && carried.length > 0) {
+          const behind = isBehind(rule, objective, state.phase, state.position);
+          if (ledger !== undefined && carried.length > 0 && !behind) {
             sectors.push({
               sector: name,
               count: 0,

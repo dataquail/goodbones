@@ -75,6 +75,17 @@ export const inWindow = (
   return phase >= from && phase < until;
 };
 
+// Whether a sector stands behind an objective's window — at a phase before
+// the one naming it, the window not shut. That is not past it: what a ledger
+// carries there is work still owed, held until the sector comes back, and
+// neither stale nor closed.
+export const isBehind = (
+  rule: CompiledCampaign,
+  objective: CompiledObjective,
+  phase: number,
+  position: SectorPosition,
+): boolean => !isShut(rule, objective, position) && windowOf(rule, objective).from > phase;
+
 // Whether an objective is ledgered for a sector at all. One read over the
 // shared files is ledgered under them alone, however many sectors
 // wait on it: there is one thing to pay, and one place it is paid.

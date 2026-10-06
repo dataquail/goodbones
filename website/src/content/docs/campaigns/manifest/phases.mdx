@@ -46,6 +46,9 @@ during `dual-write` and be gone from `cutover`.
 - Leaving one, remaining holdouts become `closed`. That is not progress and doesn't reset the stall
   clock.
 - A window ending at or before the sector's `reached` never reopens for it.
+- Falling behind a window is not leaving it. When a regression sends a sector below the phase that
+  lists an objective, the holdouts it carries there are held for its return: neither stale nor
+  closed.
 
 The loader refuses an `until` naming an unknown phase, or one at or before the listing phase.
 

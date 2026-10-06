@@ -70,7 +70,10 @@ architecture objectives concede <campaign>[/<objective>] --reason "<why>"
 - A `match` holdout whose hash changed in the same declaration is rewritten in place.
 - A sector entering a window gets its `initial`. This writes the first ledger; `check` fails until
   it exists.
-- A sector leaving a window, or gone, has its remaining holdouts `closed`.
+- A sector leaving a window, or gone, has its remaining holdouts `closed`. A sector that falls
+  _behind_ a window it had entered (a regression sends it below the phase that lists the objective)
+  has not left it: its entries are held as they are, with their `initial`, `cleared` and
+  concessions, and `check` does not call them stale.
 - After a [phase concession](/goodbones/campaigns/manifest/phases/#changing-a-defined-phase),
   sectors are re-baselined with `{ from, to }`.
 - It also writes each sector's record and the plan, and says where each sector went:

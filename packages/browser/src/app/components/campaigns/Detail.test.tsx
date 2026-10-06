@@ -159,6 +159,7 @@ const nudgeOnShared: Nudge = {
       onTouch: "advise",
       ask: "none",
       verdict: "ok",
+      held: [],
       residue: { before: { "has-pg": 1, lines: 0 }, after: { "has-pg": 1, lines: 0 } },
       direction: "neutral",
       toward: {},

@@ -2,7 +2,7 @@ import type { LoadedPolicy } from "@goodbones/core";
 
 import { type CompiledCampaign, distanceToTarget } from "../core/campaigns.js";
 import { positionOf } from "../core/ledger.js";
-import { derivePhase, donePhaseOf, growsAt, LEGACY_PHASE } from "../core/phases.js";
+import { derivePhase, donePhaseOf, growsAt, LEGACY_PHASE, windowOf } from "../core/phases.js";
 import { isShared, LEGACY_SECTOR, SHARED_SECTOR } from "../core/sectors.js";
 import { campaignsOf, ledgerKeyOf } from "../load/extension.js";
 
@@ -24,21 +24,29 @@ export const ledgerPhaseOf = (
   if (sector === LEGACY_SECTOR || record === undefined) {
     return Math.min(LEGACY_PHASE, rule.phases.length);
   }
+  const position = positionOf(rule, record);
   const counts = (objectiveId: string): number => {
     const key = ledgerKeyOf(rule.id, objectiveId);
     const objective = rule.objectives.find((one) => one.id === objectiveId);
+    if (objective === undefined) return 0;
     // A prerequisite is ledgered under the shared files, and holds this sector
     // by what is recorded there.
-    const at = objective?.overShared === true ? SHARED_SECTOR : sector;
-    if (objective !== undefined && objective.measure !== null) {
+    const at = objective.overShared ? SHARED_SECTOR : sector;
+    // An objective no ledger has recorded for the sector is one it never
+    // entered. Up to the phase the sector has reached, that was a window
+    // passed in one `clear` — met. Past it, nothing says it is met, and
+    // reading it as nought would carry the sector past phases it has
+    // never stood at.
+    const unentered = (): number => (windowOf(rule, objective).from > position.reached ? 1 : 0);
+    if (objective.measure !== null) {
       const own = state.measureLedgers.get(key)?.sectors[at];
-      return own === undefined || own.closed !== null
-        ? 0
-        : distanceToTarget(objective, own.recorded);
+      if (own === undefined) return unentered();
+      return own.closed !== null ? 0 : distanceToTarget(objective, own.recorded);
     }
-    return state.ledgers.get(key)?.sectors[at]?.holdouts.length ?? 0;
+    const own = state.ledgers.get(key)?.sectors[at];
+    return own === undefined ? unentered() : own.holdouts.length;
   };
-  return derivePhase(rule, counts, positionOf(rule, record));
+  return derivePhase(rule, counts, position);
 };
 
 // Whether the phase the ledgers place a sector at expects a scalar objective

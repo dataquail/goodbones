@@ -121,10 +121,17 @@ then prints the base tree's value with the ledger's record beside it
 line says so (`recorded 400 → now 409`).
 
 **A diff is judged by the phase the sector stood at before it.** That is the base tree's phase
-with `--base`, and the phase the ledgers place the sector at otherwise. Only the objectives in
+with `--base`, and the phase the ledgers place the sector at otherwise (an objective the sector has
+no ledger entry for counts as met only up to the phase it has `reached`). Only the objectives in
 that phase's window are scored, and that phase's `onTouch` is what applies. So the diff that
 finishes a phase is judged by the phase it finished, not by the next one, and a phase whose
 `onTouch` is `advise` covers its own last change.
+
+**An open phase is no gap in the ratchet.** The windows still open at an open phase are earlier
+phases' objectives, and each count that got worse there is held by the phase that lists the
+objective: under its `ratchet` or `paydown` the verdict is `back`, though `ask` stays `note`. The
+nudge says which held it (`went back at an open phase, held by the phase that named it: no-models
+(moved, ratchet)`), and `held[]` in the JSON lists them.
 
 **A concession is a receipt in both modes.** Growth that `objectives concede` recorded on the
 branch is in the head's ledger, with its reason. With `--base` it is printed as conceded rather

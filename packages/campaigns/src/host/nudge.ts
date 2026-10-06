@@ -16,6 +16,7 @@ import {
   onTouchOf,
   type Residue as ResidueVector,
   sharedWindow,
+  windowOf,
 } from "../core/phases.js";
 import { isShared, LEGACY_SECTOR, parseSectorMarker, SECTOR_HOLDOUT } from "../core/sectors.js";
 import type { OnTouch } from "../domain/config.js";
@@ -96,6 +97,14 @@ export type SectorNudge = {
   readonly notes: ReadonlyArray<{ at: string; by: string; text: string }>;
   // The judged phase's.
   readonly onTouch: OnTouch;
+  // At an open judged phase: the dimensions that went back, each with the
+  // phase that named it and that phase's `onTouch`, which is what holds it
+  // there. Empty everywhere else.
+  readonly held: ReadonlyArray<{
+    readonly objective: string;
+    readonly phase: string | null;
+    readonly onTouch: OnTouch;
+  }>;
   readonly ask: Ask;
   readonly verdict: Verdict;
   // One dimension per objective in the judged phase's window.
@@ -492,8 +501,26 @@ export const nudgeOf = (
       const totalAfter = holdoutTotal(after);
       let ask: Ask;
       let verdict: Verdict = "ok";
-      if (judgedOpen) ask = "note";
-      else if (onTouch === "advise") ask = "none";
+      // At an open phase the windows still open are earlier phases': each
+      // dimension that went back is held by the phase that named it, so the
+      // last phase is no gap in the ratchet. One no phase names is held by
+      // the open phase's own word.
+      const heldBy: Array<SectorNudge["held"][number]> = [];
+      if (judgedOpen && !shared) {
+        for (const id of back) {
+          const objective = rule.objectives.find((one) => one.id === id);
+          if (objective === undefined) continue;
+          const from = windowOf(rule, objective).from;
+          const owed = from === -1 ? onTouch : onTouchOf(rule, from);
+          if (owed !== "advise") {
+            heldBy.push({ objective: id, phase: rule.phases[from]?.id ?? null, onTouch: owed });
+          }
+        }
+      }
+      if (judgedOpen) {
+        ask = "note";
+        if (heldBy.length > 0) verdict = "back";
+      } else if (onTouch === "advise") ask = "none";
       else if (onTouch === "ratchet") {
         ask = "hold";
         if (back.length > 0) verdict = "back";
@@ -559,6 +586,7 @@ export const nudgeOf = (
         onTouch,
         ask,
         verdict,
+        held: heldBy,
         residue: { before, after },
         direction,
         toward,
@@ -799,6 +827,11 @@ export const renderNudge = (nudge: Nudge, now: number): ReadonlyArray<string> =>
     }
     for (const file of one.belongsInSector)
       say(`    ${file} landed in the legacy inside the scope: this belongs in a sector`);
+    if (one.held.length > 0) {
+      say(
+        `    went back at an open phase, held by the phase that named it: ${one.held.map((h) => `${h.objective} (${h.phase ?? "no phase"}, ${h.onTouch})`).join(" · ")}`,
+      );
+    }
     say(
       `    onTouch: ${one.onTouch}${moved ? ` (of ${one.judged.id ?? "done"})` : ""} — ${one.verdict}`,
     );

@@ -2,10 +2,24 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 
 import { breaches, listSourceFiles, type LoadedPolicy } from "@goodbones/core";
+import * as Result from "effect/Result";
 
 import { type CampaignEvaluation, hitsInWindow, towardNextOf } from "../core/campaign-state.js";
-import { distanceToTarget } from "../core/campaigns.js";
-import { concededSector, ledgerPathOf, reconcileSector, serializeLedger } from "../core/ledger.js";
+import { type CompiledCampaign, distanceToTarget } from "../core/campaigns.js";
+import {
+  concededSector,
+  decodeLedger,
+  decodeMeasureLedger,
+  decodeSectorRecord,
+  type Ledger,
+  ledgerPathOf,
+  type MeasureLedger,
+  reconcileEntries,
+  reconcileSector,
+  type SectorRecord,
+  sectorRecordPathOf,
+  serializeLedger,
+} from "../core/ledger.js";
 import {
   type Direction,
   directionOf,
@@ -13,16 +27,25 @@ import {
   isOpenPhase,
   ledgeredFor,
   objectivesInWindow,
+  onAheadOf,
   onTouchOf,
   type Residue as ResidueVector,
   sharedWindow,
+  windowOf,
 } from "../core/phases.js";
-import { isShared, LEGACY_SECTOR, parseSectorMarker, SECTOR_HOLDOUT } from "../core/sectors.js";
-import type { OnTouch } from "../domain/config.js";
+import {
+  isShared,
+  LEGACY_SECTOR,
+  parseSectorMarker,
+  SECTOR_HOLDOUT,
+  sectorOfDeleted,
+} from "../core/sectors.js";
+import type { OnAhead, OnTouch } from "../domain/config.js";
 import { campaignsOf } from "../load/extension.js";
-import { concedeMeasure, evaluateCampaigns, widenedExtensions } from "./campaigns.js";
+import { evaluateCampaigns, widenedExtensions } from "./campaigns.js";
+import { concedeMeasure, sendBack } from "./concede.js";
 import { commitOf, type Diff, distanceToHunks, materializeTree, textAt } from "./diff.js";
-import { ledgerPhaseOf } from "./ledger-phase.js";
+import { type LedgerOverrides, ledgerPhaseOf } from "./ledger-phase.js";
 import {
   count,
   HOLDOUT_CAP,
@@ -38,7 +61,7 @@ import {
 // The thing the rest of the family exists to serve.
 
 export type Ask = "none" | "note" | "hold" | "paydown-optional" | "paydown-required";
-export type Verdict = "ok" | "back" | "no-paydown" | "hotfix";
+export type Verdict = "ok" | "back" | "no-paydown" | "hotfix" | "ahead";
 
 export type NudgeHoldout = {
   readonly file: string;
@@ -96,6 +119,14 @@ export type SectorNudge = {
   readonly notes: ReadonlyArray<{ at: string; by: string; text: string }>;
   // The judged phase's.
   readonly onTouch: OnTouch;
+  // At an open judged phase: the dimensions that went back, each with the
+  // phase that named it and that phase's `onTouch`, which is what holds it
+  // there. Empty everywhere else.
+  readonly held: ReadonlyArray<{
+    readonly objective: string;
+    readonly phase: string | null;
+    readonly onTouch: OnTouch;
+  }>;
   readonly ask: Ask;
   readonly verdict: Verdict;
   // One dimension per objective in the judged phase's window.
@@ -117,10 +148,31 @@ export type SectorNudge = {
   };
   readonly added: ReadonlyArray<string>;
   readonly removed: ReadonlyArray<string>;
-  // Growth against the base tree that the head's ledger carries: conceded
-  // on this branch, with a reason, and so not `added`. The exact mode only —
-  // in the ledger mode a conceded entry is simply in the ledger.
+  // Growth the head's ledger carries with a reason, and so not `added`:
+  // in the exact mode, against the base tree — conceded on this branch; in
+  // the ledger mode, the concessions the working tree's ledgers hold and
+  // HEAD's do not.
   readonly conceded: ReadonlyArray<string>;
+  // Where a concession — in the working tree, or the `--hotfix` this run
+  // made — sent the sector back from and to, and the attested phases it fell
+  // below, whose attestations it revoked. `null` when none did.
+  readonly sentBack: {
+    readonly from: string | null;
+    readonly to: string | null;
+    readonly revoked: ReadonlyArray<string>;
+  } | null;
+  // Holdouts this diff paid down of objectives whose phase lies past the one
+  // the sector stands at after it — work done ahead of the plan — each with
+  // that phase and its count before and after; and what the judged phase
+  // owes for it. Read against the base tree, or HEAD's in the ledger mode;
+  // empty when there is neither.
+  readonly ahead: ReadonlyArray<{
+    readonly objective: string;
+    readonly phase: string | null;
+    readonly before: number;
+    readonly after: number;
+  }>;
+  readonly onAhead: OnAhead;
   // Objectives that came into window because this diff moved the sector on,
   // with what each counts there. Now counted, not grown: they are in no
   // dimension of the verdict.
@@ -214,6 +266,56 @@ export const baseSideOf = (evaluations: ReadonlyArray<CampaignEvaluation>): Base
 const isBetter = (direction: "down" | "up", from: number, to: number): boolean =>
   direction === "down" ? to < from : to > from;
 
+// HEAD's ledgers and records for one campaign: what the ledger mode reads
+// a working tree's own concessions against, since the working tree's
+// ledgers already carry them. `null` when HEAD has none of the campaign's
+// ledgers — never committed, or in the first layout — and so no answer.
+type HeadSide = {
+  readonly overrides: LedgerOverrides;
+  readonly record: (sector: string) => SectorRecord | undefined;
+};
+
+const headSideOf = (policy: LoadedPolicy, rule: CompiledCampaign): HeadSide | null => {
+  const dir = campaignsOf(policy).ledgerDir;
+  const read = (at: string): unknown => {
+    const text = textAt(policy.repoRoot, "HEAD", at);
+    if (text === null) return undefined;
+    try {
+      return JSON.parse(text) as unknown;
+    } catch {
+      return undefined;
+    }
+  };
+  const ledgers = new Map<string, Ledger | undefined>();
+  const measures = new Map<string, MeasureLedger | undefined>();
+  for (const objective of rule.objectives) {
+    const raw = read(ledgerPathOf(dir, rule.id, objective.id));
+    if (objective.measure !== null) {
+      const decoded = raw === undefined ? null : decodeMeasureLedger(raw);
+      measures.set(
+        objective.id,
+        decoded !== null && Result.isSuccess(decoded) ? decoded.success : undefined,
+      );
+    } else {
+      const decoded = raw === undefined ? null : decodeLedger(raw);
+      ledgers.set(
+        objective.id,
+        decoded !== null && Result.isSuccess(decoded) ? decoded.success : undefined,
+      );
+    }
+  }
+  const any = [...ledgers.values(), ...measures.values()].some((one) => one !== undefined);
+  if (!any) return null;
+  return {
+    overrides: { ledgers, measures },
+    record: (sector) => {
+      const raw = read(sectorRecordPathOf(dir, rule.id, sector));
+      const decoded = raw === undefined ? null : decodeSectorRecord(raw);
+      return decoded !== null && Result.isSuccess(decoded) ? decoded.success : undefined;
+    },
+  };
+};
+
 // The nudge for one diff. The "before" side is the ledger, or the base tree
 // evaluated whole in the exact mode; the "after" side is the tree now. A
 // sector is judged by the phase it stood at before the diff: entering a
@@ -227,6 +329,9 @@ export const nudgeOf = (
   base: BaseSide | null,
   hotfix: string | null,
   by: string | null,
+  // The ledger mode's "before" for work done ahead of the plan: the HEAD
+  // tree, evaluated, since no ledger counts what a sector has not entered.
+  headTree: BaseSide | null = null,
 ): Nudge => {
   const touched = [...diff.touched.keys()].sort();
   const sectors: Array<SectorNudge> = [];
@@ -235,6 +340,14 @@ export const nudgeOf = (
   for (const evaluation of evaluations) {
     const { rule } = evaluation;
     const baseEvaluation = base?.find((one) => one.id === rule.id) ?? null;
+    const before_ = baseEvaluation ?? headTree?.find((one) => one.id === rule.id) ?? null;
+    // Read from git once, and only when the diff touches a sector of this
+    // campaign.
+    let headRead: HeadSide | null | undefined;
+    const headOf = (): HeadSide | null => {
+      if (headRead === undefined) headRead = base === null ? headSideOf(policy, rule) : null;
+      return headRead;
+    };
     const counted = hitsInWindow(evaluation);
     const perimeter = rule.perimeter;
     if (perimeter?.kind === "marker") {
@@ -258,10 +371,17 @@ export const nudgeOf = (
       touchedSectors.add(sector);
       if (sector === LEGACY_SECTOR && diff.added.includes(file)) belongs.push(file);
     }
+    // A sector finishes by deleting its files, so a diff that only deletes
+    // is touching the sector the files stood in.
+    for (const file of diff.deleted) {
+      const sector = sectorOfDeleted(rule, evaluation.index, file);
+      if (sector !== null) touchedSectors.add(sector);
+    }
     for (const name of [...touchedSectors].sort()) {
       const state = evaluation.sectors.get(name);
       if (state === undefined) continue;
       const record = recordOf(policy, rule, name);
+      const head = headOf();
       const phase = rule.phases[state.phase];
       const open = phase !== undefined && isOpenPhase(phase);
       // The phase the diff found the sector at. A base side that names a
@@ -273,7 +393,37 @@ export const nudgeOf = (
           : basePhase === null
             ? rule.phases.length
             : rule.phases.findIndex((one) => one.id === basePhase);
-      const judgedAt = baseIndex === -1 ? ledgerPhaseOf(policy, rule, name) : baseIndex;
+      // In the ledger mode, the working tree's ledgers carry its own
+      // concessions; where HEAD's placed the sector is where the diff found
+      // it, when that is further on.
+      const placed = ledgerPhaseOf(policy, rule, name);
+      const placedAtHead =
+        head === null || record === undefined
+          ? placed
+          : ledgerPhaseOf(policy, rule, name, {
+              ...head.overrides,
+              record: { at: head.record(name) },
+            });
+      const judgedAt = baseIndex === -1 ? Math.max(placed, placedAtHead) : baseIndex;
+      // What the working tree's concessions did to where the ledgers place
+      // the sector, and the attestations they revoked on the way.
+      let sentBack: SectorNudge["sentBack"] =
+        baseIndex === -1 && placedAtHead > placed
+          ? {
+              from: phaseIdOf(rule, placedAtHead),
+              to: phaseIdOf(rule, placed),
+              revoked: (record?.attested ?? [])
+                .filter(
+                  (one) =>
+                    one.revoked !== undefined &&
+                    (head?.record(name)?.attested ?? []).some(
+                      (two) =>
+                        two.phase === one.phase && two.at === one.at && two.revoked === undefined,
+                    ),
+                )
+                .map((one) => one.phase),
+            }
+          : null;
       const judged = rule.phases[judgedAt];
       const judgedOpen = judged !== undefined && isOpenPhase(judged);
       // The shared files are advised, always: they are where the campaign builds
@@ -438,9 +588,12 @@ export const nudgeOf = (
           stale = reconciled?.stale ?? [];
           ledgered = reconciled?.ledgered ?? [];
         } else {
-          // Against the base tree: what it did not have is new, unless the
-          // head's ledger carries it — conceded on this branch.
-          const fresh = entries.filter((entry) => !knownBefore.has(entry));
+          // Against the base tree, reconciled as a ledger is — a holdout
+          // that drifted or was renamed is the same one: what it did not
+          // have is new, unless the head's ledger carries it — conceded on
+          // this branch.
+          const againstBase = reconcileEntries([...knownBefore], entries, objective.unit);
+          const fresh = againstBase.unrecorded;
           const receipted = new Set(
             fresh.filter((entry) => reconciled?.ledgered.includes(entry) ?? false),
           );
@@ -448,8 +601,8 @@ export const nudgeOf = (
             if (receipted.has(entry)) conceded.push(`${objective.id}: ${entry}`);
           }
           unrecorded = fresh.filter((entry) => !receipted.has(entry));
-          stale = [...knownBefore].filter((entry) => !entries.includes(entry));
-          ledgered = entries.filter((entry) => knownBefore.has(entry));
+          stale = againstBase.stale;
+          ledgered = againstBase.ledgered;
         }
         for (const entry of unrecorded) {
           const hit = hits.find((one) => one.entry === entry);
@@ -465,6 +618,39 @@ export const nudgeOf = (
             editsHoldout = true;
         }
         if (stale.length > 0) editsHoldout = true;
+      }
+      // The ledger mode: what the working tree conceded for the sector,
+      // against HEAD's ledgers. Its own ledgers already carry it, so it is
+      // neither added nor back — and it is the one thing a reviewer must see.
+      if (baseEvaluation === null && head !== null) {
+        const fresh = <T>(now: ReadonlyArray<T>, then: ReadonlyArray<T>): ReadonlyArray<T> => {
+          const known = new Set(then.map((one) => JSON.stringify(one)));
+          return now.filter((one) => !known.has(JSON.stringify(one)));
+        };
+        for (const objective of rule.objectives) {
+          if (objective.measure !== null) {
+            const then = head.overrides.measures?.get(objective.id)?.concessions ?? [];
+            const now = measureLedgerOf(policy, rule, objective)?.concessions ?? [];
+            for (const one of fresh(now, then)) {
+              if (one.sector === name) {
+                conceded.push(`${objective.id}: ${String(one.from)} → ${String(one.to)}`);
+              }
+            }
+            continue;
+          }
+          const then = head.overrides.ledgers?.get(objective.id)?.concessions ?? [];
+          const now = ledgerOf(policy, rule, objective)?.concessions ?? [];
+          for (const one of fresh(now, then)) {
+            if (one.sector !== name) continue;
+            if ("holdouts" in one) {
+              for (const entry of one.holdouts) conceded.push(`${objective.id}: ${entry}`);
+            } else {
+              conceded.push(
+                `${objective.id}: re-baselined ${String(one.from)} → ${String(one.to)}`,
+              );
+            }
+          }
+        }
       }
       // One judgement, and the verdict and the direction are both read off
       // it. A holdout dimension goes back by any rise past what it is held
@@ -492,8 +678,26 @@ export const nudgeOf = (
       const totalAfter = holdoutTotal(after);
       let ask: Ask;
       let verdict: Verdict = "ok";
-      if (judgedOpen) ask = "note";
-      else if (onTouch === "advise") ask = "none";
+      // At an open phase the windows still open are earlier phases': each
+      // dimension that went back is held by the phase that named it, so the
+      // last phase is no gap in the ratchet. One no phase names is held by
+      // the open phase's own word.
+      const heldBy: Array<SectorNudge["held"][number]> = [];
+      if (judgedOpen && !shared) {
+        for (const id of back) {
+          const objective = rule.objectives.find((one) => one.id === id);
+          if (objective === undefined) continue;
+          const from = windowOf(rule, objective).from;
+          const owed = from === -1 ? onTouch : onTouchOf(rule, from);
+          if (owed !== "advise") {
+            heldBy.push({ objective: id, phase: rule.phases[from]?.id ?? null, onTouch: owed });
+          }
+        }
+      }
+      if (judgedOpen) {
+        ask = "note";
+        if (heldBy.length > 0) verdict = "back";
+      } else if (onTouch === "advise") ask = "none";
       else if (onTouch === "ratchet") {
         ask = "hold";
         if (back.length > 0) verdict = "back";
@@ -503,15 +707,19 @@ export const nudgeOf = (
         else if (editsHoldout && totalAfter >= totalBefore) verdict = "no-paydown";
       }
       if (verdict !== "ok" && hotfix !== null && by !== null) {
-        // The escape: the growth is conceded, with a reason naming the hotfix.
+        // The escape: the growth is conceded, with a reason naming the hotfix
+        // — and, like any concession, it may send the sector back.
+        const written = new Map<string, Ledger>();
         for (const objective of dimensions) {
           if (objective.measure !== null) {
             if (measures.some((one) => one.objective === objective.id && one.back)) {
-              concedeMeasure(policy, evaluation, objective, name, {
+              const done = concedeMeasure(policy, evaluation, objective, name, {
                 at: policy.now,
                 by,
                 reason: `hotfix: ${hotfix}`,
               });
+              const [moved] = Result.isSuccess(done) ? done.success.sentBack : [];
+              if (moved !== undefined) sentBack = moved;
             }
             continue;
           }
@@ -522,20 +730,59 @@ export const nudgeOf = (
             .map((hit) => hit.entry);
           const { unrecorded } = reconcileSector(ledger, name, entries, objective.unit);
           if (unrecorded.length === 0) continue;
+          const next = concededSector(ledger, name, unrecorded, {
+            at: policy.now,
+            by,
+            reason: `hotfix: ${hotfix}`,
+          });
+          written.set(objective.id, next);
           writeJson(
             policy.repoRoot,
             ledgerPathOf(campaignsOf(policy).ledgerDir, rule.id, objective.id),
-            serializeLedger(
-              concededSector(ledger, name, unrecorded, {
-                at: policy.now,
-                by,
-                reason: `hotfix: ${hotfix}`,
-              }),
-            ),
+            serializeLedger(next),
           );
         }
+        const [moved] = sendBack(
+          policy,
+          rule,
+          [name],
+          { ledgers: written },
+          {
+            at: policy.now,
+            by,
+            reason: `hotfix: ${hotfix}`,
+          },
+        );
+        if (moved !== undefined) sentBack = moved;
         verdict = "hotfix";
       }
+      // Ahead of the plan: a holdout paid down of an objective whose phase
+      // lies past where the sector stands after the diff. Work done in order
+      // carries the sector into the phase it pays, so this is only work done
+      // out of it — what a missing attestation, or an earlier phase's
+      // residue, holds back. The legacy and the shared files stand on no
+      // rung to be ahead of, and a scalar has no holdout to pay.
+      const ahead: Array<SectorNudge["ahead"][number]> = [];
+      if (before_ !== null && !shared && name !== LEGACY_SECTOR) {
+        for (const objective of rule.objectives) {
+          if (objective.measure !== null || objective.overShared) continue;
+          if (dimensions.includes(objective)) continue;
+          const { from } = windowOf(rule, objective);
+          if (from === -1 || from <= state.phase) continue;
+          const was = before_.sectors[name]?.[objective.id];
+          const now = state.counts[objective.id] ?? 0;
+          if (was !== undefined && now < was) {
+            ahead.push({
+              objective: objective.id,
+              phase: rule.phases[from]?.id ?? null,
+              before: was,
+              after: now,
+            });
+          }
+        }
+      }
+      const onAhead = onAheadOf(rule, judgedAt);
+      if (ahead.length > 0 && onAhead === "ratchet" && verdict === "ok") verdict = "ahead";
       if (verdict !== "ok" && verdict !== "hotfix") ok = false;
       sectors.push({
         campaign: rule.id,
@@ -559,6 +806,7 @@ export const nudgeOf = (
         onTouch,
         ask,
         verdict,
+        held: heldBy,
         residue: { before, after },
         direction,
         toward,
@@ -572,6 +820,12 @@ export const nudgeOf = (
         added: added.sort(),
         removed: removed.sort(),
         conceded: conceded.sort(),
+        ahead,
+        onAhead,
+        sentBack:
+          sentBack === null
+            ? null
+            : { from: sentBack.from, to: sentBack.to, revoked: sentBack.revoked },
         entered,
         measures,
         belongsInSector: name === LEGACY_SECTOR ? belongs.sort() : [],
@@ -658,7 +912,10 @@ export const renderNudge = (nudge: Nudge, now: number): ReadonlyArray<string> =>
       !one.phase.attested &&
       one.verdict === "ok" &&
       one.prerequisites.every((prerequisite) => prerequisite.count === 0) &&
-      one.belongsInSector.length === 0;
+      one.belongsInSector.length === 0 &&
+      one.ahead.length === 0 &&
+      one.conceded.length === 0 &&
+      one.sentBack === null;
     if (quiet) {
       say(`  ${one.sector} at ${at} · nothing in your files, diff neutral`);
       continue;
@@ -755,7 +1012,17 @@ export const renderNudge = (nudge: Nudge, now: number): ReadonlyArray<string> =>
       }
     }
     if (one.conceded.length > 0) {
-      say(`    conceded on this branch, in the ledger: ${one.conceded.join(" · ")}`);
+      say(
+        `    conceded ${nudge.mode === "ledger" ? "in the working tree" : "on this branch"}, in the ledger: ${one.conceded.join(" · ")}`,
+      );
+    }
+    if (one.sentBack !== null) {
+      say(
+        `    the concession sends ${one.sector} back ${one.sentBack.from ?? "done"} → ${one.sentBack.to ?? "done"}` +
+          (one.sentBack.revoked.length === 0
+            ? ""
+            : `, and revokes the attestation of ${one.sentBack.revoked.join(", ")}: what was attested no longer holds, so attest it again once it does`),
+      );
     }
     const counted = one.entered.filter((entry) => entry.count > 0);
     if (counted.length > 0) {
@@ -797,8 +1064,19 @@ export const renderNudge = (nudge: Nudge, now: number): ReadonlyArray<string> =>
                 : ""),
       );
     }
+    if (one.ahead.length > 0) {
+      say(
+        `    ahead of plan: ${one.ahead.map((a) => `${a.objective} −${String(a.before - a.after)} belongs to ${a.phase ?? "no phase"}`).join(" · ")}; ` +
+          `${one.sector} is at ${one.phase.id ?? "done"}${one.phase.attested ? " (not yet attested)" : ""} — onAhead: ${one.onAhead}`,
+      );
+    }
     for (const file of one.belongsInSector)
       say(`    ${file} landed in the legacy inside the scope: this belongs in a sector`);
+    if (one.held.length > 0) {
+      say(
+        `    went back at an open phase, held by the phase that named it: ${one.held.map((h) => `${h.objective} (${h.phase ?? "no phase"}, ${h.onTouch})`).join(" · ")}`,
+      );
+    }
     say(
       `    onTouch: ${one.onTouch}${moved ? ` (of ${one.judged.id ?? "done"})` : ""} — ${one.verdict}`,
     );

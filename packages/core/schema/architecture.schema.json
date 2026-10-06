@@ -1440,6 +1440,13 @@
                     "paydown"
                   ]
                 },
+                "onAhead": {
+                  "type": "string",
+                  "enum": [
+                    "advise",
+                    "ratchet"
+                  ]
+                },
                 "phases": {
                   "anyOf": [
                     {
@@ -1496,6 +1503,13 @@
                                   "advise",
                                   "ratchet",
                                   "paydown"
+                                ]
+                              },
+                              "onAhead": {
+                                "type": "string",
+                                "enum": [
+                                  "advise",
+                                  "ratchet"
                                 ]
                               },
                               "grows": {

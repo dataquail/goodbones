@@ -18,6 +18,7 @@ import {
   planDiffOf,
   planOf,
   planPathOf,
+  positionOf,
   reachedRecord,
   rebaselinedSector,
   reconcileSector,
@@ -28,7 +29,7 @@ import {
   serializePlanRecord,
   serializeSectorRecord,
 } from "../core/ledger.js";
-import { isDefinedPhase, ledgeredFor } from "../core/phases.js";
+import { isBehind, isDefinedPhase, ledgeredFor } from "../core/phases.js";
 import { isShared, LEGACY_SECTOR } from "../core/sectors.js";
 import type { PhaseRule } from "../domain/config.js";
 import { campaignsOf } from "../load/extension.js";
@@ -94,6 +95,8 @@ const clearMeasure = (
     const value = state.values[objective.id] ?? Number.NaN;
     const own = ledger.sectors[name];
     if (!state.inWindow.some((one) => one.id === objective.id)) {
+      // Behind the window, the record is held for the sector's return.
+      if (isBehind(rule, objective, state.phase, state.position)) continue;
       const next = clearedMeasure(ledger, name, value, objective.tolerance, policy.now, "outside");
       if (next !== ledger) closed += 1;
       ledger = next;
@@ -219,6 +222,10 @@ export const clear = (
       const inWindow = state.inWindow.some((one) => one.id === objective.id);
       const entries = entriesOf(counted, objective.id, name);
       if (!inWindow) {
+        // Behind the window — a regression sent the sector below the phase
+        // naming it — the holdouts are work still owed: held, not closed,
+        // so its initial, what it cleared and what was conceded survive.
+        if (isBehind(rule, objective, state.phase, state.position)) continue;
         ledger = clearedSector(ledger, name, entries, objective.unit, policy.now, "outside");
         continue;
       }
@@ -312,8 +319,14 @@ export const sectorMovesOf = (
   for (const [name, state] of evaluation.sectors) {
     // A sector no `clear` has placed has not moved: it is placed.
     if (name === LEGACY_SECTOR || isShared(rule, name)) continue;
-    if (recordOf(policy, rule, name) === undefined) continue;
-    const from = ledgerPhaseOf(policy, rule, name);
+    const record = recordOf(policy, rule, name);
+    if (record === undefined) continue;
+    // Where the ledgers place it — or, when that is where the tree has it
+    // already (an attestation since the last `clear` moved it there), the
+    // furthest phase the record says it reached, which this `clear` advances.
+    const placed = ledgerPhaseOf(policy, rule, name);
+    const { reached } = positionOf(rule, record);
+    const from = placed === state.phase && reached >= 0 ? Math.min(reached, placed) : placed;
     if (from === state.phase) continue;
     moves.push({
       campaign: rule.id,

@@ -67,10 +67,15 @@ architecture objectives concede <campaign>[/<objective>] --reason "<why>"
 **`clear`** reconciles the ledger with the code, never adding a holdout:
 
 - Holdouts that no longer fire are removed; `cleared` and `lastCleared` move.
-- A `match` holdout whose hash changed in the same declaration is rewritten in place.
+- A `match` holdout whose hash changed in the same declaration is rewritten in place, and so is
+  one whose declaration was renamed: the same file and the same text under another anchor is the
+  same holdout. `check` and the nudge pair them the same way, so a rename is neither cleared nor new.
 - A sector entering a window gets its `initial`. This writes the first ledger; `check` fails until
   it exists.
-- A sector leaving a window, or gone, has its remaining holdouts `closed`.
+- A sector leaving a window, or gone, has its remaining holdouts `closed`. A sector that falls
+  _behind_ a window it had entered (a regression sends it below the phase that lists the objective)
+  has not left it: its entries are held as they are, with their `initial`, `cleared` and
+  concessions, and `check` does not call them stale.
 - After a [phase concession](/goodbones/campaigns/manifest/phases/#changing-a-defined-phase),
   sectors are re-baselined with `{ from, to }`.
 - It also writes each sector's record and the plan, and says where each sector went:
@@ -160,8 +165,8 @@ Don't edit it by hand.
 | ---------- | --------------------------------------------------------------------------------------- |
 | `reached`  | the furthest phase the sector has been at; only advances. A passed window never reopens |
 | `since`    | when `reached` last advanced                                                            |
-| `attested` | entries from `campaigns attest`                                                         |
-| `notes`    | entries from `campaigns note`; the last 20 kept, each at most 500 characters            |
+| `attested` | entries from `campaigns attest`; one a concession revoked carries `revoked`             |
+| `notes`    | entries from `campaigns note`; at most 20, each at most 500 characters                  |
 
 ## The plan
 

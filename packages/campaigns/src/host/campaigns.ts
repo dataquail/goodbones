@@ -25,27 +25,20 @@ import {
 } from "@goodbones/core";
 import * as Result from "effect/Result";
 
-import { type CampaignEvaluation, evaluateCampaign, hitsInWindow } from "../core/campaign-state.js";
+import { type CampaignEvaluation, evaluateCampaign } from "../core/campaign-state.js";
 import {
   type CampaignInput,
   type CompiledCampaign,
-  type CompiledObjective,
   detectorOf,
   measureDetectorsOf,
   needsSyntax,
 } from "../core/campaigns.js";
 import {
   attestedRecord,
-  concededMeasure,
-  concededSector,
   EMPTY_SECTOR_RECORD,
   ledgerPathOf,
-  measureStandingOf,
   notedRecord,
-  reconcileSector,
   sectorRecordPathOf,
-  serializeLedger,
-  serializeMeasureLedger,
   serializeSectorRecord,
 } from "../core/ledger.js";
 import { type Sector } from "../core/sectors.js";
@@ -53,15 +46,7 @@ import type { PhaseRule } from "../domain/config.js";
 import { campaignsOf, ledgerKeyOf } from "../load/extension.js";
 import { lowerEndState } from "../manifest/lower.js";
 import { type Commit, commitsTouching, gitEnv, readDiff, textAt } from "./diff.js";
-import {
-  count,
-  entriesOf,
-  ledgerOf,
-  measureLedgerOf,
-  phaseIdOf,
-  recordOf,
-  writeJson,
-} from "./ledgers.js";
+import { count, phaseIdOf, recordOf, writeJson } from "./ledgers.js";
 import { commandValues } from "./measure-command.js";
 
 // The campaigns family, as the CLI runs it: every campaign evaluated over
@@ -296,130 +281,6 @@ export const authorOf = (given: string | undefined): string | null => {
   return fromEnvironment === undefined || fromEnvironment === "" ? null : fromEnvironment;
 };
 
-export type ConcedeOutcome = {
-  readonly objective: string;
-  readonly conceded: ReadonlyArray<{ sector: string; entry: string }>;
-  readonly left: ReadonlyArray<{ sector: string; entry: string }>;
-};
-
-// `concede`: the unrecorded hits join the ledger, each sector's with a
-// concession naming the reason and the author. `chosen` narrows to some.
-export const concede = (
-  policy: LoadedPolicy,
-  evaluation: CampaignEvaluation,
-  objectiveId: string,
-  chosen: ReadonlyArray<string> | null,
-  sector: string | null,
-  record: { at: number; by: string; reason: string },
-): Result.Result<ConcedeOutcome, string> => {
-  const { rule } = evaluation;
-  const objective = rule.objectives.find((one) => one.id === objectiveId);
-  if (objective === undefined)
-    return Result.fail(`no objective of ${rule.id} is named "${objectiveId}"`);
-  if (objective.measure !== null) {
-    if (chosen !== null) {
-      return Result.fail(
-        `${rule.id}/${objectiveId} is a scalar objective: it has no holdouts to choose among. Narrow with --sector.`,
-      );
-    }
-    return concedeMeasure(policy, evaluation, objective, sector, record);
-  }
-  let ledger = ledgerOf(policy, rule, objective);
-  if (ledger === undefined) {
-    return Result.fail(
-      `objective ${rule.id}/${objectiveId} has no ledger yet; run \`objectives clear ${rule.id}\` first.`,
-    );
-  }
-  const counted = hitsInWindow(evaluation);
-  const unrecorded: Array<{ sector: string; entry: string }> = [];
-  for (const [name, state] of evaluation.sectors) {
-    if (!state.inWindow.some((one) => one.id === objective.id)) continue;
-    if (sector !== null && name !== sector) continue;
-    const entries = entriesOf(counted, objective.id, name);
-    for (const entry of reconcileSector(ledger, name, entries, objective.unit).unrecorded) {
-      unrecorded.push({ sector: name, entry });
-    }
-  }
-  const wanted =
-    chosen === null
-      ? unrecorded
-      : unrecorded.filter(
-          (one) => chosen.includes(one.entry) || chosen.includes(`${one.sector}:${one.entry}`),
-        );
-  if (chosen !== null) {
-    const unknown = chosen.filter(
-      (one) => !unrecorded.some((two) => two.entry === one || `${two.sector}:${two.entry}` === one),
-    );
-    if (unknown.length > 0) {
-      return Result.fail(
-        `these are not unrecorded hits of ${rule.id}/${objectiveId}: ${unknown.join(", ")}`,
-      );
-    }
-  }
-  const bySector = new Map<string, Array<string>>();
-  for (const one of wanted)
-    bySector.set(one.sector, [...(bySector.get(one.sector) ?? []), one.entry]);
-  for (const [name, entries] of bySector) ledger = concededSector(ledger, name, entries, record);
-  if (wanted.length > 0) {
-    writeJson(
-      policy.repoRoot,
-      ledgerPathOf(campaignsOf(policy).ledgerDir, rule.id, objective.id),
-      serializeLedger(ledger),
-    );
-  }
-  return Result.succeed({
-    objective: objectiveId,
-    conceded: wanted,
-    left: unrecorded.filter((one) => !wanted.includes(one)),
-  });
-};
-
-// `concede` for a scalar objective: each sector in window whose value is
-// worse than its record past the tolerance is held to its value from now,
-// with a concession naming the reason and the author. A sector the ledger
-// has not recorded is `clear`'s to enter first.
-export const concedeMeasure = (
-  policy: LoadedPolicy,
-  evaluation: CampaignEvaluation,
-  objective: CompiledObjective,
-  sector: string | null,
-  record: { at: number; by: string; reason: string },
-): Result.Result<ConcedeOutcome, string> => {
-  const { rule } = evaluation;
-  let ledger = measureLedgerOf(policy, rule, objective);
-  if (ledger === undefined) {
-    return Result.fail(
-      `objective ${rule.id}/${objective.id} has no ledger yet; run \`objectives clear ${rule.id}\` first.`,
-    );
-  }
-  const conceded: Array<{ sector: string; entry: string }> = [];
-  const left: Array<{ sector: string; entry: string }> = [];
-  for (const [name, state] of evaluation.sectors) {
-    if (!state.inWindow.some((one) => one.id === objective.id)) continue;
-    const value = state.values[objective.id] ?? Number.NaN;
-    const standing = Number.isNaN(value)
-      ? "unmeasured"
-      : measureStandingOf(ledger, name, value, objective.tolerance);
-    if (standing !== "breached") continue;
-    const from = ledger.sectors[name]?.recorded ?? value;
-    const entry = `${String(from)} → ${String(value)}`;
-    if (sector !== null && name !== sector) {
-      left.push({ sector: name, entry });
-      continue;
-    }
-    ledger = concededMeasure(ledger, name, value, record);
-    conceded.push({ sector: name, entry });
-  }
-  if (conceded.length > 0) {
-    writeJson(
-      policy.repoRoot,
-      ledgerPathOf(campaignsOf(policy).ledgerDir, rule.id, objective.id),
-      serializeMeasureLedger(ledger),
-    );
-  }
-  return Result.succeed({ objective: objective.id, conceded, left });
-};
-
 // `attest`: a step no detector sees is recorded done for a sector — with a
 // reason and evidence — and only while the sector stands at that phase, so
 // it cannot be recorded ahead and passed through on arrival.
@@ -482,12 +343,10 @@ export const note = (
     by,
     at: policy.now,
   });
-  writeJson(
-    policy.repoRoot,
-    sectorRecordPathOf(campaignsOf(policy).ledgerDir, rule.id, sector),
-    serializeSectorRecord(after),
-  );
-  return Result.succeed(sectorRecordPathOf(campaignsOf(policy).ledgerDir, rule.id, sector));
+  if (Result.isFailure(after)) return Result.fail(after.failure);
+  const at = sectorRecordPathOf(campaignsOf(policy).ledgerDir, rule.id, sector);
+  writeJson(policy.repoRoot, at, serializeSectorRecord(after.success));
+  return Result.succeed(at);
 };
 
 // ---------------------------------------------------------------------------

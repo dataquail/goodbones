@@ -88,19 +88,26 @@ no other; `plan.json` is version 2, a version 1 plan is compared with the old po
 a phase moved past another is a change (`planDiffOf`). A phase's `grows` names scalars it is expected
 to raise: for a sector the ledgers place there, `check` reports a rise as stale and `clear` records
 it with a concession naming the phase — `onTouch` governs the nudge only. The ledger only shrinks on its own: `objectives clear` reconciles (stale leave,
-drift rewritten, entering sectors recorded with their initial, passed windows closed, a receipted
-phase change re-baselined), `objectives concede --reason` is the one way a holdout is added, and
+drift rewritten — a renamed declaration's match pairs by file and hash — entering sectors recorded
+with their initial, passed windows closed, entries _behind_ a window a regression sent the sector
+below held, never closed, a receipted phase change re-baselined), `objectives concede --reason` is
+the one way a holdout is added (a concession that sends a sector back below an attested phase
+revokes that attestation — `host/concede.ts`), and
 `check` verifies per sector `holdouts.length === initial + Σ delta − cleared − closed`; a defined
 phase changed without a `concessions` entry fails `check`. **The nudge**, `campaigns status
 --changed [--base <ref>] [--json] [--hotfix]` (`host/nudge.ts`, `host/diff.ts`), is the
 family's deliverable: per touched sector, the phase and what would move it on, `ask`/`verdict`
-enumerated, non-zero under `ratchet`/`paydown`. A diff is judged by the phase the sector stood at
-before it — the base tree's with `--base`, else the one the ledgers place it at
-(`host/ledger-phase.ts`) — so entering a later window is "now counted", never growth, and a
-concession in the head's ledger is a receipt in both modes. A campaign's progress is its sectors'
+enumerated, non-zero under `ratchet`/`paydown`, and under `onAhead: ratchet` for work paid ahead
+of the plan (an objective whose phase lies past where the sector stands after the diff, read
+against the base tree or HEAD's evaluated tree). A diff is judged by the phase the sector stood at
+before it — the base tree's with `--base`, else the one the ledgers place it at, never below
+HEAD's ledgers' (`host/ledger-phase.ts`; an objective with no ledger entry for the sector is met
+only up to its `reached`) — so entering a later window is "now counted", never growth, and a
+concession in the head's ledger is a receipt in both modes. At an open judged phase, what went
+back is held by the `onTouch` of the phase that named it. A campaign's progress is its sectors'
 positions on the ladder (`ladderPositionOf`), not cleared-over-ledgered, which fell at every phase
-entry. The host glue is one module per verb (`clear`, `report`, `status`, `nudge`, `explain`, over
-`ledgers.ts`); `host/campaigns.ts` is held to its line count by `host-campaigns-shrinks`, so a new
+entry. The host glue is one module per verb (`clear`, `concede`, `report`, `status`, `sector`, `nudge`,
+`explain`, over `ledgers.ts`); `host/campaigns.ts` is held to its line count by `host-campaigns-shrinks`, so a new
 verb is a new module. The plugin reads membership off the perimeter and
 the phase off the ledgers (a sector no `clear` has placed stands at the first phase) and parses
 `sourceCode.text` with the same ast-grep matcher the CLI uses — the only family the plugin parses

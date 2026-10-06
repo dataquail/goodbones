@@ -113,6 +113,8 @@ then `file` holdouts. The last line is `ok` or `not ok`.
 
 "Before" is the ledger as of the last `objectives clear`; "after" is your working tree. A holdout
 you fixed but haven't cleared counts as progress, and one the ledger already carries is not growth.
+A file the diff deletes touches the sector it stood in (the one with the deepest root above it),
+so the diff that finishes a sector by deleting its files is shown and counted like any other.
 
 In CI, use `--base <ref>`: the base commit is checked out and evaluated, including rerunning
 `report` tools. Results are cached per commit under `node_modules/.cache/goodbones/`. A scalar
@@ -121,14 +123,25 @@ then prints the base tree's value with the ledger's record beside it
 line says so (`recorded 400 → now 409`).
 
 **A diff is judged by the phase the sector stood at before it.** That is the base tree's phase
-with `--base`, and the phase the ledgers place the sector at otherwise. Only the objectives in
+with `--base`, and the phase the ledgers place the sector at otherwise (an objective the sector has
+no ledger entry for counts as met only up to the phase it has `reached`). Only the objectives in
 that phase's window are scored, and that phase's `onTouch` is what applies. So the diff that
 finishes a phase is judged by the phase it finished, not by the next one, and a phase whose
 `onTouch` is `advise` covers its own last change.
 
+**An open phase is no gap in the ratchet.** The windows still open at an open phase are earlier
+phases' objectives, and each count that got worse there is held by the phase that lists the
+objective: under its `ratchet` or `paydown` the verdict is `back`, though `ask` stays `note`. The
+nudge says which held it (`went back at an open phase, held by the phase that named it: no-models
+(moved, ratchet)`), and `held[]` in the JSON lists them.
+
 **A concession is a receipt in both modes.** Growth that `objectives concede` recorded on the
-branch is in the head's ledger, with its reason. With `--base` it is printed as conceded rather
-than added, and it does not make the verdict `back`.
+branch is in the head's ledger, with its reason. It is printed as conceded rather than added, and
+it does not make the verdict `back`. With `--base` that is what the branch conceded. Without it,
+what the working tree's ledgers concede that HEAD's do not, since the working tree's ledgers carry
+it already. In that mode the sector is judged by the phase HEAD's ledgers place it at when that is
+further on. A concession that sends the sector back says so, with any attestation it revoked:
+`the concession sends billing back served → mirrored, and revokes the attestation of backfilled`.
 
 ## `ask` and `verdict`
 
@@ -148,6 +161,7 @@ Hooks should read these two fields, not the prose.
 | `hotfix`     | growth let through with `--hotfix`, and recorded              | 0        |
 | `back`       | some objective's count got worse under `ratchet` or `paydown` | non-zero |
 | `no-paydown` | `paydown-required`, and the sector did not shrink             | non-zero |
+| `ahead`      | work done ahead of the plan, under `onAhead: ratchet`         | non-zero |
 
 `direction` is **forward** (nothing worse, something better), **back** (the reverse), **mixed**
 or **neutral**. Counts are compared per objective, never summed. The verdict and the direction are
@@ -170,6 +184,34 @@ A [scalar objective](/goodbones/campaigns/manifest/scalars/) goes back only when
 its tolerance, and `paydown` treats it as `ratchet`. Scalars are listed under `measures`. A rise
 in a phase that [`grows`](/goodbones/campaigns/manifest/phases/#a-phase-that-grows) the scalar
 is not `back`: the line reads `grows in <phase>`, and `measures[].grows` is `true`.
+
+## `onAhead`
+
+A diff can pay down holdouts of a phase the sector has not reached: serving reads before the
+backfill they depend on is attested, say. Nothing counts those holdouts yet, so no other check
+sees it. The nudge compares every objective of a later phase against the tree before the diff
+(the base tree with `--base`, HEAD's evaluated tree otherwise, cached per commit like the base)
+and names what was paid ahead:
+
+```
+    ahead of plan: routes-still-local −1 belongs to served; billing is at backfilled (not yet attested) — onAhead: advise
+```
+
+An objective counts as ahead when its phase lies past where the sector stands **after** the diff.
+Work done in order carries the sector into the phase it pays, so a diff that finishes one phase and
+starts the next is not ahead. What makes work ahead is something earlier still holding the sector
+back: residue in an earlier phase, or an attestation not yet made. The legacy and the shared files
+stand on no rung to be ahead of, and scalars are not compared.
+
+`onAhead` sets what it owes. Set it on the campaign, and override it per phase (the phase the
+sector stood at before the diff):
+
+- **`advise`** (the default): the nudge names it, and the verdict is unchanged.
+- **`ratchet`**: the verdict is `ahead` and the nudge exits non-zero, for a ladder whose order is
+  the point. `--hotfix` does not cover it: there is no growth to concede. To do the work anyway,
+  change the plan.
+
+Like `onTouch`, `onAhead` is not part of what a phase asks, so setting it is no plan change.
 
 ## JSON
 
@@ -248,7 +290,13 @@ is not `back`: the line reads `grows in <phase>`, and `measures[].grows` is `tru
 - `holdouts.total` counts every holdout in window in the sector and `holdouts.touched` those in
   the files the diff touched; `shown` is the nearest of those. `holdouts.sector` lists holdouts
   of the sector itself, which have no file.
-- `conceded`: with `--base`, growth against the base tree that the head's ledger carries.
+- `conceded`: with `--base`, growth against the base tree that the head's ledger carries;
+  without it, the concessions the working tree's ledgers hold and HEAD's do not. `sentBack`: where
+  such a concession sent the sector, `{ from, to, revoked }`, or `null`.
+- `held`: at an open judged phase, each dimension that went back, with the phase that named it
+  and that phase's `onTouch`.
+- `ahead`: holdouts the diff paid down of a later phase's objectives, each
+  `{ objective, phase, before, after }`; `onAhead` is what the judged phase owes for them.
 - `measures`: each scalar's `before`, `after` and `recorded` (what the ledger holds the sector
   to), with `back` for a rise past the tolerance that no record covers, `conceded` for one a
   record does, and `grows` for one the judged phase expects.

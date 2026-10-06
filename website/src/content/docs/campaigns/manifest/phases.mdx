@@ -22,6 +22,7 @@ phases:
 | `objectives`  | the objective ids that recognize this phase                                                            |
 | `attested`    | `true` for a step no detector can see; left with `campaigns attest`                                    |
 | `onTouch`     | overrides the campaign's [`onTouch`](/goodbones/campaigns/running/nudge/) for this phase               |
+| `onAhead`     | overrides the campaign's [`onAhead`](/goodbones/campaigns/running/nudge/#onahead) for this phase       |
 | `grows`       | scalar objective ids this phase is expected to raise; see [A phase that grows](#a-phase-that-grows)    |
 | `endState`    | a node tree for the sector; see [The end state](#the-end-state)                                        |
 | `concessions` | `[{ reason, at, by? }]`, required when a defined phase changes; see [below](#changing-a-defined-phase) |
@@ -46,6 +47,9 @@ during `dual-write` and be gone from `cutover`.
 - Leaving one, remaining holdouts become `closed`. That is not progress and doesn't reset the stall
   clock.
 - A window ending at or before the sector's `reached` never reopens for it.
+- Falling behind a window is not leaving it. When a regression sends a sector below the phase that
+  lists an objective, the holdouts it carries there are held for its return: neither stale nor
+  closed.
 
 The loader refuses an `until` naming an unknown phase, or one at or before the listing phase.
 

@@ -32,6 +32,7 @@ import {
   progressOf,
   reachedRecord,
   rebaselinedSector,
+  reconcileEntries,
   reconcileSector,
   recordedOf,
   sectorArithmeticHolds,
@@ -170,6 +171,34 @@ describe("clear", () => {
     expect(reconcileSector(ledger, "orders", ["z.ts#Foo#1"], "match").unrecorded).toEqual([
       "z.ts#Foo#1",
     ]);
+  });
+
+  it("pairs a match whose declaration was renamed by its file and text, not as fixed and new", () => {
+    const ledger = clearedSector(
+      EMPTY_LEDGER("c", "o", T0),
+      "billing",
+      ["a.ts#applied#11111111", "a.ts#applied#11111111~2", "b.ts#applied#22222222"],
+      "match",
+      T0,
+      "inside",
+    );
+    const now = ["a.ts#outcome#11111111", "a.ts#outcome#11111111~2", "b.ts#other#33333333"];
+    const state = reconcileSector(ledger, "billing", now, "match");
+    expect(state.drifted).toEqual([
+      { from: "a.ts#applied#11111111", to: "a.ts#outcome#11111111" },
+      { from: "a.ts#applied#11111111~2", to: "a.ts#outcome#11111111~2" },
+    ]);
+    // Another name and other text in the same file is a fix and a new holdout.
+    expect(state.stale).toEqual(["b.ts#applied#22222222"]);
+    expect(state.unrecorded).toEqual(["b.ts#other#33333333"]);
+    // The same text in another file is not the same holdout.
+    expect(reconcileEntries(["a.ts#f#11111111"], ["c.ts#f#11111111"], "match")).toMatchObject({
+      stale: ["a.ts#f#11111111"],
+      unrecorded: ["c.ts#f#11111111"],
+    });
+    const after = clearedSector(ledger, "billing", now, "match", T0 + DAY, "inside");
+    expect(after.sectors.billing).toMatchObject({ cleared: 1 });
+    expect(after.sectors.billing?.holdouts).toContain("a.ts#outcome#11111111~2");
   });
 
   it("re-baselines a sector under a phase concession, recording from and to", () => {
@@ -339,13 +368,37 @@ describe("the sector record", () => {
 
   it("caps notes, round-trips, and refuses a malformed one", () => {
     let record = EMPTY_SECTOR_RECORD("c", "billing", T0);
-    for (let i = 0; i < 25; i += 1) {
-      record = notedRecord(record, { at: T0 + i, by: "me", phase: "a", text: `note ${String(i)}` });
+    for (let i = 0; i < 20; i += 1) {
+      const next = notedRecord(record, {
+        at: T0 + i,
+        by: "me",
+        phase: "a",
+        text: `note ${String(i)}`,
+      });
+      if (Result.isFailure(next)) throw new Error(next.failure);
+      record = next.success;
     }
-    expect(record.notes.length).toBe(20);
-    expect(record.notes[0]?.text).toBe("note 5");
-    const long = notedRecord(record, { at: T0, by: "me", phase: null, text: "x".repeat(600) });
-    expect(long.notes.at(-1)?.text.length).toBe(500);
+    // A 21st note is refused, and the 20 stand: nothing is dropped to make room.
+    const crowded = notedRecord(record, { at: T0, by: "me", phase: "a", text: "one more" });
+    expect(Result.isFailure(crowded) && crowded.failure).toContain("already holds 20 notes");
+    expect(record.notes[0]?.text).toBe("note 0");
+    // A long note is refused naming the limit and its length, never cut.
+    const long = notedRecord(EMPTY_SECTOR_RECORD("c", "billing", T0), {
+      at: T0,
+      by: "me",
+      phase: null,
+      text: "x".repeat(600),
+    });
+    expect(Result.isFailure(long) && long.failure).toContain(
+      "at most 500 characters, and this one is 600",
+    );
+    const whole = notedRecord(EMPTY_SECTOR_RECORD("c", "billing", T0), {
+      at: T0,
+      by: "me",
+      phase: null,
+      text: "x".repeat(500),
+    });
+    expect(Result.isSuccess(whole) && whole.success.notes[0]?.text.length).toBe(500);
     const decoded = decodeSectorRecord(JSON.parse(serializeSectorRecord(record)));
     expect(Result.isSuccess(decoded) && decoded.success).toEqual(record);
     expect(Result.isFailure(decodeSectorRecord({ version: 1 }))).toBe(true);

@@ -197,8 +197,6 @@ export {
 export {
   attest,
   authorOf,
-  concede,
-  type ConcedeOutcome,
   evaluateCampaigns,
   historyOf,
   type HistoryRow,
@@ -208,6 +206,13 @@ export {
   widenedExtensions,
 } from "./host/campaigns.js";
 export { clear, type ClearOutcome, type SectorMove, sectorMovesOf } from "./host/clear.js";
+export {
+  concede,
+  concedeMeasure,
+  type ConcedeOutcome,
+  sendBack,
+  type SentBack,
+} from "./host/concede.js";
 export {
   type Commit,
   commitOf,
@@ -246,6 +251,7 @@ export {
   type SectorObjectiveReport,
   type SectorReport,
 } from "./host/report.js";
+export { renderSectorView, type SectorView, sectorViewOf } from "./host/sector.js";
 export { renderCampaignRows, snapshotCampaignsOf } from "./host/status.js";
 export {
   loadCampaignFunctions,

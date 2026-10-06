@@ -28,8 +28,10 @@ import {
   renderCampaignRows,
   renderHistory,
   renderNudge,
+  renderSectorView,
   reportSpecsOf,
   sectorMovesOf,
+  sectorViewOf,
   snapshotCampaignsOf,
   valueOfParts,
   widenedExtensions,
@@ -1651,6 +1653,21 @@ export const objectives = (
           },
         );
         if (Result.isFailure(outcome)) return yield* Effect.fail(fail(outcome.failure));
+        // A concession that sends a sector back a phase says so, and names
+        // the attestations it revoked on the way.
+        const sentBack = outcome.success.sentBack.flatMap((one) => [
+          "",
+          `this concession moves ${one.sector} back ${one.from ?? "done"} → ${one.to ?? "done"}.`,
+          ...(one.revoked.length === 0
+            ? []
+            : [
+                `It revokes ${one.sector}'s attestation of ${one.revoked.join(", ")}: what was attested no longer holds. Once it does again, attest it anew:`,
+                ...one.revoked.map(
+                  (phase) =>
+                    `  architecture campaigns attest ${one.sector} ${phase} --reason "…" --campaign ${rule.id}`,
+                ),
+              ]),
+        ]);
         const scalar =
           rule.objectives.find((one) => one.id === objective.success)?.measure !== null;
         if (scalar) {
@@ -1668,6 +1685,7 @@ export const objectives = (
                   "",
                   `${count(outcome.success.left.length, "sector")} left past the record; check still fails on them.`,
                 ]),
+            ...sentBack,
           ]);
         }
         if (outcome.success.conceded.length === 0) {
@@ -1684,6 +1702,7 @@ export const objectives = (
                 "",
                 `${count(outcome.success.left.length, "hit")} left unrecorded; check still fails on them.`,
               ]),
+          ...sentBack,
         ]);
       }
       default:
@@ -1713,16 +1732,63 @@ export const campaigns = (
     const json = argv.includes("--json");
     const retired = parsed.subcommand === undefined ? undefined : RETIRED[parsed.subcommand];
     if (retired !== undefined) return yield* Effect.fail(fail(retired));
+    // A positional that is no path is refused, not walked: most often it is
+    // a sector's name, and `--sector` is what asks about one.
+    for (const root of parsed.roots) {
+      if (existsSync(path.resolve(policy.repoRoot, root))) continue;
+      const named = collectFindings(policy, defaultRoots).campaigns.some((one) =>
+        one.sectors.has(root),
+      );
+      return yield* Effect.fail(
+        fail(
+          `campaigns: ${root} is not a path in the repository, so there is nothing to walk there.` +
+            (named ? ` It names a sector: \`campaigns status --sector ${root}\`.` : ""),
+        ),
+      );
+    }
+    const sector = flagOf(argv, "--sector");
+    if (parsed.subcommand === "status" && sector !== undefined) {
+      const only = argv.includes("--campaign") ? campaignFor(policy, argv) : null;
+      if (only !== null && Result.isFailure(only)) return yield* Effect.fail(fail(only.failure));
+      const views = collectFindings(policy, roots)
+        .campaigns.filter((one) => only === null || one.rule.id === only.success.id)
+        .flatMap((one) => {
+          const view = sectorViewOf(policy, one, sector);
+          return view === null ? [] : [view];
+        });
+      if (views.length === 0) {
+        return yield* Effect.fail(
+          fail(`campaigns: no campaign under ${roots.join(", ")} has a sector named ${sector}.`),
+        );
+      }
+      return yield* report(
+        json
+          ? [JSON.stringify({ version: 1, sectors: views }, null, 2)]
+          : views.flatMap((view, i) => [...(i === 0 ? [] : [""]), ...renderSectorView(view)]),
+      );
+    }
 
-    switch (parsed.subcommand) {
+    // `status` without `--changed` is the overview, in text or JSON: the
+    // nudge alone is scoped to a diff.
+    const subcommand =
+      parsed.subcommand === "status" && !argv.includes("--changed") ? undefined : parsed.subcommand;
+    switch (subcommand) {
       case undefined: {
         const snapshot = snapshotOf(policy, roots, manifestPathOf(policy.repoRoot, configFilename));
+        if (json) {
+          // Each campaign as the conformance snapshot carries it: its
+          // burn-down, its ladder, and a row per sector.
+          return yield* report([
+            JSON.stringify({ version: 1, campaigns: snapshot.campaigns }, null, 2),
+          ]);
+        }
         return yield* report([
           `${count(snapshot.campaigns.length, "campaign")} under ${roots.join(", ")}`,
           "",
           ...renderCampaignRows(snapshot.campaigns),
           "",
           "  architecture campaigns status --changed [--base <ref>] [--json]   # what a diff touches, and what to do",
+          "  architecture campaigns status --sector <sector> [--json]          # where one sector stands, and what holds it",
           "  architecture objectives clear [<campaign>[/<objective>]]        # reconcile the ledgers with the code",
           '  architecture objectives concede <campaign>[/<objective>] --reason "<why>"   # record why a count may rise',
           '  architecture campaigns attest <sector> <phase> --reason "<why>" [--evidence <url>]',
@@ -1731,11 +1797,6 @@ export const campaigns = (
         ]);
       }
       case "status": {
-        if (!argv.includes("--changed")) {
-          return yield* Effect.fail(
-            fail("campaigns status takes --changed: the nudge is scoped to a diff."),
-          );
-        }
         const base = flagOf(argv, "--base") ?? null;
         const diff = yield* Effect.try({
           try: () => readDiff(policy.repoRoot, base),
@@ -1753,6 +1814,19 @@ export const campaigns = (
                 catch: (cause) =>
                   fail(`could not evaluate the base tree at ${base}: ${String(cause)}`),
               });
+        // The ledger mode's "before" for work done ahead of the plan is the
+        // HEAD tree, evaluated once per commit and cached: no ledger counts
+        // the holdouts of a phase a sector has not entered.
+        const headTree =
+          base !== null || !current.some((one) => one.rule.phases.length > 0)
+            ? null
+            : yield* Effect.tryPromise({
+                try: () =>
+                  baseSideAt(policy, "HEAD", roots, (repoRoot) =>
+                    loadPolicyFromFile(repoRoot, configFilename),
+                  ),
+                catch: (cause) => fail(`could not evaluate the tree at HEAD: ${String(cause)}`),
+              });
         const hotfix = flagOf(argv, "--hotfix") ?? null;
         const nudge = nudgeOf(
           policy,
@@ -1761,10 +1835,23 @@ export const campaigns = (
           baseSide,
           hotfix,
           hotfix === null ? null : authorOf(flagOf(argv, "--by")),
+          headTree,
         );
         yield* report(json ? [JSON.stringify(nudge, null, 2)] : renderNudge(nudge, policy.now));
-        if (!nudge.ok)
-          return yield* Effect.fail(fail("the diff sends a sector back under its onTouch"));
+        if (!nudge.ok) {
+          const ahead = nudge.sectors.some((one) => one.verdict === "ahead");
+          const back = nudge.sectors.some(
+            (one) => one.verdict !== "ok" && one.verdict !== "ahead" && one.verdict !== "hotfix",
+          );
+          return yield* Effect.fail(
+            fail(
+              [
+                ...(back ? ["the diff sends a sector back under its onTouch"] : []),
+                ...(ahead ? ["the diff works ahead of a sector's phase under its onAhead"] : []),
+              ].join("; "),
+            ),
+          );
+        }
         return;
       }
       case "attest": {

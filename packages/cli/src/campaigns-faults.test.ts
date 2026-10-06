@@ -182,7 +182,13 @@ type Sector = {
   removed: Array<string>;
   conceded: Array<string>;
   sentBack: { from: string | null; to: string | null; revoked: Array<string> } | null;
-  ahead: Array<{ objective: string; phase: string | null; before: number; after: number }>;
+  ahead: Array<{
+    objective: string;
+    phase: string | null;
+    before: number;
+    after: number;
+    onAhead: string;
+  }>;
   onAhead: string;
   held: Array<{ objective: string; phase: string | null; onTouch: string }>;
 };
@@ -254,6 +260,120 @@ describe.sequential("the faults a strangling plants", () => {
     }
     const failed = await capture(campaigns(await policyAt(), ["src"], ["status", "--changed"]));
     expect(failed.failure).toBe("the diff works ahead of a sector's phase under its onAhead");
+    reset();
+  });
+
+  it("weighs each objective paid ahead by its own onAhead, then the phase's, then the campaign's (R9)", async () => {
+    // `no-models` counts what is left of a sector — a file per model — so
+    // every phase's deletions pay it down ahead of `moved`.
+    const withSettings = (
+      campaign: Record<string, unknown>,
+      objectives: Record<string, Record<string, unknown>> = {},
+      phases: Record<string, Record<string, unknown>> = {},
+    ): void => {
+      const manifest = JSON.parse(MANIFEST) as {
+        campaigns: {
+          strangle: {
+            objectives: Record<string, Record<string, unknown>>;
+            phases: Array<Record<string, unknown> & { id: string }>;
+          } & Record<string, unknown>;
+        };
+      };
+      const strangle = manifest.campaigns.strangle;
+      Object.assign(strangle, campaign);
+      for (const [id, settings] of Object.entries(objectives))
+        Object.assign(strangle.objectives[id] ?? {}, settings);
+      for (const phase of strangle.phases) Object.assign(phase, phases[phase.id] ?? {});
+      write("architecture.json", JSON.stringify(manifest));
+    };
+    const BOTH = [[], ["--base", "HEAD"]];
+    unlinkSync(path.join(root, "src/billing/model.ts"));
+
+    // Unset under a ratcheting campaign: refused, as O1 always was.
+    withSettings({ onAhead: "ratchet" });
+    for (const flags of BOTH) {
+      const { billing, ok, text } = await nudge(...flags);
+      expect(ok, text).toBe(false);
+      expect(billing).toMatchObject({
+        verdict: "ahead",
+        onAhead: "ratchet",
+        ahead: [{ objective: "no-models", phase: "moved", onAhead: "ratchet" }],
+      });
+    }
+
+    // `ignore`: left out of the JSON and the text, and the verdict stands.
+    withSettings({ onAhead: "ratchet" }, { "no-models": { onAhead: "ignore" } });
+    for (const flags of BOTH) {
+      const { billing, exit, ok, text } = await nudge(...flags);
+      expect(Exit.isSuccess(exit), text).toBe(true);
+      expect(ok).toBe(true);
+      expect(billing).toMatchObject({ verdict: "ok", onAhead: "ratchet", ahead: [] });
+      expect(text).not.toContain("ahead of plan");
+    }
+
+    // `advise` under a ratcheting campaign: listed, not refused.
+    withSettings({ onAhead: "ratchet" }, { "no-models": { onAhead: "advise" } });
+    for (const flags of BOTH) {
+      const { billing, ok, text } = await nudge(...flags);
+      expect(ok, text).toBe(true);
+      expect(billing).toMatchObject({
+        verdict: "ok",
+        ahead: [{ objective: "no-models", onAhead: "advise" }],
+      });
+      expect(text).toContain(
+        "ahead of plan: no-models −1 belongs to moved; billing is at backfilled (not yet attested) — onAhead: advise",
+      );
+    }
+
+    // `ratchet` under an advising campaign: refused.
+    withSettings({}, { "no-models": { onAhead: "ratchet" } });
+    for (const flags of BOTH) {
+      const { billing, ok } = await nudge(...flags);
+      expect(ok).toBe(false);
+      expect(billing).toMatchObject({ verdict: "ahead", onAhead: "advise" });
+    }
+
+    // A phase's word at the judged phase still reaches an objective with
+    // none of its own, and an objective's own word beats it.
+    withSettings({}, {}, { backfilled: { onAhead: "ratchet" } });
+    for (const flags of BOTH) {
+      const { billing, ok } = await nudge(...flags);
+      expect(ok).toBe(false);
+      expect(billing).toMatchObject({ verdict: "ahead", onAhead: "ratchet" });
+    }
+    withSettings(
+      {},
+      { "no-models": { onAhead: "ignore" } },
+      { backfilled: { onAhead: "ratchet" } },
+    );
+    for (const flags of BOTH) {
+      const { billing, ok } = await nudge(...flags);
+      expect(ok).toBe(true);
+      expect(billing).toMatchObject({ verdict: "ok", ahead: [] });
+    }
+
+    // Two paid ahead: each weighed by its own word, and the line names each
+    // weight when they differ.
+    write("src/billing/service.ts", SERVICE(['  proxy("a");', '  return localRoute("b");']));
+    withSettings({ onAhead: "ratchet" }, { "no-models": { onAhead: "ignore" } });
+    for (const flags of BOTH) {
+      const { billing, ok } = await nudge(...flags);
+      expect(ok).toBe(false);
+      expect(billing).toMatchObject({
+        verdict: "ahead",
+        ahead: [{ objective: "routes-local", onAhead: "ratchet" }],
+      });
+      expect(billing.ahead).toHaveLength(1);
+    }
+    withSettings({ onAhead: "ratchet" }, { "no-models": { onAhead: "advise" } });
+    for (const flags of BOTH) {
+      const { billing, ok, text } = await nudge(...flags);
+      expect(ok).toBe(false);
+      expect(billing.verdict).toBe("ahead");
+      expect(text).toContain(
+        "ahead of plan: routes-local −1 belongs to served (ratchet) · no-models −1 belongs to moved (advise); billing is at backfilled (not yet attested)\n",
+      );
+    }
     reset();
   });
 

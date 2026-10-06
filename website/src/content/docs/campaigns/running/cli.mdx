@@ -11,13 +11,16 @@ against its ledgers, and `explain <file>` shows a file's sector, phase and each 
 | ---------------------------- | --------------------------------------------------------------------------- |
 | `campaigns`                  | status table: progress, owner, stalls, phases, per-objective burn-down      |
 | `campaigns status --changed` | [the nudge](/goodbones/campaigns/running/nudge/) for the current diff       |
+| `campaigns status --sector`  | where one sector stands, and every holdout that keeps it there              |
 | `campaigns attest`           | record that a sector passed an attested phase                               |
 | `campaigns note`             | leave a remark on a sector for the next person                              |
 | `campaigns history`          | the ledgers' git history, one row per commit                                |
 | `objectives clear`           | reconcile the [ledgers](/goodbones/campaigns/running/ledger/) with the code |
 | `objectives concede`         | record why a count may rise                                                 |
 
-Every command takes optional roots to walk after its arguments. `campaigns clear` and
+Every command takes optional roots to walk after its arguments. A root that is not a path in the
+repository is refused rather than walked; when it names a sector, the refusal points at
+`--sector`. `campaigns clear` and
 `campaigns concede` are aliases for the `objectives` verbs. `campaigns init`, `prune` and `allow`
 were removed and are refused with a pointer to their replacement.
 
@@ -55,7 +58,8 @@ A campaign with phases prints where its sectors stand, and its headline is read 
   which is neither 0% nor 100%.
 - A campaign with no phases has no ladder, and its headline is the same ratio as its objectives'.
 
-`architecture conformance --json` carries the same numbers: `progress` and `steps` on a campaign,
+`campaigns --json`, and `campaigns status --json` without `--changed`, print the campaigns as the
+conformance snapshot carries them, a row per sector included. `architecture conformance --json` carries the same numbers: `progress` and `steps` on a campaign,
 `position` on a sector, and `entered` and `progress` (`null` before any sector enters) on an
 objective.
 
@@ -84,6 +88,31 @@ architecture campaigns attest <sector> <phase> --reason "<why>" [--evidence <url
 `--reason` is required. Accepted only while the sector is at that phase. Run `objectives clear`
 afterwards to move the sector on. See
 [Attested phases](/goodbones/campaigns/manifest/attested/) for the shape.
+
+## `campaigns status --sector`
+
+```bash
+architecture campaigns status --sector <sector> [--campaign <id>] [--json]
+```
+
+Where one sector stands and what holds it there, without a file to `explain` or a ledger to read:
+the phase and its intent, the furthest phase reached, the attestations, what counts toward the
+next phase, every holdout in window by objective (with its location and the objective's `how`),
+each scalar in window with what it is held to, and the sector's notes.
+
+```
+strangle-hapi · billing — phase served (5 of 9), reached served since 2026-10-02
+  intent: The Nest module answers: hapi's routes forward to it operation by operation.
+  attested backfilled: 2026-10-02 by dev@example.com — backfill ran on staging and prod
+  toward the next phase: routes-still-local 3 · legacy-writes 4
+  routes-still-local — 3 holdouts in window: Forward the route to the Nest server.
+    packages/legacy-api/src/application/billing/billing-routes.ts:43  billingRoutes
+    …
+  hapi-lines: 712 (held to 712, tolerance 20)
+```
+
+A sector of that name in several campaigns is shown once per campaign; `--campaign` picks one.
+`--json` prints `{ version: 1, sectors: [...] }`.
 
 ## `campaigns note`
 

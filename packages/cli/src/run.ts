@@ -28,8 +28,10 @@ import {
   renderCampaignRows,
   renderHistory,
   renderNudge,
+  renderSectorView,
   reportSpecsOf,
   sectorMovesOf,
+  sectorViewOf,
   snapshotCampaignsOf,
   valueOfParts,
   widenedExtensions,
@@ -1713,16 +1715,63 @@ export const campaigns = (
     const json = argv.includes("--json");
     const retired = parsed.subcommand === undefined ? undefined : RETIRED[parsed.subcommand];
     if (retired !== undefined) return yield* Effect.fail(fail(retired));
+    // A positional that is no path is refused, not walked: most often it is
+    // a sector's name, and `--sector` is what asks about one.
+    for (const root of parsed.roots) {
+      if (existsSync(path.resolve(policy.repoRoot, root))) continue;
+      const named = collectFindings(policy, defaultRoots).campaigns.some((one) =>
+        one.sectors.has(root),
+      );
+      return yield* Effect.fail(
+        fail(
+          `campaigns: ${root} is not a path in the repository, so there is nothing to walk there.` +
+            (named ? ` It names a sector: \`campaigns status --sector ${root}\`.` : ""),
+        ),
+      );
+    }
+    const sector = flagOf(argv, "--sector");
+    if (parsed.subcommand === "status" && sector !== undefined) {
+      const only = argv.includes("--campaign") ? campaignFor(policy, argv) : null;
+      if (only !== null && Result.isFailure(only)) return yield* Effect.fail(fail(only.failure));
+      const views = collectFindings(policy, roots)
+        .campaigns.filter((one) => only === null || one.rule.id === only.success.id)
+        .flatMap((one) => {
+          const view = sectorViewOf(policy, one, sector);
+          return view === null ? [] : [view];
+        });
+      if (views.length === 0) {
+        return yield* Effect.fail(
+          fail(`campaigns: no campaign under ${roots.join(", ")} has a sector named ${sector}.`),
+        );
+      }
+      return yield* report(
+        json
+          ? [JSON.stringify({ version: 1, sectors: views }, null, 2)]
+          : views.flatMap((view, i) => [...(i === 0 ? [] : [""]), ...renderSectorView(view)]),
+      );
+    }
 
-    switch (parsed.subcommand) {
+    // `status` without `--changed` is the overview, in text or JSON: the
+    // nudge alone is scoped to a diff.
+    const subcommand =
+      parsed.subcommand === "status" && !argv.includes("--changed") ? undefined : parsed.subcommand;
+    switch (subcommand) {
       case undefined: {
         const snapshot = snapshotOf(policy, roots, manifestPathOf(policy.repoRoot, configFilename));
+        if (json) {
+          // Each campaign as the conformance snapshot carries it: its
+          // burn-down, its ladder, and a row per sector.
+          return yield* report([
+            JSON.stringify({ version: 1, campaigns: snapshot.campaigns }, null, 2),
+          ]);
+        }
         return yield* report([
           `${count(snapshot.campaigns.length, "campaign")} under ${roots.join(", ")}`,
           "",
           ...renderCampaignRows(snapshot.campaigns),
           "",
           "  architecture campaigns status --changed [--base <ref>] [--json]   # what a diff touches, and what to do",
+          "  architecture campaigns status --sector <sector> [--json]          # where one sector stands, and what holds it",
           "  architecture objectives clear [<campaign>[/<objective>]]        # reconcile the ledgers with the code",
           '  architecture objectives concede <campaign>[/<objective>] --reason "<why>"   # record why a count may rise',
           '  architecture campaigns attest <sector> <phase> --reason "<why>" [--evidence <url>]',
@@ -1731,11 +1780,6 @@ export const campaigns = (
         ]);
       }
       case "status": {
-        if (!argv.includes("--changed")) {
-          return yield* Effect.fail(
-            fail("campaigns status takes --changed: the nudge is scoped to a diff."),
-          );
-        }
         const base = flagOf(argv, "--base") ?? null;
         const diff = yield* Effect.try({
           try: () => readDiff(policy.repoRoot, base),

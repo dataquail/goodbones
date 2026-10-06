@@ -246,6 +246,7 @@ export {
   type SectorObjectiveReport,
   type SectorReport,
 } from "./host/report.js";
+export { renderSectorView, type SectorView, sectorViewOf } from "./host/sector.js";
 export { renderCampaignRows, snapshotCampaignsOf } from "./host/status.js";
 export {
   loadCampaignFunctions,

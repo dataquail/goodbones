@@ -249,6 +249,62 @@ describe.sequential("the faults a strangling plants", () => {
     expect(readFileSync(recordAt, "utf8")).toBe(before);
   });
 
+  it("answers where one sector stands and what holds it, and refuses a sector given as a path (C4, R6)", async () => {
+    const text = await capture(
+      campaigns(await policyAt(), ["src"], ["status", "--sector", "billing"]),
+    );
+    expect(Exit.isSuccess(text.exit), text.failure).toBe(true);
+    expect(text.output).toContain(
+      "strangle · billing — phase served (4 of 6), reached served since 2026-10-02",
+    );
+    expect(text.output).toContain("  attested backfilled: 2026-10-02 by me — backfill ran");
+    expect(text.output).toContain("  toward the next phase: routes-local 2");
+    expect(text.output).toContain("  routes-local — 2 holdouts in window:");
+    expect(text.output).toContain("    src/billing/service.ts:2  create");
+    expect(text.output).toContain("    src/billing/service.ts:3  create");
+
+    const json = await capture(
+      campaigns(await policyAt(), ["src"], ["status", "--sector", "billing", "--json"]),
+    );
+    expect(JSON.parse(json.output)).toMatchObject({
+      version: 1,
+      sectors: [
+        {
+          campaign: "strangle",
+          sector: "billing",
+          phase: { id: "served", attested: false },
+          reached: "served",
+          // Earlier phases' windows stay open, and count nothing here.
+          objectives: [
+            { id: "no-reach", count: 0, holdouts: [] },
+            { id: "writes-not-mirrored", count: 0, holdouts: [] },
+            { id: "routes-local", count: 2, holdouts: [{ line: 2 }, { line: 3 }] },
+          ],
+        },
+      ],
+    });
+    const unknown = await capture(
+      campaigns(await policyAt(), ["src"], ["status", "--sector", "orders"]),
+    );
+    expect(unknown.failure).toContain("no campaign under src has a sector named orders");
+
+    // The overview in JSON, bare or as `status` without `--changed`: a row
+    // per sector.
+    for (const argv of [["--json"], ["status", "--json"]]) {
+      const overview = await capture(campaigns(await policyAt(), ["src"], argv));
+      expect(Exit.isSuccess(overview.exit), overview.failure).toBe(true);
+      expect(JSON.parse(overview.output)).toMatchObject({
+        version: 1,
+        campaigns: [{ id: "strangle", sectors: [{ name: "billing", phase: "served" }] }],
+      });
+    }
+    // A sector's name where a path belongs is refused, naming `--sector`.
+    const named = await capture(campaigns(await policyAt(), ["src"], ["billing"]));
+    expect(Exit.isFailure(named.exit)).toBe(true);
+    expect(named.failure).toContain("billing is not a path in the repository");
+    expect(named.failure).toContain("`campaigns status --sector billing`");
+  });
+
   it("holds the entries a regression put behind their window, rather than calling them stale (R3)", async () => {
     // One import of a peer: billing falls from served to fenced.
     write(

@@ -1,4 +1,4 @@
-import type { OnTouch, PhaseRule } from "../domain/config.js";
+import type { OnAhead, OnTouch, PhaseRule } from "../domain/config.js";
 import type { CompiledCampaign, CompiledObjective } from "./campaigns.js";
 import { isShared } from "./sectors.js";
 
@@ -169,6 +169,11 @@ export const onTouchOf = (rule: CompiledCampaign, phase: number): OnTouch => {
     at?.onTouch ?? rule.onTouch ?? (at !== undefined && isOpenPhase(at) ? "advise" : "ratchet")
   );
 };
+
+// What a diff owes that pays down a later phase's holdouts in a sector
+// standing at `phase`: the phase's word, else the campaign's, else `advise`.
+export const onAheadOf = (rule: CompiledCampaign, phase: number): OnAhead =>
+  rule.phases[phase]?.onAhead ?? rule.onAhead ?? "advise";
 
 // Whether a phase expects a scalar objective to rise: `grows` on the phase.
 // For a sector standing there a rise is recorded, not refused.

@@ -378,6 +378,7 @@ const PerimeterSpec = Schema.Union([
 ]);
 
 const OnTouchSpec = Schema.Literals(["advise", "ratchet", "paydown"]);
+const OnAheadSpec = Schema.Literals(["advise", "ratchet"]);
 
 // A receipt for a change to a defined phase: a reason, dated.
 const PhaseConcessionSpec = Schema.Struct({
@@ -407,6 +408,9 @@ const Phase = Schema.Struct({
   objectives: Schema.optionalKey(Schema.Array(KebabId)),
   attested: Schema.optionalKey(Schema.Boolean),
   onTouch: Schema.optionalKey(OnTouchSpec),
+  // What a diff that pays down a later phase's holdouts owes, for a sector
+  // standing here. Overrides the campaign's.
+  onAhead: Schema.optionalKey(OnAheadSpec),
   grows: Schema.optionalKey(Schema.Array(KebabId)),
   endState: Schema.optionalKey(EndStateSpec),
   concessions: Schema.optionalKey(Schema.Array(PhaseConcessionSpec)),
@@ -440,6 +444,9 @@ const Campaign = Schema.Struct({
   shared: Schema.optionalKey(Globs),
   perimeter: Schema.optionalKey(PerimeterSpec),
   onTouch: Schema.optionalKey(OnTouchSpec),
+  // What a diff owes when it pays down holdouts of a phase the sector has
+  // not reached: `advise` (the default) or `ratchet`.
+  onAhead: Schema.optionalKey(OnAheadSpec),
   phases: Schema.optionalKey(Schema.Array(Phase)),
   // Sugar for the last phase's end state.
   endState: Schema.optionalKey(EndStateSpec),

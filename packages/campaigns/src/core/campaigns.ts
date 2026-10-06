@@ -32,6 +32,7 @@ import type {
   MeasureDirection,
   MeasureSource,
   ObjectiveRule,
+  OnAhead,
   OnTouch,
   PerimeterRule,
   PhaseRule,
@@ -231,6 +232,7 @@ export type CompiledCampaign = {
   readonly shared: ReadonlyArray<RegExp> | null;
   readonly perimeter: CompiledPerimeter | null;
   readonly onTouch: OnTouch | null;
+  readonly onAhead: OnAhead | null;
   readonly phases: ReadonlyArray<PhaseRule>;
   readonly objectives: ReadonlyArray<CompiledObjective>;
   readonly staleAfter: number | null;
@@ -594,6 +596,7 @@ export const compileCampaignRule = (
     shared: rule.shared === undefined ? null : sharedFiles.success,
     perimeter,
     onTouch: rule.onTouch ?? null,
+    onAhead: rule.onAhead ?? null,
     phases: rule.phases,
     objectives,
     staleAfter: rule.staleAfter ?? null,

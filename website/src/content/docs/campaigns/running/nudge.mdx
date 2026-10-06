@@ -161,6 +161,7 @@ Hooks should read these two fields, not the prose.
 | `hotfix`     | growth let through with `--hotfix`, and recorded              | 0        |
 | `back`       | some objective's count got worse under `ratchet` or `paydown` | non-zero |
 | `no-paydown` | `paydown-required`, and the sector did not shrink             | non-zero |
+| `ahead`      | work done ahead of the plan, under `onAhead: ratchet`         | non-zero |
 
 `direction` is **forward** (nothing worse, something better), **back** (the reverse), **mixed**
 or **neutral**. Counts are compared per objective, never summed. The verdict and the direction are
@@ -183,6 +184,34 @@ A [scalar objective](/goodbones/campaigns/manifest/scalars/) goes back only when
 its tolerance, and `paydown` treats it as `ratchet`. Scalars are listed under `measures`. A rise
 in a phase that [`grows`](/goodbones/campaigns/manifest/phases/#a-phase-that-grows) the scalar
 is not `back`: the line reads `grows in <phase>`, and `measures[].grows` is `true`.
+
+## `onAhead`
+
+A diff can pay down holdouts of a phase the sector has not reached: serving reads before the
+backfill they depend on is attested, say. Nothing counts those holdouts yet, so no other check
+sees it. The nudge compares every objective of a later phase against the tree before the diff
+(the base tree with `--base`, HEAD's evaluated tree otherwise, cached per commit like the base)
+and names what was paid ahead:
+
+```
+    ahead of plan: routes-still-local −1 belongs to served; billing is at backfilled (not yet attested) — onAhead: advise
+```
+
+An objective counts as ahead when its phase lies past where the sector stands **after** the diff.
+Work done in order carries the sector into the phase it pays, so a diff that finishes one phase and
+starts the next is not ahead. What makes work ahead is something earlier still holding the sector
+back: residue in an earlier phase, or an attestation not yet made. The legacy and the shared files
+stand on no rung to be ahead of, and scalars are not compared.
+
+`onAhead` sets what it owes. Set it on the campaign, and override it per phase (the phase the
+sector stood at before the diff):
+
+- **`advise`** (the default): the nudge names it, and the verdict is unchanged.
+- **`ratchet`**: the verdict is `ahead` and the nudge exits non-zero, for a ladder whose order is
+  the point. `--hotfix` does not cover it: there is no growth to concede. To do the work anyway,
+  change the plan.
+
+Like `onTouch`, `onAhead` is not part of what a phase asks, so setting it is no plan change.
 
 ## JSON
 
@@ -261,7 +290,13 @@ is not `back`: the line reads `grows in <phase>`, and `measures[].grows` is `tru
 - `holdouts.total` counts every holdout in window in the sector and `holdouts.touched` those in
   the files the diff touched; `shown` is the nearest of those. `holdouts.sector` lists holdouts
   of the sector itself, which have no file.
-- `conceded`: with `--base`, growth against the base tree that the head's ledger carries.
+- `conceded`: with `--base`, growth against the base tree that the head's ledger carries;
+  without it, the concessions the working tree's ledgers hold and HEAD's do not. `sentBack`: where
+  such a concession sent the sector, `{ from, to, revoked }`, or `null`.
+- `held`: at an open judged phase, each dimension that went back, with the phase that named it
+  and that phase's `onTouch`.
+- `ahead`: holdouts the diff paid down of a later phase's objectives, each
+  `{ objective, phase, before, after }`; `onAhead` is what the judged phase owes for them.
 - `measures`: each scalar's `before`, `after` and `recorded` (what the ledger holds the sector
   to), with `back` for a rise past the tolerance that no record covers, `conceded` for one a
   record does, and `grows` for one the judged phase expects.

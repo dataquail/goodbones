@@ -1814,6 +1814,19 @@ export const campaigns = (
                 catch: (cause) =>
                   fail(`could not evaluate the base tree at ${base}: ${String(cause)}`),
               });
+        // The ledger mode's "before" for work done ahead of the plan is the
+        // HEAD tree, evaluated once per commit and cached: no ledger counts
+        // the holdouts of a phase a sector has not entered.
+        const headTree =
+          base !== null || !current.some((one) => one.rule.phases.length > 0)
+            ? null
+            : yield* Effect.tryPromise({
+                try: () =>
+                  baseSideAt(policy, "HEAD", roots, (repoRoot) =>
+                    loadPolicyFromFile(repoRoot, configFilename),
+                  ),
+                catch: (cause) => fail(`could not evaluate the tree at HEAD: ${String(cause)}`),
+              });
         const hotfix = flagOf(argv, "--hotfix") ?? null;
         const nudge = nudgeOf(
           policy,
@@ -1822,10 +1835,23 @@ export const campaigns = (
           baseSide,
           hotfix,
           hotfix === null ? null : authorOf(flagOf(argv, "--by")),
+          headTree,
         );
         yield* report(json ? [JSON.stringify(nudge, null, 2)] : renderNudge(nudge, policy.now));
-        if (!nudge.ok)
-          return yield* Effect.fail(fail("the diff sends a sector back under its onTouch"));
+        if (!nudge.ok) {
+          const ahead = nudge.sectors.some((one) => one.verdict === "ahead");
+          const back = nudge.sectors.some(
+            (one) => one.verdict !== "ok" && one.verdict !== "ahead" && one.verdict !== "hotfix",
+          );
+          return yield* Effect.fail(
+            fail(
+              [
+                ...(back ? ["the diff sends a sector back under its onTouch"] : []),
+                ...(ahead ? ["the diff works ahead of a sector's phase under its onAhead"] : []),
+              ].join("; "),
+            ),
+          );
+        }
         return;
       }
       case "attest": {

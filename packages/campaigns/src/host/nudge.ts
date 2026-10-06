@@ -27,6 +27,7 @@ import {
   isOpenPhase,
   ledgeredFor,
   objectivesInWindow,
+  onAheadOf,
   onTouchOf,
   type Residue as ResidueVector,
   sharedWindow,
@@ -39,7 +40,7 @@ import {
   SECTOR_HOLDOUT,
   sectorOfDeleted,
 } from "../core/sectors.js";
-import type { OnTouch } from "../domain/config.js";
+import type { OnAhead, OnTouch } from "../domain/config.js";
 import { campaignsOf } from "../load/extension.js";
 import { evaluateCampaigns, widenedExtensions } from "./campaigns.js";
 import { concedeMeasure, sendBack } from "./concede.js";
@@ -60,7 +61,7 @@ import {
 // The thing the rest of the family exists to serve.
 
 export type Ask = "none" | "note" | "hold" | "paydown-optional" | "paydown-required";
-export type Verdict = "ok" | "back" | "no-paydown" | "hotfix";
+export type Verdict = "ok" | "back" | "no-paydown" | "hotfix" | "ahead";
 
 export type NudgeHoldout = {
   readonly file: string;
@@ -160,6 +161,18 @@ export type SectorNudge = {
     readonly to: string | null;
     readonly revoked: ReadonlyArray<string>;
   } | null;
+  // Holdouts this diff paid down of objectives whose phase lies past the one
+  // the sector stands at after it — work done ahead of the plan — each with
+  // that phase and its count before and after; and what the judged phase
+  // owes for it. Read against the base tree, or HEAD's in the ledger mode;
+  // empty when there is neither.
+  readonly ahead: ReadonlyArray<{
+    readonly objective: string;
+    readonly phase: string | null;
+    readonly before: number;
+    readonly after: number;
+  }>;
+  readonly onAhead: OnAhead;
   // Objectives that came into window because this diff moved the sector on,
   // with what each counts there. Now counted, not grown: they are in no
   // dimension of the verdict.
@@ -316,6 +329,9 @@ export const nudgeOf = (
   base: BaseSide | null,
   hotfix: string | null,
   by: string | null,
+  // The ledger mode's "before" for work done ahead of the plan: the HEAD
+  // tree, evaluated, since no ledger counts what a sector has not entered.
+  headTree: BaseSide | null = null,
 ): Nudge => {
   const touched = [...diff.touched.keys()].sort();
   const sectors: Array<SectorNudge> = [];
@@ -324,6 +340,7 @@ export const nudgeOf = (
   for (const evaluation of evaluations) {
     const { rule } = evaluation;
     const baseEvaluation = base?.find((one) => one.id === rule.id) ?? null;
+    const before_ = baseEvaluation ?? headTree?.find((one) => one.id === rule.id) ?? null;
     // Read from git once, and only when the diff touches a sector of this
     // campaign.
     let headRead: HeadSide | null | undefined;
@@ -739,6 +756,33 @@ export const nudgeOf = (
         if (moved !== undefined) sentBack = moved;
         verdict = "hotfix";
       }
+      // Ahead of the plan: a holdout paid down of an objective whose phase
+      // lies past where the sector stands after the diff. Work done in order
+      // carries the sector into the phase it pays, so this is only work done
+      // out of it — what a missing attestation, or an earlier phase's
+      // residue, holds back. The legacy and the shared files stand on no
+      // rung to be ahead of, and a scalar has no holdout to pay.
+      const ahead: Array<SectorNudge["ahead"][number]> = [];
+      if (before_ !== null && !shared && name !== LEGACY_SECTOR) {
+        for (const objective of rule.objectives) {
+          if (objective.measure !== null || objective.overShared) continue;
+          if (dimensions.includes(objective)) continue;
+          const { from } = windowOf(rule, objective);
+          if (from === -1 || from <= state.phase) continue;
+          const was = before_.sectors[name]?.[objective.id];
+          const now = state.counts[objective.id] ?? 0;
+          if (was !== undefined && now < was) {
+            ahead.push({
+              objective: objective.id,
+              phase: rule.phases[from]?.id ?? null,
+              before: was,
+              after: now,
+            });
+          }
+        }
+      }
+      const onAhead = onAheadOf(rule, judgedAt);
+      if (ahead.length > 0 && onAhead === "ratchet" && verdict === "ok") verdict = "ahead";
       if (verdict !== "ok" && verdict !== "hotfix") ok = false;
       sectors.push({
         campaign: rule.id,
@@ -776,6 +820,8 @@ export const nudgeOf = (
         added: added.sort(),
         removed: removed.sort(),
         conceded: conceded.sort(),
+        ahead,
+        onAhead,
         sentBack:
           sentBack === null
             ? null
@@ -866,7 +912,10 @@ export const renderNudge = (nudge: Nudge, now: number): ReadonlyArray<string> =>
       !one.phase.attested &&
       one.verdict === "ok" &&
       one.prerequisites.every((prerequisite) => prerequisite.count === 0) &&
-      one.belongsInSector.length === 0;
+      one.belongsInSector.length === 0 &&
+      one.ahead.length === 0 &&
+      one.conceded.length === 0 &&
+      one.sentBack === null;
     if (quiet) {
       say(`  ${one.sector} at ${at} · nothing in your files, diff neutral`);
       continue;
@@ -1013,6 +1062,12 @@ export const renderNudge = (nudge: Nudge, now: number): ReadonlyArray<string> =>
                   ? "  measured, not held"
                   : `  grows in ${one.judged.id ?? "this phase"}`
                 : ""),
+      );
+    }
+    if (one.ahead.length > 0) {
+      say(
+        `    ahead of plan: ${one.ahead.map((a) => `${a.objective} −${String(a.before - a.after)} belongs to ${a.phase ?? "no phase"}`).join(" · ")}; ` +
+          `${one.sector} is at ${one.phase.id ?? "done"}${one.phase.attested ? " (not yet attested)" : ""} — onAhead: ${one.onAhead}`,
       );
     }
     for (const file of one.belongsInSector)

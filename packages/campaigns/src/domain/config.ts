@@ -295,6 +295,13 @@ export type PerimeterRule = (typeof PerimeterRule)["Type"];
 export const OnTouch = Schema.Literals(["advise", "ratchet", "paydown"]);
 export type OnTouch = (typeof OnTouch)["Type"];
 
+// What a diff owes when it pays down a later phase's holdouts in a sector
+// that has not reached that phase: `advise` says so; `ratchet` refuses it,
+// for a ladder whose order is the point — a read served before the
+// backfill it needs has been attested.
+export const OnAhead = Schema.Literals(["advise", "ratchet"]);
+export type OnAhead = (typeof OnAhead)["Type"];
+
 // A dated receipt for a change to a defined phase, which authorizes the next
 // `clear` to re-baseline the sectors in that phase's window.
 export const PhaseConcession = Schema.Struct({
@@ -316,6 +323,7 @@ export const PhaseRule = Schema.Struct({
   objectives: Schema.Array(Schema.String),
   attested: Schema.Boolean,
   onTouch: Schema.optionalKey(OnTouch),
+  onAhead: Schema.optionalKey(OnAhead),
   // The scalar objectives the phase is expected to raise: for a sector
   // standing in it, `clear` records a rise and `check` does not refuse one.
   grows: Schema.optionalKey(Schema.Array(Schema.String)),
@@ -348,6 +356,7 @@ export const CampaignRule = Schema.Struct({
   shared: Schema.optionalKey(PatternList),
   perimeter: Schema.optionalKey(PerimeterRule),
   onTouch: Schema.optionalKey(OnTouch),
+  onAhead: Schema.optionalKey(OnAhead),
   phases: Schema.Array(PhaseRule),
   objectives: Schema.Array(ObjectiveRule),
   // Milliseconds without progress after which the campaign is stalled;

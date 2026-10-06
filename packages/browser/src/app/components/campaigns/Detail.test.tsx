@@ -161,6 +161,8 @@ const nudgeOnShared: Nudge = {
       verdict: "ok",
       held: [],
       sentBack: null,
+      ahead: [],
+      onAhead: "advise",
       residue: { before: { "has-pg": 1, lines: 0 }, after: { "has-pg": 1, lines: 0 } },
       direction: "neutral",
       toward: {},

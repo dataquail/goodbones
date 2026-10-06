@@ -182,6 +182,8 @@ type Sector = {
   removed: Array<string>;
   conceded: Array<string>;
   sentBack: { from: string | null; to: string | null; revoked: Array<string> } | null;
+  ahead: Array<{ objective: string; phase: string | null; before: number; after: number }>;
+  onAhead: string;
   held: Array<{ objective: string; phase: string | null; onTouch: string }>;
 };
 
@@ -222,6 +224,39 @@ afterAll(() => {
 });
 
 describe.sequential("the faults a strangling plants", () => {
+  it("names work done ahead of the plan, and refuses it under onAhead: ratchet (O1)", async () => {
+    // A read served before the backfill is attested: a served-phase holdout
+    // paid down while billing waits at backfilled.
+    write("src/billing/service.ts", SERVICE(['  proxy("a");', '  return localRoute("b");']));
+    for (const flags of [[], ["--base", "HEAD"]]) {
+      const { billing, exit, ok, text } = await nudge(...flags);
+      expect(Exit.isSuccess(exit), text).toBe(true);
+      expect(ok).toBe(true);
+      expect(billing).toMatchObject({
+        phase: { id: "backfilled" },
+        verdict: "ok",
+        onAhead: "advise",
+        ahead: [{ objective: "routes-local", phase: "served", before: 2, after: 1 }],
+      });
+      expect(text).toContain(
+        "ahead of plan: routes-local −1 belongs to served; billing is at backfilled (not yet attested) — onAhead: advise",
+      );
+    }
+    const manifest = JSON.parse(MANIFEST) as { campaigns: { strangle: Record<string, unknown> } };
+    manifest.campaigns.strangle.onAhead = "ratchet";
+    write("architecture.json", JSON.stringify(manifest));
+    for (const flags of [[], ["--base", "HEAD"]]) {
+      const { billing, exit, ok, text } = await nudge(...flags);
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(ok).toBe(false);
+      expect(billing).toMatchObject({ verdict: "ahead", onAhead: "ratchet" });
+      expect(text.trimEnd().endsWith("not ok")).toBe(true);
+    }
+    const failed = await capture(campaigns(await policyAt(), ["src"], ["status", "--changed"]));
+    expect(failed.failure).toBe("the diff works ahead of a sector's phase under its onAhead");
+    reset();
+  });
+
   it("reports the clear after an attestation as the move forward it records (C2)", async () => {
     const attested = await capture(
       campaigns(
@@ -448,6 +483,8 @@ describe.sequential("the faults a strangling plants", () => {
         direction: "forward",
         added: [],
         removed: ["no-models: model.ts"],
+        // Work done in order carries the sector into the phase it pays.
+        ahead: [],
       });
       expect(text).toContain("this diff moves it from moved");
       expect(text).toContain("this diff: −no-models: model.ts  forward");

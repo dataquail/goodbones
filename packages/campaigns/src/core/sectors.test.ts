@@ -15,6 +15,7 @@ import {
   rootOf,
   type SectorDiscovery,
   sectorNamed,
+  sectorOfDeleted,
   SHARED_SECTOR,
   withoutExtension,
 } from "./sectors.js";
@@ -280,6 +281,45 @@ describe("the other perimeters", () => {
       { file: "src/a/b/context.ts", sectors: ["a", "b"] },
       { file: "src/a/b/x.ts", sectors: ["a", "b"] },
     ]);
+  });
+});
+
+describe("a file the diff deleted", () => {
+  it("is the sector its perimeter still claims, not merely the one whose folder holds it", () => {
+    const rule = campaign({ perimeter: { kind: "marker", marker: "^.*/context\\.ts$" } });
+    const index = discoverSectors(
+      rule,
+      discovery(
+        [
+          "src/billing/context.ts",
+          "src/controllers/billingController.ts",
+          "src/orders/context.ts",
+          "src/orders/order.ts",
+        ],
+        {
+          readText: (file) =>
+            file === "src/billing/context.ts"
+              ? 'export const sector = { name: "billing", owns: ["src/controllers/billing*"] };'
+              : "",
+        },
+      ),
+    );
+    // Gone from the tree, so no walk saw them; the perimeter still says.
+    expect(sectorOfDeleted(rule, index, "src/controllers/billingRoutes.ts")).toBe("billing");
+    expect(sectorOfDeleted(rule, index, "src/orders/model.ts")).toBe("orders");
+    // `src/controllers` is billing's root, but only its `billing*` files are billing's.
+    expect(sectorOfDeleted(rule, index, "src/controllers/ordersController.ts")).toBe(LEGACY_SECTOR);
+    expect(sectorOfDeleted(rule, index, "lib/outside.ts")).toBeNull();
+  });
+
+  it("is never a sibling's under a file perimeter, and the scope's with no perimeter", () => {
+    const perFile = campaign({ perimeter: { kind: "file" } });
+    const index = discoverSectors(perFile, discovery(["src/a.ts", "src/b.ts"]));
+    expect(sectorOfDeleted(perFile, index, "src/c.ts")).toBe(LEGACY_SECTOR);
+    const none = campaign();
+    expect(sectorOfDeleted(none, discoverSectors(none, discovery(["src/a.ts"])), "src/b.ts")).toBe(
+      IMPLICIT_SECTOR,
+    );
   });
 });
 

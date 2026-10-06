@@ -46,6 +46,10 @@ export type Sector = {
   // For a marker sector: the globs its `owns` lists that no file matches —
   // a folder not written yet, or a typo nothing else would point at.
   readonly unmatchedOwns?: ReadonlyArray<string>;
+  // Whether the perimeter would claim a path for this sector — asked of a
+  // path the tree no longer has, which no walk saw. Absent where the
+  // perimeter says nothing of a path alone.
+  readonly holds?: (file: string) => boolean;
 };
 
 export type SectorIndex = {
@@ -246,6 +250,8 @@ export const discoverSectors = (rule: CompiledCampaign, input: SectorDiscovery):
             roots: [...new Set([...known.roots, ...sector.roots])],
             files: [...new Set([...known.files, ...sector.files])].sort(),
             unmatchedOwns: [...(known.unmatchedOwns ?? []), ...(sector.unmatchedOwns ?? [])],
+            holds: (file: string) =>
+              (known.holds?.(file) ?? false) || (sector.holds?.(file) ?? false),
           },
     );
     for (const file of sector.files) claim(file, sector.name, rootOf(sector, file));
@@ -253,7 +259,14 @@ export const discoverSectors = (rule: CompiledCampaign, input: SectorDiscovery):
 
   const perimeter: CompiledPerimeter | null = rule.perimeter;
   if (perimeter === null) {
-    add({ name: IMPLICIT_SECTOR, roots: [""], files, marker: null, declaration: null });
+    add({
+      name: IMPLICIT_SECTOR,
+      roots: [""],
+      files,
+      marker: null,
+      declaration: null,
+      holds: () => true,
+    });
     return indexOf(rule, files, sharedFiles, sectors, claims);
   }
 
@@ -266,6 +279,7 @@ export const discoverSectors = (rule: CompiledCampaign, input: SectorDiscovery):
           files: [file],
           marker: null,
           declaration: null,
+          holds: (other) => other === file,
         });
       }
       break;
@@ -282,7 +296,15 @@ export const discoverSectors = (rule: CompiledCampaign, input: SectorDiscovery):
         }
       }
       for (const [name, own] of byName) {
-        add({ name, roots: [name], files: own, marker: null, declaration: null });
+        add({
+          name,
+          roots: [name],
+          files: own,
+          marker: null,
+          declaration: null,
+          holds: (file) =>
+            perimeter.glob.some((pattern) => pattern.exec(file)?.[0].replace(/\/$/, "") === name),
+        });
       }
       break;
     }
@@ -303,16 +325,15 @@ export const discoverSectors = (rule: CompiledCampaign, input: SectorDiscovery):
         const roots = [folder, ...owns.map(fixedPrefixOf)].filter(
           (root, at, all) => all.indexOf(root) === at,
         );
-        const own = files.filter(
-          (file) =>
-            (owns.length === 0 && under(folder, file)) ||
-            patterns.some((pattern) => pattern.test(file)) ||
-            file === marker,
-        );
+        const holds = (file: string): boolean =>
+          (owns.length === 0 && under(folder, file)) ||
+          patterns.some((pattern) => pattern.test(file)) ||
+          file === marker;
+        const own = files.filter(holds);
         const unmatchedOwns = owns.filter(
           (_glob, at) => !files.some((file) => patterns[at]?.test(file) ?? false),
         );
-        add({ name, roots, files: own, marker, declaration: null, unmatchedOwns });
+        add({ name, roots, files: own, marker, declaration: null, unmatchedOwns, holds });
       }
       break;
     }
@@ -341,6 +362,7 @@ export const discoverSectors = (rule: CompiledCampaign, input: SectorDiscovery):
           files: own,
           marker: null,
           declaration: null,
+          holds: (file) => under(project.root, file),
         });
       }
       break;
@@ -351,7 +373,9 @@ export const discoverSectors = (rule: CompiledCampaign, input: SectorDiscovery):
 
 // The sector a file the tree no longer has stood in. The walk never saw
 // it, so `sectorOf` cannot say; the sector it sat in still stands, unless
-// the deletion un-birthed it, and its deepest root above the file names it.
+// the deletion un-birthed it, and its perimeter still claims the path —
+// a marker's `owns` globs, not merely the folders they start in. Of two
+// that claim it (nested perimeters), the deepest root names it.
 // A file under no sector's root is the legacy's when the legacy claims it.
 // A `match` perimeter's sectors are declarations, and a deleted file's
 // declarations are gone with it.
@@ -365,6 +389,7 @@ export const sectorOfDeleted = (
   if (rule.perimeter?.kind === "match") return null;
   let best: { name: string; depth: number } | null = null;
   for (const sector of index.sectors.values()) {
+    if (sector.holds !== undefined && !sector.holds(file)) continue;
     for (const root of sector.roots) {
       if (!under(root, file)) continue;
       if (best === null || root.length > best.depth)

@@ -5,6 +5,7 @@ import type { CampaignRule } from "../domain/config.js";
 import { digest } from "../domain/digest.js";
 import { compileCampaignRule, type CompiledCampaign } from "./campaigns.js";
 import {
+  attestedRecord,
   clearedMeasure,
   clearedSector,
   concededMeasure,
@@ -35,6 +36,7 @@ import {
   reconcileEntries,
   reconcileSector,
   recordedOf,
+  revokedRecord,
   sectorArithmeticHolds,
   serializeLedger,
   serializeMeasureLedger,
@@ -364,6 +366,44 @@ describe("the sector record", () => {
     expect(reachedRecord(atB, rule, 0, T0 + 2 * DAY)).toBe(atB);
     expect(reachedRecord(atB, rule, 1, T0 + 2 * DAY)).toBe(atB);
     expect(reachedRecord(atB, rule, 3, T0 + 2 * DAY)).toBe(atB);
+  });
+
+  it("revokes an attestation without deleting it, and positions by the live ones only", () => {
+    const rule = campaign(
+      [
+        { id: "a", objectives: [], attested: true, concessions: [], hash: "a" },
+        { id: "b", objectives: [], attested: true, concessions: [], hash: "b" },
+      ],
+      [],
+    );
+    const attested = attestedRecord(
+      attestedRecord(EMPTY_SECTOR_RECORD("c", "billing", T0), {
+        phase: "a",
+        reason: "ran",
+        at: T0,
+        by: "me",
+      }),
+      { phase: "b", reason: "read", at: T0, by: "me" },
+    );
+    expect([...positionOf(rule, attested).attested].sort()).toEqual(["a", "b"]);
+    const revoked = revokedRecord(attested, ["a"], {
+      at: T0 + DAY,
+      by: "you",
+      reason: "conceded x: temporary",
+    });
+    expect(revoked.attested).toHaveLength(2);
+    expect(revoked.attested[0]?.revoked).toEqual({
+      at: new Date(T0 + DAY).toISOString(),
+      by: "you",
+      reason: "conceded x: temporary",
+    });
+    expect([...positionOf(rule, revoked).attested]).toEqual(["b"]);
+    // An attestation already revoked keeps its first revocation.
+    expect(revokedRecord(revoked, ["a"], { at: T0 + 2 * DAY, by: "x", reason: "y" })).toEqual(
+      revoked,
+    );
+    const decoded = decodeSectorRecord(JSON.parse(serializeSectorRecord(revoked)));
+    expect(Result.isSuccess(decoded) && decoded.success).toEqual(revoked);
   });
 
   it("caps notes, round-trips, and refuses a malformed one", () => {

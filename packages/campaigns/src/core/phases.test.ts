@@ -8,10 +8,12 @@ import {
   derivePhase,
   donePhaseOf,
   inWindow,
+  isBehind,
   isOpenPhase,
   ladderPositionOf,
   ledgeredFor,
   objectivesInWindow,
+  onAheadOf,
   onTouchOf,
   sharedWindow,
   stepsOf,
@@ -223,6 +225,37 @@ describe("onTouch", () => {
     };
     expect(onTouchOf(overridden, 0)).toBe("advise");
     expect(onTouchOf(rule, 6)).toBe("ratchet");
+  });
+});
+
+describe("behind a window, and ahead of the plan", () => {
+  it("is behind a window not shut whose phase lies past the sector's, and never past it", () => {
+    const rule = billing();
+    // Fallen back to domain from cutover: repository's window is ahead of
+    // it, not passed, and holds what was carried there.
+    const fellBack = { reached: 4, attested: new Set<string>() };
+    expect(isBehind(rule, find(rule, "no-raw-queries"), 0, fellBack)).toBe(true);
+    expect(isBehind(rule, find(rule, "no-io"), 0, fellBack)).toBe(false);
+    // has-flag's window closed at cutover, which the sector reached: shut,
+    // so not behind — passed.
+    expect(isBehind(rule, find(rule, "has-flag"), 0, fellBack)).toBe(false);
+    // Named by no phase: in window everywhere, behind nothing.
+    expect(isBehind(rule, find(rule, "legacy-lines"), 0, UNPLACED)).toBe(false);
+  });
+
+  it("owes the phase's onAhead, else the campaign's, else advise", () => {
+    const rule = billing();
+    expect(onAheadOf(rule, 0)).toBe("advise");
+    const strict = { ...rule, onAhead: "ratchet" as const };
+    expect(onAheadOf(strict, 0)).toBe("ratchet");
+    const relaxed = {
+      ...strict,
+      phases: strict.phases.map((one, at) =>
+        at === 3 ? { ...one, onAhead: "advise" as const } : one,
+      ),
+    };
+    expect(onAheadOf(relaxed, 3)).toBe("advise");
+    expect(onAheadOf(relaxed, 2)).toBe("ratchet");
   });
 });
 

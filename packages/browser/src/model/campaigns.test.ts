@@ -247,6 +247,28 @@ describe("campaignViewOf", () => {
     expect(card?.shared).toEqual({ files: 1, holdouts: 1 });
   });
 
+  // Only the nudge weighs work done ahead, but the page loads the same
+  // manifest: an objective's own `onAhead` must not keep it from drawing.
+  it("draws a campaign whose objective sets its own onAhead", () => {
+    const [card] = viewOf({
+      onAhead: "ratchet",
+      phases: [
+        { id: "fenced", intent: "fenced off", attested: true },
+        { id: "port", objectives: ["port-it"] },
+      ],
+      objectives: {
+        "port-it": {
+          holdout: "file",
+          onAhead: "ignore",
+          match: { path: { file: "\\.js$" } },
+          probes: { fires: [{ path: STRAGGLER }], ignores: [{ path: "svc/main.go" }] },
+        },
+      },
+    }).campaigns;
+    expect(card?.phases.map((phase) => phase.id)).toEqual(["fenced", "port"]);
+    expect(card?.objectives[0]).toMatchObject({ id: "port-it", phase: "port" });
+  });
+
   it("carries the nudge through untouched", () => {
     const nudge: Nudge = {
       version: 1,

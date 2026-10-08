@@ -98,9 +98,15 @@ importers:
 
   e2e:
     devDependencies:
+      '@goodbones/ast-grep':
+        specifier: workspace:*
+        version: link:../packages/ast-grep
       '@goodbones/browser':
         specifier: workspace:*
         version: link:../packages/browser
+      '@goodbones/campaigns':
+        specifier: workspace:*
+        version: link:../packages/campaigns
       '@goodbones/cli':
         specifier: workspace:*
         version: link:../packages/cli

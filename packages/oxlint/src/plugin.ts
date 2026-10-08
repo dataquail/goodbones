@@ -1,5 +1,4 @@
-import { makeCampaignsRule } from "./campaigns-rule.js";
-import { discoverSectorIndexes, loadPolicyFromFile } from "./config-loader.js";
+import { loadPolicyFromFile } from "./config-loader.js";
 import { makeExportsRule } from "./exports-rule.js";
 import { makeImportsRule } from "./imports-rule.js";
 import { makeMembersRule } from "./members-rule.js";
@@ -36,9 +35,10 @@ export const rules: {
   members: makeMembersRule(policy),
   structure: makeStructureRule(policy),
   surface: makeSurfaceRule(policy),
-  // The sectors a `marker` or `nx` perimeter births are read once here,
-  // from the markers and the workspace, before any file is linted.
-  campaigns: makeCampaignsRule(policy, discoverSectorIndexes(policy)),
+  // From the campaigns family the plugin was composed with: the rule over
+  // the ledgers when `@goodbones/campaigns` is installed, and one that says
+  // to install it when it is not.
+  campaigns: policy.campaigns.rule(policy),
 };
 
 const plugin: { readonly meta: { readonly name: string }; readonly rules: typeof rules } = {

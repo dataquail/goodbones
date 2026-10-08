@@ -30,7 +30,7 @@ import * as Result from "effect/Result";
 import { RuleTester } from "oxlint/plugins-dev";
 import { describe, expect, it } from "vitest";
 
-import { makeCampaignsRule } from "./campaigns-rule.js";
+import { makeCampaignsRule } from "./campaigns/rule.js";
 
 RuleTester.describe = describe;
 RuleTester.it = it;

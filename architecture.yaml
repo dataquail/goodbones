@@ -85,14 +85,15 @@ exports:
       - makeFactExtractorLive
       - makeReportSourceLive
       - astGrepMatcher
-    # The three hosts' composition roots, and the CLI's campaigns glue, which
-    # the root loads only when the family is installed; the barrels that
+    # The three hosts' composition roots, and the hosts' campaigns glue,
+    # which a root loads only when the family is installed; the barrels that
     # re-export them; and the pack, which assembles its own extractor and
     # resolver.
     except:
       - "@cli/config-loader.ts"
       - "@cli/campaigns/live.ts"
       - "@ox/config-loader.ts"
+      - "@ox/campaigns/live.ts"
       - "@br/server/compose.ts"
       - "@core/index.ts"
       - "@ts/index.ts"
@@ -124,6 +125,7 @@ exports:
     # a dynamic `import()` takes the module whole by construction.
     except:
       - "@cli/config-loader.ts"
+      - "@ox/config-loader.ts"
     probe:
       source: 'import * as imports from "./core/imports.js";'
       symbol: "*"

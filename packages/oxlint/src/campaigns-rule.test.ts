@@ -26,7 +26,7 @@ import * as Result from "effect/Result";
 import { RuleTester } from "oxlint/plugins-dev";
 import { describe, expect, it } from "vitest";
 
-import { makeCampaignsRule } from "./campaigns-rule.js";
+import { makeCampaignsRule } from "./campaigns/rule.js";
 
 // The cases are one lint run in order — the notice lands on the first
 // file, and the count is read after the last — so this file opts out of the

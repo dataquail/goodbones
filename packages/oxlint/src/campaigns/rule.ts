@@ -31,7 +31,7 @@ import {
   type Program,
   type RuleContext,
   toRepoRelative,
-} from "./oxlint-api.js";
+} from "../oxlint-api.js";
 
 // The campaigns family, one file at a time: every hit of an objective in
 // window for the file's sector that its ledger does not carry, reported at

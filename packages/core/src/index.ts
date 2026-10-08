@@ -188,6 +188,7 @@ export {
 } from "./domain/violation.js";
 export { makeFileSystemLive } from "./infrastructure/file-system-live.js";
 export { importFresh } from "./infrastructure/import-fresh.js";
+export { importOptional } from "./infrastructure/import-optional.js";
 export {
   findManifestFile,
   formatManifestYaml,
@@ -233,7 +234,7 @@ export {
   originOf,
   type Substitution,
 } from "./manifest/expand.js";
-export { type ManifestExtension } from "./manifest/extension.js";
+export { type ManifestExtension, type UninstalledExtension } from "./manifest/extension.js";
 export {
   anchored,
   type CaptureIndex,

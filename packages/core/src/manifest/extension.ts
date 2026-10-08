@@ -39,3 +39,15 @@ export type ManifestExtension<Spec = unknown> = {
     describe: (path: ManifestPath, detail: string) => string,
   ): Result.Result<Spec, ReadonlyArray<string>>;
 };
+
+// A family the host knows of but could not load, because the package that
+// owns it is not installed. A manifest that uses one of its keys is refused
+// with the package to install, where it would otherwise read as a misspelling.
+// The host names the keys and the package; the core still learns no word of
+// the family's vocabulary.
+export type UninstalledExtension = {
+  // The top-level keys the family would claim, were it loaded.
+  readonly manifestKeys: ReadonlyArray<string>;
+  // The package that brings it, as the user would install it.
+  readonly install: string;
+};

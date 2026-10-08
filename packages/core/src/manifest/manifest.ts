@@ -10,7 +10,7 @@ import {
   renderManifestPath,
 } from "../domain/manifest-location.js";
 import { expandManifest, originOf, type Substitution } from "./expand.js";
-import type { ManifestExtension } from "./extension.js";
+import type { ManifestExtension, UninstalledExtension } from "./extension.js";
 
 // A manifest is a tree of nodes keyed by path pattern, where everything the
 // architecture says about a part of the tree is written at that part of the tree.
@@ -479,6 +479,10 @@ export type DecodeManifestOptions = {
   // split off before the core decodes what is left and handed to that
   // family's own codec.
   readonly extensions?: ReadonlyArray<ManifestExtension> | undefined;
+  // Families the host could not load because their package is not installed.
+  // A key one of these would claim, and no loaded family does, is refused
+  // with the package to install rather than as an unexpected key.
+  readonly uninstalled?: ReadonlyArray<UninstalledExtension> | undefined;
 };
 
 const fileLabelOf = (configPath: string): string => configPath.split(/[\\/]/).at(-1) ?? configPath;
@@ -574,6 +578,30 @@ export const decodeManifest = (
       claimed.set(key, extension.id);
     }
   }
+  // A key that belongs to a family the host could not load is named with
+  // the package that brings it — every such key, before the core decodes
+  // anything, since the core would only call each one unexpected.
+  const uninstalled = isRecord(value)
+    ? (options.uninstalled ?? []).flatMap(({ install, manifestKeys }) =>
+        manifestKeys
+          .filter((key) => key in value && !claimed.has(key))
+          .map((key) =>
+            describe(
+              [key],
+              `belongs to a family that is not installed. Install \`${install}\` beside this host to use it.`,
+            ),
+          ),
+      )
+    : [];
+  if (uninstalled.length > 0) {
+    return Result.fail(
+      new ConfigInvalid({
+        configPath,
+        detail: `the manifest does not decode:\n${uninstalled.join("\n")}`,
+      }),
+    );
+  }
+
   const core = isRecord(value)
     ? Object.fromEntries(Object.entries(value).filter(([key]) => !claimed.has(key)))
     : value;

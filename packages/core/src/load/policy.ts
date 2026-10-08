@@ -46,6 +46,7 @@ import {
 import type { SourceFacts } from "../domain/facts.js";
 import type { ManifestLocator } from "../domain/manifest-location.js";
 import { type LoweredRules, lowerManifest } from "../manifest/compile.js";
+import type { UninstalledExtension } from "../manifest/extension.js";
 import { decodeManifest, type Manifest } from "../manifest/manifest.js";
 import type { FactExtractor } from "../ports/fact-extractor.js";
 import type { FileSystem } from "../ports/file-system.js";
@@ -119,6 +120,10 @@ export type LoadPolicyInput = {
   // one of these claims is decoded by it; a key none claims is refused as the
   // excess property it is.
   readonly extensions?: ReadonlyArray<PolicyExtension> | undefined;
+  // The families the host knows of but could not load, because their package
+  // is not installed. A key one of these would claim is refused with the
+  // package to install.
+  readonly uninstalled?: ReadonlyArray<UninstalledExtension> | undefined;
   // For tests and for a CI that pins the clock; defaults to `Date.now()`.
   readonly now?: number | undefined;
 };
@@ -240,6 +245,7 @@ export const loadPolicy = (
   const decoded = decodeManifest(configPath, input.manifest, {
     locate: input.locate,
     extensions,
+    uninstalled: input.uninstalled,
   });
   if (Result.isFailure(decoded)) return Result.fail(decoded.failure);
   const config = decoded.success.manifest;

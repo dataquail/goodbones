@@ -144,12 +144,6 @@ importers:
 
   packages/browser:
     dependencies:
-      '@goodbones/ast-grep':
-        specifier: workspace:*
-        version: link:../ast-grep
-      '@goodbones/campaigns':
-        specifier: workspace:*
-        version: link:../campaigns
       '@goodbones/core':
         specifier: workspace:*
         version: link:../core
@@ -163,6 +157,12 @@ importers:
       '@astrojs/react':
         specifier: ^7.0.0
         version: 7.0.0(@types/node@25.9.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(esbuild@0.25.12)(jiti@2.6.1)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(yaml@2.9.0)
+      '@goodbones/ast-grep':
+        specifier: workspace:*
+        version: link:../ast-grep
+      '@goodbones/campaigns':
+        specifier: workspace:*
+        version: link:../campaigns
       '@testing-library/react':
         specifier: ^16.3.3
         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)

@@ -176,6 +176,9 @@ export type CampaignView = {
   readonly version: 1;
   readonly name: string;
   readonly generatedAt: string;
+  // Whether `@goodbones/campaigns` is installed beside the browser. Without
+  // it there are no campaigns to draw, and the page says what to install.
+  readonly installed: boolean;
   readonly ledgerDir: string;
   readonly campaigns: ReadonlyArray<CampaignCard>;
   // `campaigns status --changed` over the working tree, when git answered.
@@ -414,6 +417,7 @@ export const campaignViewOf = (input: CampaignViewInput): CampaignView => {
     version: 1,
     name: input.name,
     generatedAt: new Date(input.now).toISOString(),
+    installed: true,
     ledgerDir: state.ledgerDir,
     campaigns,
     nudge: input.nudge,

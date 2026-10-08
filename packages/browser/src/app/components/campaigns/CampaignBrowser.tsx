@@ -55,6 +55,13 @@ export const CampaignBrowser = ({ onSelect, selection, view }: Props): React.JSX
     view.campaigns.find((one) => one.id === parsed.campaign) ?? view.campaigns[0];
   const [hover, setHover] = useState<Pick | null>(null);
 
+  if (!view.installed) {
+    return (
+      <div className="placeholder">
+        Campaigns need <code>@goodbones/campaigns</code>, which is not installed beside the browser.
+      </div>
+    );
+  }
   if (campaign === undefined) {
     return <div className="placeholder">This policy declares no campaigns.</div>;
   }

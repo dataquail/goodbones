@@ -95,6 +95,7 @@ exports:
       - "@ox/config-loader.ts"
       - "@ox/campaigns/live.ts"
       - "@br/server/compose.ts"
+      - "@br/server/campaigns/live.ts"
       - "@core/index.ts"
       - "@ts/index.ts"
       - "@ag/index.ts"
@@ -126,6 +127,7 @@ exports:
     except:
       - "@cli/config-loader.ts"
       - "@ox/config-loader.ts"
+      - "@br/server/compose.ts"
     probe:
       source: 'import * as imports from "./core/imports.js";'
       symbol: "*"

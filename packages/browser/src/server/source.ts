@@ -1,6 +1,5 @@
-import { gitPathsOf } from "@goodbones/campaigns";
-
 import { collect, type Collected, type CollectOptions } from "./collect.js";
+import { hostCampaigns } from "./compose.js";
 import { watchRepository } from "./watch.js";
 
 // What the handler serves: the two models, computed once and kept until the
@@ -48,36 +47,35 @@ export const makeSource = (options: SourceOptions): Source => {
   };
 
   let stopWatching: (() => void) | null = null;
+  let closed = false;
   if (options.watch === true) {
-    // A commit redraws too: the nudge compares the working tree to `HEAD`.
-    const git = gitPathsOf(options.repoRoot);
-    const also = git === null ? [] : [git.head, git.index];
-    // The extensions and the ledger directory come from the policy, once it
-    // has loaded; until then every change under the roots counts.
-    stopWatching = watchRepository({
-      repoRoot: options.repoRoot,
-      extensions: [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"],
-      ledgerDir: ".architecture-campaigns",
-      also,
-      debounceMs: options.debounceMs,
-      onChange: invalidate,
-    });
-    void current()
-      .then((collected) => {
-        stopWatching?.();
-        stopWatching = watchRepository({
-          repoRoot: options.repoRoot,
-          extensions: [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"],
-          ledgerDir: collected.campaigns.ledgerDir,
-          also,
-          debounceMs: options.debounceMs,
-          onChange: invalidate,
-        });
-      })
-      .catch(() => {
-        // Keep the first watcher: the manifest that failed to load is one of
-        // the files it watches, and its fix is the next change.
+    const watching = (also: ReadonlyArray<string>, ledgerDir: string): void => {
+      if (closed) return;
+      stopWatching?.();
+      stopWatching = watchRepository({
+        repoRoot: options.repoRoot,
+        extensions: [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"],
+        ledgerDir,
+        also,
+        debounceMs: options.debounceMs,
+        onChange: invalidate,
       });
+    };
+    // Until the policy has loaded, every change under the roots counts.
+    watching([], ".architecture-campaigns");
+    void (async () => {
+      // A commit redraws too, when the campaigns family is there to say what
+      // the working tree's nudge against `HEAD` is.
+      const git = (await hostCampaigns()).host.gitPaths(options.repoRoot);
+      const also = git === null ? [] : [git.head, git.index];
+      watching(also, ".architecture-campaigns");
+      // The ledger directory comes from the policy, once it has loaded.
+      const collected = await current();
+      watching(also, collected.campaigns.ledgerDir);
+    })().catch(() => {
+      // Keep the watcher there is: the manifest that failed to load is one of
+      // the files it watches, and its fix is the next change.
+    });
   }
 
   return {
@@ -89,6 +87,7 @@ export const makeSource = (options: SourceOptions): Source => {
     invalidate,
     live: options.watch === true,
     close: () => {
+      closed = true;
       stopWatching?.();
       listeners.clear();
     },

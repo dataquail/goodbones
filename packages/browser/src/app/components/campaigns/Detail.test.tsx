@@ -220,6 +220,7 @@ const show = (nudge: Nudge | null, shown: Parameters<typeof Detail>[0]["shown"])
     version: 1,
     name: "repo",
     generatedAt: "2026-10-01T00:00:00.000Z",
+    installed: true,
     ledgerDir: ".architecture-campaigns",
     campaigns: [campaign],
     nudge,

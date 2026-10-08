@@ -15,16 +15,18 @@ export {
   buildAtlas,
   type EdgeStatus,
 } from "./model/atlas.js";
-export {
-  type CampaignCard,
-  type CampaignView,
-  type CampaignViewInput,
-  campaignViewOf,
-  type HitCard,
-  type ObjectiveCard,
-  type ObjectiveSectorCard,
-  type PhaseCard,
-  type SectorCard,
+// The Campaign Browser's model as types only: building it takes
+// `@goodbones/campaigns`, an optional peer, which the server loads only when
+// it is installed.
+export type {
+  CampaignCard,
+  CampaignView,
+  CampaignViewInput,
+  HitCard,
+  ObjectiveCard,
+  ObjectiveSectorCard,
+  PhaseCard,
+  SectorCard,
 } from "./model/campaigns.js";
 export { collect, type Collected, type CollectOptions, collectWith } from "./server/collect.js";
 export { type LoadedManifest, loadPolicyFromFile } from "./server/compose.js";

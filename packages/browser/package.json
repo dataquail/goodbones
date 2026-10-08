@@ -54,14 +54,26 @@
     "coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@goodbones/ast-grep": "workspace:*",
-    "@goodbones/campaigns": "workspace:*",
     "@goodbones/core": "workspace:*",
     "@goodbones/typescript": "workspace:*",
     "effect": "4.0.0-beta.94"
   },
+  "peerDependencies": {
+    "@goodbones/ast-grep": "workspace:^",
+    "@goodbones/campaigns": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@goodbones/ast-grep": {
+      "optional": true
+    },
+    "@goodbones/campaigns": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@astrojs/react": "^7.0.0",
+    "@goodbones/ast-grep": "workspace:*",
+    "@goodbones/campaigns": "workspace:*",
     "@testing-library/react": "^16.3.3",
     "@types/node": "^25.9.4",
     "@types/react": "^19.2.18",

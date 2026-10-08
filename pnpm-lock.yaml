@@ -212,12 +212,6 @@ importers:
 
   packages/cli:
     dependencies:
-      '@goodbones/ast-grep':
-        specifier: workspace:*
-        version: link:../ast-grep
-      '@goodbones/campaigns':
-        specifier: workspace:*
-        version: link:../campaigns
       '@goodbones/core':
         specifier: workspace:*
         version: link:../core
@@ -228,6 +222,12 @@ importers:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
     devDependencies:
+      '@goodbones/ast-grep':
+        specifier: workspace:*
+        version: link:../ast-grep
+      '@goodbones/campaigns':
+        specifier: workspace:*
+        version: link:../campaigns
       '@types/node':
         specifier: ^25.9.4
         version: 25.9.5

@@ -237,13 +237,13 @@ const settingOf = async (
   const roots =
     flags.roots.length > 0
       ? flags.roots.map(normalizeRoot)
-      : rootsOfRepository(repoRoot, hostLanguages());
+      : rootsOfRepository(repoRoot, await hostLanguages());
   if (roots.length === 0) {
     return Result.fail(
       "no source files found under any top-level folder. Name the folder to describe with --root <dir>.",
     );
   }
-  const loaded = loadPolicyFromManifest(repoRoot, bootstrapManifest(roots, tsconfig));
+  const loaded = await loadPolicyFromManifest(repoRoot, bootstrapManifest(roots, tsconfig));
   if (Result.isFailure(loaded)) return Result.fail(String(loaded.failure));
   return Result.succeed({
     policy: loaded.success,
@@ -449,7 +449,7 @@ export const infer = (
 
     // The proof: what was written loads, every probe passes, and the floors
     // are the numbers it reaches today.
-    const loaded = loadPolicyFromManifest(repoRoot, inferred.manifest);
+    const loaded = yield* Effect.promise(() => loadPolicyFromManifest(repoRoot, inferred.manifest));
     if (Result.isFailure(loaded)) {
       return yield* Effect.fail(
         fail(

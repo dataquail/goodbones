@@ -85,10 +85,13 @@ exports:
       - makeFactExtractorLive
       - makeReportSourceLive
       - astGrepMatcher
-    # The three hosts' composition roots; the barrels that re-export them; and
-    # the pack, which is what assembles its own extractor and resolver.
+    # The three hosts' composition roots, and the CLI's campaigns glue, which
+    # the root loads only when the family is installed; the barrels that
+    # re-export them; and the pack, which assembles its own extractor and
+    # resolver.
     except:
       - "@cli/config-loader.ts"
+      - "@cli/campaigns/live.ts"
       - "@ox/config-loader.ts"
       - "@br/server/compose.ts"
       - "@core/index.ts"
@@ -117,6 +120,10 @@ exports:
     message: "Name what you take from a sibling module. A namespace import or an `export *` takes every export at once, hides which are used, and launders a restricted name past every rule about it."
     module: "~/*/src/**"
     kinds: [namespace]
+    # A composition root loads an optional peer through `importOptional`, and
+    # a dynamic `import()` takes the module whole by construction.
+    except:
+      - "@cli/config-loader.ts"
     probe:
       source: 'import * as imports from "./core/imports.js";'
       symbol: "*"

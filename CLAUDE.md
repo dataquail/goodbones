@@ -31,7 +31,8 @@ all under `packages/`:
   `packages/core/schema/conformance.schema.json`) is built.
 - **`@goodbones/ast-grep`** (`packages/ast-grep`) — the syntax matcher: the core's `SyntaxMatcher`
   port over `@ast-grep/napi`, for the `campaigns` family's `syntax` term. A host composes it into
-  the TypeScript pack (`typescriptLanguage({ syntax: astGrepMatcher() })`); the pack never names it.
+  the TypeScript pack (`typescriptLanguage({ syntax: astGrepMatcher() })`) when it is installed;
+  the pack never names it.
 - **`@goodbones/oxlint`** (`packages/oxlint`) — the plugin: six oxlint rules over the same manifest.
 - **`@goodbones/browser`** (`packages/browser`) — the third host: the Architecture Browser (the
   tree with every edge drawn beside it and `architecture.yaml` rendered line for line, each file and
@@ -41,12 +42,13 @@ all under `packages/`:
   served by the `goodbones-browser` bin from whichever repository it is run in, with a feed
   (`__goodbones/events`, server-sent) that redraws the page when a source file, a manifest or a
   ledger changes; `goodbones-browser build --out <dir>` writes a static snapshot. Its runtime
-  dependencies are the four packages above and nothing else — React and Astro are bundled or
-  dev-only — and it is laid out as `model/` (the two models, pure), `server/` (the composition
+  dependencies are the core and the pack, with campaigns and the matcher as optional peers, and
+  nothing else — React and Astro are bundled or dev-only — and it is laid out as `model/` (the two models, pure), `server/` (the composition
   root, the walk, the routes, the watcher, the bin) and `app/` (the page). `pnpm --filter
 @goodbones/browser dev` runs `astro dev` over this repository with the routes mounted on Vite.
 
-The three hosts depend on the core, the pack and the campaigns family, and never on each other. `website/` is an Astro + Starlight
+The three hosts depend on the core and the pack, take the campaigns family and the matcher as
+optional peers, and never depend on each other. `website/` is an Astro + Starlight
 docs site deployed to GitHub Pages at <https://dataquail.github.io/goodbones>.
 
 **The repository enforces its own architecture with the packages it publishes.**
@@ -182,7 +184,8 @@ bare names to `src` (`vitest.shared.ts`); `TEST_DIST=1` points them at `build/es
 
 **`@goodbones/ast-grep` is a native dependency.** `@ast-grep/napi` ships a platform binary as an
 optional dependency and is in `pnpm.onlyBuiltDependencies`; a fresh checkout on an unsupported platform
-fails at install, not at lint. The package has never been published and goes through First Publish
+fails at install, not at lint. That is half of why it, like `@goodbones/campaigns`, is an optional
+peer of every host rather than a dependency: a user who runs no campaign installs neither. The package has never been published and goes through First Publish
 before any host version that depends on it is released, as `@goodbones/explorer` did.
 
 **`packages/oxlint/build/esm/plugin.js` is the plugin entrypoint**, the package's default export (and
@@ -228,13 +231,30 @@ checkout (how #67 broke `main`). Before
 trusting a rule you just wrote, plant the violation it exists to catch and watch `pnpm lint` fail — the
 probe check proves a rule _can_ fire, not that it fires on what you meant.
 
+**`@goodbones/campaigns` and `@goodbones/ast-grep` are optional peers of every host, so no module a
+host loads up front may import either at run time.** Each host keeps everything that names the family
+in one folder — `cli/src/campaigns/`, `oxlint/src/campaigns/`, `browser/src/server/campaigns/` (plus
+`browser/src/model/campaigns.ts`, which only the glue imports) — behind an interface the host defines
+(`host.ts`): `live.ts` implements it over the package, `none.ts` without it. The composition root
+loads `live.ts`, and the matcher, through the core's `importOptional(load, peer)`, which answers
+`null` only when `peer` itself is missing; with `none` it passes `loadPolicy` an `uninstalled` entry,
+so a `campaigns:` key is refused naming the package. Everywhere else, import the family's _types_
+only (`import type`), through the host's `campaigns/host.ts`. Three things hold this: a `deny` in
+each host's node of the policy (which sees type imports as edges too, hence the folder), an
+`optional.test.ts` in each glue folder that fails on any static value import of either package
+outside it (the graph cannot tell `import()` from `import`), and the e2e `bare-install` scenario,
+which installs the hosts without either peer. Each host's package keeps both as `workspace:*`
+devDependencies, so this repository — which runs campaigns on itself — always has them, and the
+peers publish as `^<version>`.
+
 **A family the core does not own arrives as a `PolicyExtension`, and `campaigns` is the one.**
 `loadPolicy({ …, extensions: [campaignsExtension({ functions, reports })] })` is how a host composes
 it; `campaignsOf(policy)` reads its state back off `LoadedPolicy.extensions`, which the core carries
 opaquely. An extension declares the top-level manifest keys it claims (`campaigns` and `ledger`),
 and `decodeManifest` splits those off the expanded manifest before decoding what is left — so the
 core's codec, which still refuses an excess property, never learns a word of the family's
-vocabulary, and a key _no_ extension claims is the misspelling it always was. The extension decodes
+vocabulary, and a key _no_ extension claims is the misspelling it always was — unless the host
+names it in `loadPolicy`'s `uninstalled`, when the refusal names the package to install instead. The extension decodes
 its slice through the `describe` the core hands it, so its errors carry the same line, path and
 `use` trail a tree node's do, and it returns its own probe failures to be merged into the one
 "these rules do not report their own probe" refusal. `decode` and `load` are declared as _methods_

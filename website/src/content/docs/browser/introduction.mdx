@@ -39,6 +39,10 @@ pnpm exec goodbones-browser            # serves http://127.0.0.1:4321/ over the 
 pnpm exec goodbones-browser --open     # and opens it
 ```
 
+The Campaign Browser draws campaigns only when `@goodbones/campaigns` is installed beside the
+browser (and `@goodbones/ast-grep`, if an objective uses a `syntax` term). Without it, the
+Architecture Browser works as usual and the Campaign Browser says which package to install.
+
 Run it from the repository's root, as you run `architecture`. It reads the same manifest
 (`ARCHITECTURE_CONFIG` names another) and walks the same roots (`packages` by default; pass others
 as arguments). The page redraws whenever a source file, a manifest file or a ledger changes, and on a commit,

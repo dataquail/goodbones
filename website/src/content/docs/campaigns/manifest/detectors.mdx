@@ -46,6 +46,9 @@ a `syntax` term to skip parsing files the objective is not about.
 `regex`, `has`, `inside`, `precedes`, `follows`, `nthChild`, `all`, `any`, `not`) plus an optional
 `where`.
 
+The term needs `@goodbones/ast-grep` installed beside the host. Without it, a campaign with a
+`syntax` term fails to load and names the package to install.
+
 - `$NAME` matches one node and `$$$` any number.
 - `kind` takes tree-sitter node kinds: `class_declaration`, `call_expression`, `arrow_function`.
 - `has` and `inside` search only direct children or parents unless you add `stopBy: end`.

@@ -421,8 +421,10 @@ const load = (
         configPath,
         detail:
           `these campaigns hold a \`syntax\` term in a scope whose language has no syntax ` +
-          `matcher: ${[...new Set(syntaxless)].join(", ")}. Compose the language pack with ` +
-          `one (\`@goodbones/ast-grep\` for TypeScript), or write the detector without it.`,
+          `matcher: ${[...new Set(syntaxless)].join(", ")}. For TypeScript, install ` +
+          `\`@goodbones/ast-grep\` beside the host, which composes it into the pack when it ` +
+          `is there; embedding the loader, compose the pack with it yourself. Or write the ` +
+          `detector without it.`,
       }),
     );
   }

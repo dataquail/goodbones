@@ -50,7 +50,7 @@ type AtlasJson = {
 
 describe("browser", () => {
   it("ships the page, and writes a static export over the fixture through the installed bin", () => {
-    const site = path.join(installed.packages.browser, "build", "site", "index.html");
+    const site = path.join(installed.packages.browser ?? "", "build", "site", "index.html");
     expect(existsSync(site)).toBe(true);
 
     const bin = path.join(path.dirname(installed.bin), "goodbones-browser");

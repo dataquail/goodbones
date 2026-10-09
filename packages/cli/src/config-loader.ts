@@ -1,16 +1,10 @@
 import * as path from "node:path";
 
-import { astGrepMatcher } from "@goodbones/ast-grep";
-import {
-  campaignsExtension,
-  loadCampaignFunctions,
-  makeReportSourceLive,
-} from "@goodbones/campaigns";
 import {
   type ConfigInvalid,
   findManifestFile,
+  importOptional,
   type Language,
-  type LoadedPolicy,
   loadPolicy,
   makeFileSystemLive,
   type PatternInvalid,
@@ -19,15 +13,28 @@ import {
 import { typescriptLanguage } from "@goodbones/typescript";
 import * as Result from "effect/Result";
 
-export type { LoadedPolicy } from "@goodbones/core";
+import type { CampaignsFamily, LoadedPolicy } from "./campaigns/host.js";
+import { campaignsNotInstalled } from "./campaigns/none.js";
+
+export type { LoadedPolicy } from "./campaigns/host.js";
 
 // The language packs this host is composed with. Constructed here and handed
 // down as the `Language` port, so nothing below this file names TypeScript —
-// or ast-grep, which the pack is composed with here for the campaigns
-// family's `syntax` term.
-export const hostLanguages = (): ReadonlyArray<Language> => [
-  typescriptLanguage({ syntax: astGrepMatcher() }),
-];
+// or ast-grep, the syntax matcher for the campaigns family's `syntax` term.
+// The matcher is an optional peer, with a native binary: composed into the
+// pack when it is installed, and a campaign that needs it without it is
+// refused at load, naming the package.
+export const hostLanguages = async (): Promise<ReadonlyArray<Language>> => {
+  const astGrep = await importOptional(() => import("@goodbones/ast-grep"), "@goodbones/ast-grep");
+  return [typescriptLanguage(astGrep === null ? {} : { syntax: astGrep.astGrepMatcher() })];
+};
+
+// The campaigns family, when `@goodbones/campaigns` is installed beside this
+// host, and `none` when it is not. Everything that names the package is
+// under `campaigns/`, reached through this one import.
+export const hostCampaigns = async (): Promise<CampaignsFamily> =>
+  (await importOptional(() => import("./campaigns/live.js"), "@goodbones/campaigns"))
+    ?.liveCampaigns ?? campaignsNotInstalled;
 
 // The clock the campaigns are judged by. `ARCHITECTURE_NOW` (an ISO date or
 // epoch milliseconds) pins it, for a CI that replays a day or a test that
@@ -53,43 +60,51 @@ export const manifestPathOf = (repoRoot: string, configFilename?: string): strin
     ? findManifestFile(repoRoot)
     : path.resolve(repoRoot, configFilename);
 
+// `given` is the family to compose: found by `hostCampaigns` unless a
+// test names one, which is how the host is run as if the package were absent.
 export const loadPolicyFromFile = async (
   repoRoot: string,
   configFilename?: string,
+  given?: CampaignsFamily,
 ): Promise<LoadedPolicy> => {
   const configPath = manifestPathOf(repoRoot, configFilename);
   const read = await readManifestFile(configPath);
-  // The `fn` terms are imported here, before the policy loads: the core
-  // receives the functions as a map and touches no module loader.
-  const { functions, manifest } = await loadCampaignFunctions(configPath, read.manifest);
+  const campaigns = given ?? (await hostCampaigns());
+  const composed = await campaigns.compose(repoRoot, configPath, read.manifest);
   const loaded = loadPolicy({
     repoRoot,
     configPath,
-    manifest,
+    manifest: composed.manifest,
     locate: read.locate,
-    languages: hostLanguages(),
+    languages: await hostLanguages(),
     fileSystem: makeFileSystemLive(repoRoot),
-    extensions: [campaignsExtension({ functions, reports: makeReportSourceLive(repoRoot) })],
+    extensions: composed.extensions,
+    uninstalled: composed.uninstalled,
     now: hostNow(),
   });
   if (Result.isFailure(loaded)) throw loaded.failure;
-  return loaded.success;
+  return { ...loaded.success, campaigns: campaigns.host };
 };
 
 // The same composition, for a manifest the host already holds as a value
 // rather than a file: the bootstrap `infer` resolves through, and the
 // manifest it then proves loads. Failure is returned, not thrown — the caller
 // has a sentence to put around it.
-export const loadPolicyFromManifest = (
+export const loadPolicyFromManifest = async (
   repoRoot: string,
   manifest: unknown,
-): Result.Result<LoadedPolicy, ConfigInvalid | PatternInvalid> =>
-  loadPolicy({
+): Promise<Result.Result<LoadedPolicy, ConfigInvalid | PatternInvalid>> => {
+  const campaigns = await hostCampaigns();
+  const composed = await campaigns.compose(repoRoot, null, manifest);
+  const loaded = loadPolicy({
     repoRoot,
     configPath: path.resolve(repoRoot, "architecture.yaml"),
-    manifest,
-    languages: hostLanguages(),
+    manifest: composed.manifest,
+    languages: await hostLanguages(),
     fileSystem: makeFileSystemLive(repoRoot),
-    extensions: [campaignsExtension({ reports: makeReportSourceLive(repoRoot) })],
+    extensions: composed.extensions,
+    uninstalled: composed.uninstalled,
     now: hostNow(),
   });
+  return Result.map(loaded, (policy) => ({ ...policy, campaigns: campaigns.host }));
+};

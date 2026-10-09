@@ -35,6 +35,49 @@ describe("decodeManifest", () => {
     expect(detail).toMatch(/tree\["src\/"\]\.members\[0\]\.matchNott: Unexpected key/);
   });
 
+  it("names the package to install for a key an uninstalled family would claim", () => {
+    const detail = failure(
+      decodeManifest(
+        "architecture.yaml",
+        { ...VALID, campaigns: {}, ledger: ".ledgers" },
+        {
+          locate,
+          uninstalled: [{ manifestKeys: ["campaigns", "ledger"], install: "@goodbones/campaigns" }],
+        },
+      ),
+    ).detail;
+    expect(detail).toContain(
+      "architecture.yaml:1:1  campaigns: belongs to a family that is not installed. Install `@goodbones/campaigns`",
+    );
+    expect(detail).toContain("architecture.yaml:1:1  ledger: belongs to a family");
+    expect(detail).not.toMatch(/Unexpected key/);
+  });
+
+  it("leaves an uninstalled family's keys to a loaded family that claims them", () => {
+    const decoded = decodeManifest(
+      "architecture.yaml",
+      { ...VALID, campaigns: { a: 1 } },
+      {
+        extensions: [
+          {
+            id: "campaigns",
+            manifestKeys: ["campaigns"],
+            decode: (slice) => Result.succeed(slice),
+          },
+        ],
+        uninstalled: [{ manifestKeys: ["campaigns"], install: "@goodbones/campaigns" }],
+      },
+    );
+    expect(Result.isSuccess(decoded)).toBe(true);
+  });
+
+  it("is quiet about an uninstalled family whose keys the manifest does not use", () => {
+    const decoded = decodeManifest("architecture.yaml", VALID, {
+      uninstalled: [{ manifestKeys: ["campaigns"], install: "@goodbones/campaigns" }],
+    });
+    expect(Result.isSuccess(decoded)).toBe(true);
+  });
+
   it("reports every issue, each with its path", () => {
     const detail = failure(
       decodeManifest("architecture.yaml", {

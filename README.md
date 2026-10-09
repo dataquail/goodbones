@@ -7,21 +7,23 @@ campaigns that track a refactor as objectives with ledgers that only shrink, ove
 births, through phases, with a nudge for whoever touches one — enforced
 by an oxlint plugin in the editor and a CLI in CI. Published as independent packages:
 
-| Package                                        | What it does                                                                                                                               |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| [`@goodbones/core`](packages/core)             | The manifest schema, the evaluators, the ports a language pack implements, and the loader. Names no language.                              |
-| [`@goodbones/campaigns`](packages/campaigns)   | The campaigns family — a refactor as objectives over sectors through phases — as a loader extension over the core.                         |
-| [`@goodbones/typescript`](packages/typescript) | The TypeScript language pack: facts through oxc-parser, resolution through `unrs-resolver`.                                                |
-| [`@goodbones/ast-grep`](packages/ast-grep)     | The syntax matcher for the campaigns family's `syntax` term, over `@ast-grep/napi`.                                                        |
-| [`@goodbones/cli`](packages/cli)               | The `architecture` CLI: `check`, `baseline`, `campaigns`, `objectives`, `coverage`, `explain`, `facts`, and the graph family.              |
-| [`@goodbones/oxlint`](packages/oxlint)         | The oxlint plugin: `imports`, `exports`, `members`, `structure`, `surface` and `campaigns` as six rules over the same manifest.            |
-| [`@goodbones/browser`](packages/browser)       | The Architecture Browser and the Campaign Browser: a page that draws the tree with the manifest over it and every campaign's ladder, live. |
+| Package                                        | What it does                                                                                                                                              |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@goodbones/core`](packages/core)             | The manifest schema, the evaluators, the ports a language pack implements, and the loader. Names no language.                                             |
+| [`@goodbones/campaigns`](packages/campaigns)   | The campaigns family — a refactor as objectives over sectors through phases — as a loader extension over the core. Opt-in: an optional peer of each host. |
+| [`@goodbones/typescript`](packages/typescript) | The TypeScript language pack: facts through oxc-parser, resolution through `unrs-resolver`.                                                               |
+| [`@goodbones/ast-grep`](packages/ast-grep)     | The syntax matcher for the campaigns family's `syntax` term, over `@ast-grep/napi`. Opt-in, like campaigns.                                               |
+| [`@goodbones/cli`](packages/cli)               | The `architecture` CLI: `check`, `baseline`, `campaigns`, `objectives`, `coverage`, `explain`, `facts`, and the graph family.                             |
+| [`@goodbones/oxlint`](packages/oxlint)         | The oxlint plugin: `imports`, `exports`, `members`, `structure`, `surface` and `campaigns` as six rules over the same manifest.                           |
+| [`@goodbones/browser`](packages/browser)       | The Architecture Browser and the Campaign Browser: a page that draws the tree with the manifest over it and every campaign's ladder, live.                |
 
 📖 **[Documentation](https://dataquail.github.io/goodbones)**
 
 ```sh
 pnpm add -D @goodbones/oxlint @goodbones/cli
 pnpm add -D @goodbones/browser && pnpm exec goodbones-browser --open   # the two browsers, live
+pnpm add -D @goodbones/campaigns   # opt in to campaigns; the hosts pick it up when it is there
+pnpm add -D @goodbones/ast-grep    # and to the `syntax` term, a native binary
 ```
 
 ## Repository layout

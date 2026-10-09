@@ -3,7 +3,7 @@
 # The @goodbones/browser node of the repository's architecture policy. The
 # root architecture.yaml includes this file at `~/browser/`; the globals it
 # shares — the aliases, the `defs` it uses, the graph rules — are written there.
-message: "@goodbones/browser is a third host: the Architecture Browser and the Campaign Browser, an Astro page prebuilt into `build/site` and served by the `goodbones-browser` bin over whichever repository it is run in. It answers to the core, the pack, the matcher and the campaigns family, never to the CLI or the plugin."
+message: "@goodbones/browser is a third host: the Architecture Browser and the Campaign Browser, an Astro page prebuilt into `build/site` and served by the `goodbones-browser` bin over whichever repository it is run in. It answers to the core and the pack, to the matcher and the campaigns family when they are installed, and never to the CLI or the plugin."
 layout: open
 imports:
   message: "A host composes the package. It reaches the core's barrels, the language pack's, the syntax matcher's and the campaigns family's, the page's own toolchain, and its own siblings — never another host."
@@ -19,6 +19,22 @@ imports:
     - "@ag/index.ts"
     - "@camp/index.ts"
     - "@br/**"
+  # The campaigns family and the syntax matcher are optional peers: a user who
+  # never runs a campaign installs neither, and the bin must still serve the
+  # Architecture Browser. The page is bundled when the package is built, so
+  # what it names is never loaded at run time.
+  deny:
+    - match: "@camp/index.ts"
+      except:
+        - "@br/server/campaigns/**"
+        - "@br/model/campaigns.ts"
+        - "@br/app/**"
+        - "**/*.test.ts"
+        - "**/*.test.tsx"
+      message: "@goodbones/campaigns is an optional peer. On the server only server/campaigns/ names it — with the campaign model it builds — and the composition root reaches that folder through importOptional, so a repository without the package draws the Architecture Browser alone."
+    - match: "@ag/index.ts"
+      except: ["@br/server/compose.ts", "**/*.test.ts", "**/*.test.tsx"]
+      message: "@goodbones/ast-grep is an optional peer with a native binary. The composition root imports it through importOptional and composes it into the pack when it is there; nothing else names it."
 children:
   "src/":
     layout: open

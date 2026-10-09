@@ -69,17 +69,25 @@ const link = (target: string, at: string): void => {
 };
 
 export type Installed = {
-  // Absolute path of each installed package.
-  readonly packages: Readonly<Record<Package, string>>;
+  // Absolute path of each installed package; a package left out of the
+  // install is absent.
+  readonly packages: Readonly<Partial<Record<Package, string>>>;
   // The `architecture` bin, as `.bin/` links it.
   readonly bin: string;
 };
 
-export const installPacked = (repo: Repo, tarballs: Tarballs): Installed => {
+// `only` installs a subset, as a user who skips the optional peers does:
+// `@goodbones/campaigns` and `@goodbones/ast-grep` are not dependencies of
+// any host, so leaving them out is a valid install.
+export const installPacked = (
+  repo: Repo,
+  tarballs: Tarballs,
+  only: ReadonlyArray<Package> = PACKAGES,
+): Installed => {
   const modules = repo.path("node_modules");
   const packages: Partial<Record<Package, string>> = {};
 
-  for (const name of PACKAGES) {
+  for (const name of only) {
     const destination = path.join(modules, "@goodbones", name);
     mkdirSync(destination, { recursive: true });
     const run = spawnSync(
@@ -92,7 +100,7 @@ export const installPacked = (repo: Repo, tarballs: Tarballs): Installed => {
   }
 
   let bin: string | null = null;
-  for (const name of PACKAGES) {
+  for (const name of only) {
     const installed = packages[name] ?? "";
     const manifest = JSON.parse(
       readFileSync(path.join(installed, "package.json"), "utf8"),
@@ -116,5 +124,5 @@ export const installPacked = (repo: Repo, tarballs: Tarballs): Installed => {
   }
 
   if (bin === null) throw new Error("the installed cli links no `architecture` bin");
-  return { packages: packages as Installed["packages"], bin };
+  return { packages, bin };
 };

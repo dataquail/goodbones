@@ -1,66 +1,26 @@
 import * as path from "node:path";
 
-import { astGrepMatcher } from "@goodbones/ast-grep";
-import {
-  campaignsExtension,
-  campaignsOf,
-  discoverSectors,
-  loadCampaignFunctions,
-  makeReportSourceLive,
-  reportSpecsOf,
-  type SectorIndex,
-} from "@goodbones/campaigns";
 import {
   findManifestFile,
-  globToRegExp,
-  listSourceFiles,
-  listWorkspaceProjects,
-  type LoadedPolicy,
+  importOptional,
   loadPolicy,
   makeFileSystemLive,
   readManifestFile,
-  ReportUnavailable,
 } from "@goodbones/core";
 import { typescriptLanguage } from "@goodbones/typescript";
 import * as Result from "effect/Result";
 
-export type { LoadedPolicy } from "@goodbones/core";
+import type { CampaignsFamily, LoadedPolicy } from "./campaigns/host.js";
+import { campaignsNotInstalled } from "./campaigns/none.js";
 
-// A `marker` or `nx` perimeter needs the other files to say which sector a
-// file is in — the markers, or the workspace's projects — so the plugin
-// reads them once at load, from a walk of the repository that reads no
-// source text but the markers'. The other perimeters answer from the path
-// or the file itself, and need nothing here.
-export const discoverSectorIndexes = (policy: LoadedPolicy): ReadonlyMap<string, SectorIndex> => {
-  const indexes = new Map<string, SectorIndex>();
-  const needing = campaignsOf(policy).campaignRules.filter(
-    (rule) => rule.perimeter?.kind === "marker" || rule.perimeter?.kind === "nx",
-  );
-  if (needing.length === 0) return indexes;
-  const widened = [...new Set(needing.flatMap((rule) => rule.extensions))];
-  const files = listSourceFiles(policy.repoRoot, ["."], policy.languages, widened);
-  const known = new Set(policy.languages.flatMap((one) => one.extensions));
-  const projects = needing.some((rule) => rule.perimeter?.kind === "nx")
-    ? listWorkspaceProjects(policy.repoRoot, ["."])
-    : [];
-  for (const rule of needing) {
-    const scoped = files.filter(
-      (file) =>
-        rule.scope.some((pattern) => pattern.test(file)) &&
-        (known.has(path.extname(file)) || rule.extensions.includes(path.extname(file))),
-    );
-    indexes.set(
-      rule.id,
-      discoverSectors(rule, {
-        files: scoped,
-        readText: (file) => policy.fileSystem.readText(file),
-        globToRegExp,
-        projects,
-      }),
-    );
-  }
-  return indexes;
-};
+export type { LoadedPolicy } from "./campaigns/host.js";
+
+// The campaigns family, when `@goodbones/campaigns` is installed beside the
+// plugin, and `none` when it is not. Everything that names the package is
+// under `campaigns/`, reached through this one import.
+const hostCampaigns = async (): Promise<CampaignsFamily> =>
+  (await importOptional(() => import("./campaigns/live.js"), "@goodbones/campaigns"))
+    ?.liveCampaigns ?? campaignsNotInstalled;
 
 // The clock the campaigns are judged by; `ARCHITECTURE_NOW` pins it, as it
 // does for the CLI.
@@ -79,9 +39,13 @@ const hostNow = (): number => {
 // failure throws out of here and out of oxlint's import of the plugin — a
 // plugin that came up with no policy would report nothing and be
 // indistinguishable from a clean codebase.
+//
+// `given` is the family to compose: found by `hostCampaigns` unless a test
+// names one, which is how the plugin is run as if the package were absent.
 export const loadPolicyFromFile = async (
   repoRoot: string,
   configFilename?: string,
+  given?: CampaignsFamily,
 ): Promise<LoadedPolicy> => {
   // Named, or discovered: architecture.yaml, .yml, .json, or .config.mjs,
   // exactly one of which may be present.
@@ -90,44 +54,25 @@ export const loadPolicyFromFile = async (
       ? findManifestFile(repoRoot)
       : path.resolve(repoRoot, configFilename);
   const read = await readManifestFile(configPath);
-  // The `fn` terms are imported here, before the policy loads, as the CLI
-  // does; the pack is composed with ast-grep for the campaigns family's
-  // `syntax` term, and the plugin parses with it for that family only.
-  const { functions, manifest } = await loadCampaignFunctions(configPath, read.manifest);
+  const campaigns = given ?? (await hostCampaigns());
+  const composed = await campaigns.compose(repoRoot, configPath, read.manifest);
+  // The syntax matcher, for the campaigns family's `syntax` term, is an
+  // optional peer with a native binary: composed into the pack when it is
+  // installed, and the plugin parses with it for that family only. A
+  // campaign that needs it without it is refused at load, naming it.
+  const astGrep = await importOptional(() => import("@goodbones/ast-grep"), "@goodbones/ast-grep");
   const loaded = loadPolicy({
     repoRoot,
     configPath,
-    manifest,
+    manifest: composed.manifest,
     locate: read.locate,
-    languages: [typescriptLanguage({ syntax: astGrepMatcher() })],
+    languages: [typescriptLanguage(astGrep === null ? {} : { syntax: astGrep.astGrepMatcher() })],
     fileSystem: makeFileSystemLive(repoRoot),
-    // A `report` command runs once per process — once per editor session
-    // for oxlint's language server, which then sees that report until it
-    // restarts. A report the build writes to a file is the predictable form.
-    extensions: [campaignsExtension({ functions, reports: makeReportSourceLive(repoRoot) })],
+    extensions: composed.extensions,
+    uninstalled: composed.uninstalled,
     now: hostNow(),
   });
   if (Result.isFailure(loaded)) throw loaded.failure;
-  const policy = loaded.success;
-  // Every `report` a campaign names is read now, while oxlint has linted
-  // nothing. A `command` forks this process, and once the linter is running
-  // Linux can refuse the fork: the linter's per-thread AST buffers merge
-  // into one mapping larger than RAM and swap together, which the default
-  // overcommit heuristic refuses to duplicate. The source keeps the answer,
-  // and a failure, so the rules read what was read here — a term's several
-  // commands run at once. A report that cannot be read is not a load
-  // failure — the campaigns rule reports it once, on the first file a
-  // campaign naming it selects; one that does not parse is.
-  const campaigns = campaignsOf(policy);
-  await Promise.all(
-    reportSpecsOf(campaigns.campaignRules).map(async (spec) => {
-      if (campaigns.reports.read !== undefined) return campaigns.reports.read(spec);
-      try {
-        campaigns.reports.diagnosticsOf(spec, "");
-      } catch (cause) {
-        if (!(cause instanceof ReportUnavailable)) throw cause;
-      }
-    }),
-  );
-  return policy;
+  await campaigns.prepare(loaded.success);
+  return { ...loaded.success, campaigns: campaigns.host };
 };

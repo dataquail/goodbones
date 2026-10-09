@@ -9,17 +9,26 @@ the same `architecture.yaml`.
 
 ## Install
 
+Campaigns are a separate package. Add it beside the hosts you already use:
+
 ```bash
-pnpm add -D @goodbones/cli      # required: check, the ledger commands, the nudge
-pnpm add -D @goodbones/oxlint   # optional: flags new holdouts in the editor
+pnpm add -D @goodbones/campaigns   # required: the campaigns family
+pnpm add -D @goodbones/ast-grep    # only if an objective uses a `syntax` term
 ```
 
-Both include `@goodbones/campaigns` and the `syntax` matcher.
+`@goodbones/cli`, `@goodbones/oxlint` and `@goodbones/browser` each pick up
+`@goodbones/campaigns` and `@goodbones/ast-grep` when they are installed, and run without them
+when they are not. Without `@goodbones/campaigns`, a manifest with a `campaigns` key fails to
+load and names the package to install. Without `@goodbones/ast-grep`, an objective that uses a
+`syntax` term does the same.
+
+The CLI runs `check`, the ledger commands and the nudge. The plugin flags new holdouts in the
+editor.
 
 :::caution
-The matcher ships a prebuilt binary as an optional dependency. Installing with `--no-optional`
-or `--omit=optional` leaves it without that binary, and install fails on a platform with no
-prebuilt binary.
+`@goodbones/ast-grep` ships a prebuilt binary as an optional dependency. Installing with
+`--no-optional` or `--omit=optional` leaves it without that binary, and install fails on a
+platform with no prebuilt binary. Skip the package if no objective uses `syntax`.
 :::
 
 ## Enable the editor rule
@@ -35,7 +44,8 @@ prebuilt binary.
 ```
 
 The rule reports a holdout the ledger does not already record. It stays quiet about recorded
-ones.
+ones. If `@goodbones/campaigns` is not installed, the rule reports that once, on the first file
+it lints.
 
 ## Write a campaign and its first ledger
 
@@ -90,5 +100,29 @@ const policy = loadPolicy({
 const { campaignRules, ledgers } = campaignsOf(policy);
 ```
 
-Without the extension, the `campaigns` and `ledger` keys are refused as unknown. A campaign
-whose `scope` covers a language with no syntax matcher is refused at load.
+Without the extension, the `campaigns` and `ledger` keys are refused as unknown. A host that loads
+the package only when it is installed can make that error name the package instead:
+
+```ts
+import { importOptional, loadPolicy } from "@goodbones/core";
+
+const campaigns = await importOptional(
+  () => import("@goodbones/campaigns"),
+  "@goodbones/campaigns",
+);
+const policy = loadPolicy({
+  // …
+  extensions: campaigns === null ? [] : [campaigns.campaignsExtension({ functions, reports })],
+  uninstalled:
+    campaigns === null
+      ? [{ manifestKeys: ["campaigns", "ledger"], install: "@goodbones/campaigns" }]
+      : [],
+});
+```
+
+`importOptional` returns `null` only when that package itself is missing. A package that is
+installed but cannot load is still an error.
+
+A campaign with a `syntax` term is refused at load when the term's language has no syntax
+matcher. For TypeScript, build the pack with `typescriptLanguage({ syntax: astGrepMatcher() })`
+from `@goodbones/ast-grep`.

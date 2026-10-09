@@ -141,6 +141,20 @@ describe("loadPolicy with a language that is not TypeScript", () => {
     );
   });
 
+  it("names the package to install for a key a family the host could not load would claim", () => {
+    const outcome = loadPolicy({
+      repoRoot: "/repo",
+      configPath: "/repo/architecture.config.mjs",
+      manifest: { ...manifest(), campaigns: {} },
+      languages: [go()],
+      fileSystem: makeFileSystemFake([]),
+      uninstalled: [{ manifestKeys: ["campaigns"], install: "@goodbones/campaigns" }],
+    });
+    expect(Result.isFailure(outcome) && outcome.failure.message).toMatch(
+      /campaigns: belongs to a family that is not installed\. Install `@goodbones\/campaigns`/,
+    );
+  });
+
   // The baseline comes through the port, never off the disk from here.
   it("reads the baseline through the file system it is given", () => {
     const entry = "import|svc/domain/imports|svc/domain/repo.go|svc/main.go";
@@ -159,4 +173,3 @@ describe("loadPolicy with a language that is not TypeScript", () => {
     ).toBe(true);
   });
 });
-

@@ -50,16 +50,26 @@
     "coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@goodbones/ast-grep": "workspace:*",
-    "@goodbones/campaigns": "workspace:*",
     "@goodbones/core": "workspace:*",
     "@goodbones/typescript": "workspace:*",
     "effect": "4.0.0-beta.94"
   },
   "peerDependencies": {
+    "@goodbones/ast-grep": "workspace:^",
+    "@goodbones/campaigns": "workspace:^",
     "oxlint": ">=1.77.0"
   },
+  "peerDependenciesMeta": {
+    "@goodbones/ast-grep": {
+      "optional": true
+    },
+    "@goodbones/campaigns": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@goodbones/ast-grep": "workspace:*",
+    "@goodbones/campaigns": "workspace:*",
     "@types/node": "^25.9.4",
     "oxlint": "1.81.0"
   },

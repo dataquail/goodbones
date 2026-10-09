@@ -98,9 +98,15 @@ importers:
 
   e2e:
     devDependencies:
+      '@goodbones/ast-grep':
+        specifier: workspace:*
+        version: link:../packages/ast-grep
       '@goodbones/browser':
         specifier: workspace:*
         version: link:../packages/browser
+      '@goodbones/campaigns':
+        specifier: workspace:*
+        version: link:../packages/campaigns
       '@goodbones/cli':
         specifier: workspace:*
         version: link:../packages/cli
@@ -144,12 +150,6 @@ importers:
 
   packages/browser:
     dependencies:
-      '@goodbones/ast-grep':
-        specifier: workspace:*
-        version: link:../ast-grep
-      '@goodbones/campaigns':
-        specifier: workspace:*
-        version: link:../campaigns
       '@goodbones/core':
         specifier: workspace:*
         version: link:../core
@@ -163,6 +163,12 @@ importers:
       '@astrojs/react':
         specifier: ^7.0.0
         version: 7.0.0(@types/node@25.9.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(esbuild@0.25.12)(jiti@2.6.1)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(yaml@2.9.0)
+      '@goodbones/ast-grep':
+        specifier: workspace:*
+        version: link:../ast-grep
+      '@goodbones/campaigns':
+        specifier: workspace:*
+        version: link:../campaigns
       '@testing-library/react':
         specifier: ^16.3.3
         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -212,12 +218,6 @@ importers:
 
   packages/cli:
     dependencies:
-      '@goodbones/ast-grep':
-        specifier: workspace:*
-        version: link:../ast-grep
-      '@goodbones/campaigns':
-        specifier: workspace:*
-        version: link:../campaigns
       '@goodbones/core':
         specifier: workspace:*
         version: link:../core
@@ -228,6 +228,12 @@ importers:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
     devDependencies:
+      '@goodbones/ast-grep':
+        specifier: workspace:*
+        version: link:../ast-grep
+      '@goodbones/campaigns':
+        specifier: workspace:*
+        version: link:../campaigns
       '@types/node':
         specifier: ^25.9.4
         version: 25.9.5
@@ -250,12 +256,6 @@ importers:
 
   packages/oxlint:
     dependencies:
-      '@goodbones/ast-grep':
-        specifier: workspace:*
-        version: link:../ast-grep
-      '@goodbones/campaigns':
-        specifier: workspace:*
-        version: link:../campaigns
       '@goodbones/core':
         specifier: workspace:*
         version: link:../core
@@ -266,6 +266,12 @@ importers:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
     devDependencies:
+      '@goodbones/ast-grep':
+        specifier: workspace:*
+        version: link:../ast-grep
+      '@goodbones/campaigns':
+        specifier: workspace:*
+        version: link:../campaigns
       '@types/node':
         specifier: ^25.9.4
         version: 25.9.5

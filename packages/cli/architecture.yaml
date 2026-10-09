@@ -6,7 +6,7 @@
 message: "@goodbones/cli is one host: it reads the manifest file, constructs the language packs, and evaluates every family — including the graph family, which only an adapter seeing every file at once can — with no linter in the loop."
 layout: open
 imports:
-  message: "A host composes the package. It reaches the core's barrels, the language pack's, the syntax matcher's and the campaigns family's, and its own siblings — never the other host."
+  message: "A host composes the package. It reaches the core's barrels, the language pack's, the syntax matcher's and the campaigns family's — the last two only where it loads them as optional peers — and its own siblings, never the other host."
   # The floor, then this package's own.
   external: [effect, vitest]
   allow:
@@ -18,6 +18,15 @@ imports:
     - "@ag/index.ts"
     - "@camp/index.ts"
     - "@cli/**"
+  # The campaigns family and the syntax matcher are optional peers: a user who
+  # never runs a campaign installs neither, and the bin must still load.
+  deny:
+    - match: "@camp/index.ts"
+      except: ["@cli/campaigns/**", "**/*.test.ts"]
+      message: "@goodbones/campaigns is an optional peer. Only src/campaigns/ names it, and the composition root reaches that folder through importOptional, so a repository without the package runs every other command."
+    - match: "@ag/index.ts"
+      except: ["@cli/config-loader.ts", "**/*.test.ts"]
+      message: "@goodbones/ast-grep is an optional peer with a native binary. The composition root imports it through importOptional and composes it into the pack when it is there; nothing else names it."
 children:
   "src/":
     layout: open

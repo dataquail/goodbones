@@ -1,13 +1,8 @@
 import * as path from "node:path";
 
-import { astGrepMatcher } from "@goodbones/ast-grep";
-import {
-  campaignsExtension,
-  loadCampaignFunctions,
-  makeReportSourceLive,
-} from "@goodbones/campaigns";
 import {
   findManifestFile,
+  importOptional,
   type Language,
   type LoadedPolicy,
   loadPolicy,
@@ -18,13 +13,27 @@ import {
 import { typescriptLanguage } from "@goodbones/typescript";
 import * as Result from "effect/Result";
 
+import type { CampaignsFamily, CampaignsHost } from "./campaigns/host.js";
+import { campaignsNotInstalled } from "./campaigns/none.js";
+
 // This host's composition root: the same three lines the CLI and the plugin
 // each have, on purpose — the three hosts share the core and never each
 // other. Nothing below this file names TypeScript or ast-grep.
+//
+// The syntax matcher, for the campaigns family's `syntax` term, is an
+// optional peer with a native binary: composed into the pack when it is
+// installed, and a campaign that needs it without it is refused at load.
+export const hostLanguages = async (): Promise<ReadonlyArray<Language>> => {
+  const astGrep = await importOptional(() => import("@goodbones/ast-grep"), "@goodbones/ast-grep");
+  return [typescriptLanguage(astGrep === null ? {} : { syntax: astGrep.astGrepMatcher() })];
+};
 
-export const hostLanguages = (): ReadonlyArray<Language> => [
-  typescriptLanguage({ syntax: astGrepMatcher() }),
-];
+// The campaigns family, when `@goodbones/campaigns` is installed beside the
+// browser, and `none` when it is not. Everything on the server that names
+// the package is under `campaigns/`, reached through this one import.
+export const hostCampaigns = async (): Promise<CampaignsFamily> =>
+  (await importOptional(() => import("./campaigns/live.js"), "@goodbones/campaigns"))
+    ?.liveCampaigns ?? campaignsNotInstalled;
 
 export const hostNow = (): number => {
   const pinned = process.env.ARCHITECTURE_NOW;
@@ -43,6 +52,8 @@ export const manifestPathOf = (repoRoot: string, configFilename?: string): strin
 
 export type LoadedManifest = {
   readonly policy: LoadedPolicy;
+  // The campaigns family the policy was composed with.
+  readonly campaigns: CampaignsHost;
   // The manifest as read, before decoding.
   readonly manifest: unknown;
   readonly locate: ManifestLocator | undefined;
@@ -51,26 +62,32 @@ export type LoadedManifest = {
   readonly files: ReadonlyArray<string>;
 };
 
+// `given` is the family to compose: found by `hostCampaigns` unless a test
+// names one, which is how the browser is run as if the package were absent.
 export const loadPolicyFromFile = async (
   repoRoot: string,
   configFilename?: string,
+  given?: CampaignsFamily,
 ): Promise<LoadedManifest> => {
   const configPath = manifestPathOf(repoRoot, configFilename);
   const read = await readManifestFile(configPath);
-  const { functions, manifest } = await loadCampaignFunctions(configPath, read.manifest);
+  const campaigns = given ?? (await hostCampaigns());
+  const composed = await campaigns.compose(repoRoot, configPath, read.manifest);
   const loaded = loadPolicy({
     repoRoot,
     configPath,
-    manifest,
+    manifest: composed.manifest,
     locate: read.locate,
-    languages: hostLanguages(),
+    languages: await hostLanguages(),
     fileSystem: makeFileSystemLive(repoRoot),
-    extensions: [campaignsExtension({ functions, reports: makeReportSourceLive(repoRoot) })],
+    extensions: composed.extensions,
+    uninstalled: composed.uninstalled,
     now: hostNow(),
   });
   if (Result.isFailure(loaded)) throw loaded.failure;
   return {
     policy: loaded.success,
+    campaigns: campaigns.host,
     manifest: read.manifest,
     locate: read.locate,
     configPath,

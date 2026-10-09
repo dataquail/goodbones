@@ -95,8 +95,8 @@ const failureOf = async (root: string, argv: ReadonlyArray<string>): Promise<str
 };
 
 // What `check` would say against the inferred manifest, without writing it.
-const findingsAgainst = (root: string, manifest: Manifest, roots: ReadonlyArray<string>) => {
-  const loaded = loadPolicyFromManifest(root, manifest);
+const findingsAgainst = async (root: string, manifest: Manifest, roots: ReadonlyArray<string>) => {
+  const loaded = await loadPolicyFromManifest(root, manifest);
   if (Result.isFailure(loaded)) throw new Error(String(loaded.failure));
   return collectFindings(loaded.success, roots);
 };
@@ -150,7 +150,7 @@ describe("infer, over a repository with no manifest", () => {
 
   it("writes a manifest `check` accepts with zero violations", async () => {
     const outcome = await inferIn(repoRoot, ["--exhaustive"]);
-    const findings = findingsAgainst(repoRoot, outcome.manifest, ["src"]);
+    const findings = await findingsAgainst(repoRoot, outcome.manifest, ["src"]);
 
     expect(findings.violations).toEqual([]);
     expect(findings.files).toBe(outcome.files);
@@ -180,7 +180,7 @@ describe("infer, over a repository with no manifest", () => {
     expect(outcome.unresolved[0]).toContain("src/modules/shared-kernel/util.ts → nope-not-here");
     expect(errors.some((line) => line.includes("could not be resolved"))).toBe(true);
     // And `check` agrees: that edge is the one thing it reports.
-    expect(findingsAgainst(repoRoot, outcome.manifest, ["src"]).unresolved).toHaveLength(1);
+    expect((await findingsAgainst(repoRoot, outcome.manifest, ["src"])).unresolved).toHaveLength(1);
   });
 
   it("writes the floors as the coverage it reaches today", async () => {
@@ -231,7 +231,7 @@ describe("infer, over a repository with no manifest", () => {
 
     expect(asked).toEqual([]);
     expect(outcome.generalized).toHaveLength(1);
-    expect(findingsAgainst(repoRoot, outcome.manifest, ["src"]).violations).toEqual([]);
+    expect((await findingsAgainst(repoRoot, outcome.manifest, ["src"])).violations).toEqual([]);
   });
 
   it("stops at the depth it is given", async () => {
@@ -240,7 +240,7 @@ describe("infer, over a repository with no manifest", () => {
     expect(shallow.manifest.tree["src/"]?.children).toEqual({
       "**/": { layout: "open", children: {} },
     });
-    expect(findingsAgainst(repoRoot, shallow.manifest, ["src"]).violations).toEqual([]);
+    expect((await findingsAgainst(repoRoot, shallow.manifest, ["src"])).violations).toEqual([]);
   });
 
   it("writes architecture.yaml once, and refuses to overwrite it", async () => {
@@ -289,7 +289,7 @@ describe("infer, over this repository", () => {
 
   it("describes what the tree does, and `check` against that finds nothing", async () => {
     const outcome = await inferIn(thisRepository, ["--exhaustive", ...SOURCES]);
-    const findings = findingsAgainst(thisRepository, outcome.manifest, SOURCES);
+    const findings = await findingsAgainst(thisRepository, outcome.manifest, SOURCES);
 
     expect(findings.violations).toEqual([]);
     expect(findings.unresolved).toEqual([]);

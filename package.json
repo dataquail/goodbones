@@ -50,8 +50,8 @@
   "devDependencies": {
     "@commitlint/cli": "^19.8.0",
     "@commitlint/config-conventional": "^19.8.0",
-    "@effect/language-service": "0.87.2",
-    "@effect/tsgo": "^0.40.0",
+    "@effect/language-service": "0.87.4",
+    "@effect/tsgo": "^0.49.0",
     "@effect/vitest": "4.0.0-beta.94",
     "@nx/js": "22.6.5",
     "@swc-node/register": "1.12.1",
@@ -96,7 +96,7 @@
     "overrides": {
       "effect": "4.0.0-beta.94",
       "@effect/vitest": "4.0.0-beta.94",
-      "@effect/language-service": "0.87.2",
+      "@effect/language-service": "0.87.4",
       "vitest": "^3.2.7",
       "esbuild": "^0.25.0",
       "flatted": "^3.4.2",

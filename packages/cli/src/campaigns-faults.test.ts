@@ -263,6 +263,8 @@ describe.sequential("the faults a strangling plants", () => {
     reset();
   });
 
+  // A dozen nudges, each a git diff over a fresh evaluation: 4–6s on a CI
+  // runner, past vitest's default 5s.
   it("weighs each objective paid ahead by its own onAhead, then the phase's, then the campaign's (R9)", async () => {
     // `no-models` counts what is left of a sector — a file per model — so
     // every phase's deletions pay it down ahead of `moved`.
@@ -375,7 +377,7 @@ describe.sequential("the faults a strangling plants", () => {
       );
     }
     reset();
-  });
+  }, 30_000);
 
   it("reports the clear after an attestation as the move forward it records (C2)", async () => {
     const attested = await capture(

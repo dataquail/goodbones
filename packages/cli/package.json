@@ -63,7 +63,7 @@
   "devDependencies": {
     "@goodbones/ast-grep": "workspace:*",
     "@goodbones/campaigns": "workspace:*",
-    "@types/node": "^25.9.4"
+    "@types/node": "^26.6.4"
   },
   "nx": {
     "includedScripts": []

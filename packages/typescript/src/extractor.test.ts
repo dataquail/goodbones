@@ -2,6 +2,7 @@ import { parseSync } from "oxc-parser";
 import { describe, expect, it } from "vitest";
 
 import { factsOfText, readProgram, sourceFactsOf } from "./extractor.js";
+import { scriptOfSvelteComponent } from "./svelte.js";
 
 // The parity suite in `@goodbones/oxlint` is the extractor's largest test: it
 // pins every form the reader reads against oxlint's parse of the same source.
@@ -69,6 +70,43 @@ describe("factsOfText", () => {
     expect(esm.exportSites.map((site) => `${site.kind}:${site.name}`)).toEqual(["namespace:ns"]);
     const bare = factsOfText("probe", "export type Port = { run(): void };");
     expect(bare.memberSites.map((site) => site.name)).toEqual(["run"]);
+  });
+
+  it("reads a Svelte component through its script blocks, and nothing in its markup", () => {
+    const component = [
+      '<script module lang="ts">',
+      '  export type Tone = "muted";',
+      '  import { cn } from "./cn";',
+      "</script>",
+      "",
+      '<script lang="ts">',
+      '  import Icon from "./icon.svelte";',
+      "  let { tone } = $props();",
+      "</script>",
+      "",
+      "<div class={cn(tone)}>{format(tone)}<Icon /></div>",
+    ].join("\n");
+    const facts = factsOfText("badge.svelte", component);
+
+    expect(facts.specifiers).toEqual(["./cn", "./icon.svelte"]);
+    expect(facts.exportSites.map((site) => site.name)).toEqual(["Tone"]);
+    expect(facts.memberSites.map((site) => site.name)).toEqual(["$props"]);
+  });
+
+  it("keeps a Svelte script at its offset in the file, so a fact reports where it was written", () => {
+    const component = '<div>\n  {x}\n</div>\n<script>\n  import "m";\n</script>\n';
+    const script = scriptOfSvelteComponent(component);
+
+    expect(script).toHaveLength(component.length);
+    expect(script.split("\n").map((line) => line.trim())).toEqual([
+      "",
+      "",
+      "",
+      "",
+      'import "m";',
+      "",
+      "",
+    ]);
   });
 
   it("reads a file that does not parse as one with no facts, and does not throw", () => {

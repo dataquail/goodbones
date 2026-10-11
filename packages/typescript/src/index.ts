@@ -33,7 +33,7 @@ export type TypescriptLanguageOptions = {
 // a second language is a second package shaped like this one.
 export const typescriptLanguage = (options: TypescriptLanguageOptions = {}): Language => ({
   id: TYPESCRIPT,
-  extensions: [".ts", ".tsx", ".mts", ".cts"],
+  extensions: [".ts", ".tsx", ".mts", ".cts", ".svelte"],
   // A declaration file states types, not code; no linter visits one and no
   // policy is written about one.
   ignoredFiles: [/\.d\.[cm]?ts$/],

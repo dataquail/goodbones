@@ -118,6 +118,22 @@ describe("loadPolicy", () => {
 
   // The guard the whole package exists for: a rule that no longer reports the
   // violation it was written for must stop the lint run, not pass it.
+  it("loads two package roots whose names share a prefix, each proving its own probe", async () => {
+    const roots = `tree: {
+      "packages/components/": { children: { "primitives/": { layout: "open", children: {} } } },
+      "packages/components-svelte/": { children: { "primitives/": { layout: "open", children: {} } } },
+    }`;
+    const policy = await loadPolicy(
+      repoRoot,
+      writeConfig(`export default { ${RESOLVE}, ${roots} };`),
+    );
+
+    expect(policy.structure.roots.map((root) => root.name)).toEqual([
+      "packages/components/taxonomy",
+      "packages/components-svelte/taxonomy",
+    ]);
+  });
+
   it("refuses to load when a rule does not report its own probe", async () => {
     // Widening the allowlist to admit everything leaves a rule that can no
     // longer report the violation it was written for.

@@ -13,7 +13,7 @@ const language = typescriptLanguage();
 describe("typescriptLanguage", () => {
   it("names itself and the source extensions the walker should visit", () => {
     expect(language.id).toBe("typescript");
-    expect(language.extensions).toEqual([".ts", ".tsx", ".mts", ".cts"]);
+    expect(language.extensions).toEqual([".ts", ".tsx", ".mts", ".cts", ".svelte"]);
   });
 
   it("marks a declaration file as one no policy is written about", () => {

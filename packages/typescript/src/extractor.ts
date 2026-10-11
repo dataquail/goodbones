@@ -33,6 +33,8 @@ import {
   Visitor,
 } from "oxc-parser";
 
+import { isSvelteComponent, scriptOfSvelteComponent } from "./svelte.js";
+
 // The facts, read out of one ESTree. oxc-parser emits this tree for the CLI
 // and oxlint hands the same tree to a plugin, so one reader serves both hosts:
 // `readProgram` walks a `Program` and returns every fact with the node it came
@@ -521,8 +523,10 @@ export const sourceFactsOf = (read: ReadFacts): SourceFacts => {
 // not kept as nodes, which is the tree oxlint hands a plugin. A syntax error
 // does not throw: oxc reports it and returns an empty program, so a file that
 // does not parse contributes no facts — the same file no linter would visit.
+// A Svelte component is read through its script blocks alone.
 export const factsOfText = (file: string, text: string): SourceFacts => {
-  const { program } = parseSync(file, text, { ...RAW_TRANSFER, lang: langOf(file) });
+  const source = isSvelteComponent(file) ? scriptOfSvelteComponent(text) : text;
+  const { program } = parseSync(file, source, { ...RAW_TRANSFER, lang: langOf(file) });
   return sourceFactsOf(readProgram(file, program));
 };
 

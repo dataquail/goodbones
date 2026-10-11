@@ -21,8 +21,9 @@ and writes baselines, which the plugin can't.
 | `campaigns`, `objectives`     | Campaign commands; see [Campaigns → Commands](/goodbones/campaigns/running/cli/). |
 
 **Roots.** Commands that take `[roots…]` walk those directories, defaulting to `packages`. For
-TypeScript the walk reads `.ts`, `.tsx`, `.mts` and `.cts` (not `.d.ts`) and skips `node_modules`,
-`build`, `dist`, `.next` and `coverage`.
+TypeScript the walk reads `.ts`, `.tsx`, `.mts` and `.cts` (not `.d.ts`), plus the `<script>` blocks
+of a `.svelte` component (the markup is not read, as oxlint does not lint it), and skips
+`node_modules`, `build`, `dist`, `.next` and `coverage`.
 
 **Manifest.** Found in the working directory as `architecture.yaml`, `.yml`, `.json` or
 `architecture.config.mjs` (exactly one may exist), or named by the `ARCHITECTURE_CONFIG` environment

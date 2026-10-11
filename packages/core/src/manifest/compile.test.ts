@@ -956,6 +956,36 @@ describe("naming edge cases", () => {
   });
 });
 
+describe("taxonomy roots whose names share a prefix", () => {
+  const lowered = lowerManifest(
+    base({
+      "pkg/components/": { children: { "primitives/": { layout: "open", children: {} } } },
+      "pkg/components-svelte/": { children: { "primitives/": { layout: "open", children: {} } } },
+    }),
+  );
+
+  const claims = (root: { readonly path: string | ReadonlyArray<string> }, file: string) =>
+    [root.path].flat().some((one) => new RegExp(one).test(file));
+
+  // `pkg/components` is a prefix of `pkg/components-svelte`, but not a folder of
+  // it: each root claims its own folder and no sibling's.
+  it("claims its own folder and not a sibling that begins with its name", () => {
+    const rootOf = (file: string) =>
+      lowered.structure.roots.find((root) => claims(root, file))?.name;
+    expect(rootOf("pkg/components/stray/x.ts")).toBe("pkg/components/taxonomy");
+    expect(rootOf("pkg/components-svelte/stray/x.ts")).toBe("pkg/components-svelte/taxonomy");
+  });
+
+  // The first root that matches a file reports it, so a root another one shadowed
+  // would never flag its own probe.
+  it("puts each root's probe under that root and no other", () => {
+    for (const root of lowered.structure.roots) {
+      const claiming = lowered.structure.roots.filter((one) => claims(one, root.probe.path));
+      expect(claiming.map((one) => one.name)).toEqual([root.name]);
+    }
+  });
+});
+
 describe("probe files and the language", () => {
   const GO: ReadonlyArray<ProbeLanguage> = [{ id: "go", extensions: [".go"] }];
   const goManifest: Manifest = {

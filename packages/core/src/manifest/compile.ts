@@ -981,7 +981,9 @@ export const lowerManifest = (
           node.message ??
           "This folder is not part of the taxonomy. Declare it in the manifest deliberately, or move the file into the folder that owns it.",
         probe: { path: probeIn(`${expandAliases(stripSlash(key), aliases)}/zzprobe`, "stray") },
-        path: prefixed(
+        // The trailing slash keeps a root to its own folder: `packages/components`
+        // is a prefix of `packages/components-svelte`, not a folder of it.
+        path: `${prefixed(
           globToRegexSource(
             expandAliases(stripSlash(key), aliases),
             {},
@@ -990,7 +992,7 @@ export const lowerManifest = (
               nextGroup: 1,
             },
           ).source,
-        ),
+        )}/`,
       });
     walk(
       key,

@@ -82,3 +82,4 @@ packages/*/src/**/*.mjs
 packages/*/src/**/*.cjs
 packages/*/src/**/*.d.ts
 packages/*/src/**/*.map
+.overmander/local.yaml

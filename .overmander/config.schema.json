@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "baseBranch": {
+      "type": "string"
+    },
+    "install": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "localGate": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "humanOnly": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "humanOnlyPaths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "board": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "projectNumber": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "readyStatus": {
+              "type": "string"
+            },
+            "inProgressStatus": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "projectNumber",
+            "readyStatus",
+            "inProgressStatus"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "reviewTrigger": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "labels": {
+      "type": "object",
+      "properties": {
+        "eligible": {
+          "type": "string"
+        },
+        "inProgress": {
+          "type": "string"
+        },
+        "needsReview": {
+          "type": "string"
+        },
+        "changesRequested": {
+          "type": "string"
+        },
+        "approved": {
+          "type": "string"
+        },
+        "needsHuman": {
+          "type": "string"
+        },
+        "needsClarification": {
+          "type": "string"
+        },
+        "stale": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "schedule": {
+      "type": "string"
+    },
+    "agent": {
+      "type": "string"
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "localGateRounds": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "ciRounds": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "reviewRounds": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "staleAfter": {
+          "type": "string"
+        },
+        "ciTimeout": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "flows": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "schedule": {
+            "type": "string"
+          },
+          "concurrency": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "agent": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {}
+}

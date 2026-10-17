@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=./config.schema.json
+#
+# What work Overmander does in this repo, and how. Committed, so the whole team
+# shares it. Each person's .overmander/local.yaml (gitignored) decides when it
+# runs for them and with which agent.
+
+baseBranch: main
+
+# Run in a fresh worktree before the agent starts. null for none.
+install: pnpm install --frozen-lockfile
+
+# Commands the change must pass before its pull request opens.
+localGate:
+  - pnpm exec nx affected -t lint test check --base=origin/main
+  - pnpm lint:architecture
+  - pnpm check:effect
+
+# Decisions the agent must stop for and leave to a person.
+humanOnly:
+  - growing the architecture baseline (`pnpm architecture:baseline`)
+  - anything touching a package's first publish or its prerelease track (see
+    `RELEASE.md`)
+
+# Paths a change must not touch; one that does goes to a person instead of a pull request.
+humanOnlyPaths:
+  - .github/**
+
+# Repo facts the agent should know.
+notes:
+  - Packages are versioned independently from conventional commits and
+    `updateDependents` is `never` (see `RELEASE.md`), so pick each commit's type
+    for what it does to that package's users.
+
+# Default schedule for every flow, as cron. Unset spreads repos across the hour.
+# schedule: "17 * * * *"
+
+# Per flow: schedule, concurrency, enabled, and agent. A reviewer on another
+# agent than the one that wrote the code avoids a model approving its own work;
+# it runs under that agent's account in machine config.
+# flows:
+#   review:
+#     agent: codex
+
+limits:
+  localGateRounds: 2
+  ciRounds: 3
+  reviewRounds: 3
+  staleAfter: 6 hours
+  ciTimeout: 2 hours

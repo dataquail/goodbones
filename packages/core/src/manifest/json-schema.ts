@@ -138,7 +138,9 @@ export const manifestJsonSchema = (options: ManifestJsonSchemaOptions = {}): Jso
     options.extensions === undefined || options.extensions.length === 0
       ? Manifest
       : Schema.Struct(Object.assign({}, Manifest.fields, ...options.extensions));
-  const generated = Schema.toJsonSchemaDocument(whole) as unknown as {
+  const generated = Schema.toJsonSchemaDocument(whole, {
+    onExcessProperty: "error",
+  }) as unknown as {
     readonly schema: JsonObject;
     readonly definitions: JsonObject;
   };

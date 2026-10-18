@@ -108,7 +108,7 @@ afterAll(() => {
   rmSync(root, { force: true, recursive: true });
 });
 
-describe.sequential("the same match twice in one declaration", () => {
+describe("the same match twice in one declaration", { concurrent: false }, () => {
   it("is two holdouts in the ledger", async () => {
     expect(await clear("2026-10-01T00:00:00Z")).toContain(
       "fenced/no-role-checks: 1 sector entered (scope); 2 holdouts left.",

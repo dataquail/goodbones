@@ -25,7 +25,7 @@ const arcs = (container: HTMLElement) => [
   ...container.querySelectorAll<SVGPathElement>("path.arc"),
 ];
 
-describe.sequential("ArchitectureBrowser", () => {
+describe("ArchitectureBrowser", { concurrent: false }, () => {
   it("starts with the roots open and every folder under them collapsed", () => {
     const { container } = render(
       <ArchitectureBrowser atlas={atlas()} selection={null} onSelect={() => undefined} />,

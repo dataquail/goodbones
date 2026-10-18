@@ -21,7 +21,10 @@ export type TypescriptScopeOptions = typeof TypescriptScopeOptions.Type;
 // Unknown keys are refused: a misspelled `conditionNames` would otherwise be
 // a resolver quietly built on defaults, and every rule about that scope would
 // be evaluated against the wrong files.
-const decode = Schema.decodeUnknownResult(TypescriptScopeOptions, { onExcessProperty: "error" });
+const decode = Schema.decodeUnknownResult(TypescriptScopeOptions, {
+  onExcessProperty: "error",
+  reportInput: true,
+});
 
 export const decodeTypescriptScopeOptions = (
   scope: ResolveScope,

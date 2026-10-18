@@ -204,171 +204,193 @@ afterAll(() => {
   rmSync(root, { force: true, recursive: true });
 });
 
-describe.sequential("the nudge is judged by the phase the diff found the sector at", () => {
-  it("finds where git keeps HEAD and the index, for a host that redraws on a commit", () => {
-    expect(gitPathsOf(root)).toEqual({
-      head: path.join(root, ".git/HEAD"),
-      index: path.join(root, ".git/index"),
-    });
-    expect(gitPathsOf(path.join(root, "..", "no-such-folder"))).toBeNull();
-  });
-
-  it("counts a paydown that enters the next window as forward, not as growth", async () => {
-    // The role check goes: todo derives to `mirrored`, whose two raw writes
-    // no ledger has seen. They were there all along.
-    write("src/todo/service.ts", SERVICE(['  rawWrite("a");', '  return rawWrite("b");']));
-    for (const flags of [[], ["--base", "HEAD"]]) {
-      const { exit, ok, text, todo } = await nudge(...flags);
-      expect(Exit.isSuccess(exit), text).toBe(true);
-      expect(ok).toBe(true);
-      expect(todo).toMatchObject({
-        phase: { id: "mirrored" },
-        judged: { id: "fenced", index: 0 },
-        onTouch: "ratchet",
-        verdict: "ok",
-        direction: "forward",
-        added: [],
-        entered: [{ objective: "writes-not-mirrored", count: 2 }],
+describe(
+  "the nudge is judged by the phase the diff found the sector at",
+  { concurrent: false },
+  () => {
+    it("finds where git keeps HEAD and the index, for a host that redraws on a commit", () => {
+      expect(gitPathsOf(root)).toEqual({
+        head: path.join(root, ".git/HEAD"),
+        index: path.join(root, ".git/index"),
       });
-      expect(todo.removed).toEqual([
-        expect.stringMatching(/^no-role-checks: service\.ts#create#[0-9a-f]{8}$/),
-      ]);
-      expect(text).toContain("todo — phase mirrored (2 of 4)");
-      expect(text).toContain("this diff moves it from fenced");
-      expect(text).toMatch(/this diff: −no-role-checks: \S+ {2}forward/);
-      expect(text).toContain(
-        "now counted: writes-not-mirrored 2 — in window from mirrored, not growth",
-      );
-      expect(text).toContain("onTouch: ratchet (of fenced) — ok");
-    }
-    await clear("2026-10-02T00:00:00Z");
-    commit("fenced paid down");
-  });
-
-  it("judges the diff that completes an advising phase by that phase, not the ratchet after it", async () => {
-    // The dual-write: the writes are mirrored, and the module grew past its
-    // tolerance doing it. That lands todo in `moved`, which ratchets.
-    write(
-      "src/todo/service.ts",
-      SERVICE([
-        '  mirrored("a");',
-        '  forward("a");',
-        '  mirrored("b");',
-        '  forward("b");',
-        '  return audit("b");',
-      ]),
-    );
-    const { exit, text, todo } = await nudge();
-    expect(Exit.isSuccess(exit), text).toBe(true);
-    expect(todo).toMatchObject({
-      phase: { id: "moved" },
-      judged: { id: "mirrored", index: 1 },
-      onTouch: "advise",
-      verdict: "ok",
-      // Two holdouts gone and a number risen past its tolerance: one
-      // direction for both, and the verdict is read off the same judgement.
-      direction: "mixed",
-      added: [],
-      entered: [
-        { objective: "no-routes", count: 1 },
-        { objective: "has-nest", count: 1 },
-      ],
-      // The marker claims a folder nothing is in yet.
-      unmatchedOwns: ["src/nest/todos/**"],
+      expect(gitPathsOf(path.join(root, "..", "no-such-folder"))).toBeNull();
     });
-    expect(todo.measures).toEqual([
-      expect.objectContaining({ objective: "lines", before: 6, after: 9, recorded: 6, back: true }),
-    ]);
-    expect(text).toContain("lines: recorded 6 → now 9 (tolerance 2)  back");
-    expect(text).toContain("onTouch: advise (of mirrored) — ok");
-    // A sector's own holdout has no file: it is said of the sector, with the
-    // glob its marker owns that nothing matches.
-    expect(text).toContain(
-      [
-        "    of the sector as a whole:",
-        "      has-nest: Rebuild the module on the new server.",
-        "      (its marker owns `src/nest/todos/**`, which no file matches)",
-      ].join("\n"),
-    );
-    expect(text).not.toContain("in the files you touched");
-    const conceded = await capture(
-      objectives(
-        await policyAt("2026-10-03T00:00:00Z"),
-        ["src"],
-        ["concede", "strangle/lines", "--reason", "the dual-write", "--by", "me"],
-      ),
-    );
-    expect(Exit.isSuccess(conceded.exit), conceded.failure).toBe(true);
-    await clear("2026-10-03T00:00:00Z");
-    commit("mirrored");
-  });
 
-  it("refuses a rise under a ratcheting phase, in both modes", async () => {
-    write(
-      "src/todo/service.ts",
-      readFileSync(path.join(root, "src/todo/service.ts"), "utf8") +
-        ["export const a = 1;", "export const b = 2;", "export const c = 3;", ""].join("\n"),
-    );
-    write("src/todo/more-routes.ts", 'export const more = [route("/todos/x")];\n');
-    for (const flags of [[], ["--base", "HEAD"]]) {
-      const { exit, ok, text, todo } = await nudge(...flags);
-      expect(Exit.isFailure(exit)).toBe(true);
-      expect(ok).toBe(false);
+    it("counts a paydown that enters the next window as forward, not as growth", async () => {
+      // The role check goes: todo derives to `mirrored`, whose two raw writes
+      // no ledger has seen. They were there all along.
+      write("src/todo/service.ts", SERVICE(['  rawWrite("a");', '  return rawWrite("b");']));
+      for (const flags of [[], ["--base", "HEAD"]]) {
+        const { exit, ok, text, todo } = await nudge(...flags);
+        expect(Exit.isSuccess(exit), text).toBe(true);
+        expect(ok).toBe(true);
+        expect(todo).toMatchObject({
+          phase: { id: "mirrored" },
+          judged: { id: "fenced", index: 0 },
+          onTouch: "ratchet",
+          verdict: "ok",
+          direction: "forward",
+          added: [],
+          entered: [{ objective: "writes-not-mirrored", count: 2 }],
+        });
+        expect(todo.removed).toEqual([
+          expect.stringMatching(/^no-role-checks: service\.ts#create#[0-9a-f]{8}$/),
+        ]);
+        expect(text).toContain("todo — phase mirrored (2 of 4)");
+        expect(text).toContain("this diff moves it from fenced");
+        expect(text).toMatch(/this diff: −no-role-checks: \S+ {2}forward/);
+        expect(text).toContain(
+          "now counted: writes-not-mirrored 2 — in window from mirrored, not growth",
+        );
+        expect(text).toContain("onTouch: ratchet (of fenced) — ok");
+      }
+      await clear("2026-10-02T00:00:00Z");
+      commit("fenced paid down");
+    });
+
+    it("judges the diff that completes an advising phase by that phase, not the ratchet after it", async () => {
+      // The dual-write: the writes are mirrored, and the module grew past its
+      // tolerance doing it. That lands todo in `moved`, which ratchets.
+      write(
+        "src/todo/service.ts",
+        SERVICE([
+          '  mirrored("a");',
+          '  forward("a");',
+          '  mirrored("b");',
+          '  forward("b");',
+          '  return audit("b");',
+        ]),
+      );
+      const { exit, text, todo } = await nudge();
+      expect(Exit.isSuccess(exit), text).toBe(true);
       expect(todo).toMatchObject({
         phase: { id: "moved" },
-        judged: { id: "moved" },
-        onTouch: "ratchet",
-        verdict: "back",
-        direction: "back",
-        added: ["no-routes: more-routes.ts"],
-        conceded: [],
-        entered: [],
+        judged: { id: "mirrored", index: 1 },
+        onTouch: "advise",
+        verdict: "ok",
+        // Two holdouts gone and a number risen past its tolerance: one
+        // direction for both, and the verdict is read off the same judgement.
+        direction: "mixed",
+        added: [],
+        entered: [
+          { objective: "no-routes", count: 1 },
+          { objective: "has-nest", count: 1 },
+        ],
+        // The marker claims a folder nothing is in yet.
+        unmatchedOwns: ["src/nest/todos/**"],
       });
       expect(todo.measures).toEqual([
-        expect.objectContaining({ before: 9, after: 13, recorded: 9, back: true, conceded: false }),
+        expect.objectContaining({
+          objective: "lines",
+          before: 6,
+          after: 9,
+          recorded: 6,
+          back: true,
+        }),
       ]);
-      expect(text.trimEnd().endsWith("not ok")).toBe(true);
-    }
-  });
-
-  it("lets a rise the branch conceded through in the exact mode, and names it", async () => {
-    for (const objective of ["no-routes", "lines"]) {
+      expect(text).toContain("lines: recorded 6 → now 9 (tolerance 2)  back");
+      expect(text).toContain("onTouch: advise (of mirrored) — ok");
+      // A sector's own holdout has no file: it is said of the sector, with the
+      // glob its marker owns that nothing matches.
+      expect(text).toContain(
+        [
+          "    of the sector as a whole:",
+          "      has-nest: Rebuild the module on the new server.",
+          "      (its marker owns `src/nest/todos/**`, which no file matches)",
+        ].join("\n"),
+      );
+      expect(text).not.toContain("in the files you touched");
       const conceded = await capture(
         objectives(
-          await policyAt("2026-10-04T00:00:00Z"),
+          await policyAt("2026-10-03T00:00:00Z"),
           ["src"],
-          [
-            "concede",
-            `strangle/${objective}`,
-            "--reason",
-            "a route the cutover needs",
-            "--by",
-            "me",
-          ],
+          ["concede", "strangle/lines", "--reason", "the dual-write", "--by", "me"],
         ),
       );
       expect(Exit.isSuccess(conceded.exit), conceded.failure).toBe(true);
-    }
-    // The ledger mode already read the ledger: it is quiet about both.
-    const ledgerMode = await nudge();
-    expect(ledgerMode.ok).toBe(true);
-    expect(ledgerMode.todo).toMatchObject({ verdict: "ok", direction: "neutral", added: [] });
-    // The exact mode compares the two trees, and the rise is still there —
-    // receipted in the head's ledger, which is what it is held to.
-    const { exit, ok, text, todo } = await nudge("--base", "HEAD");
-    expect(Exit.isSuccess(exit), text).toBe(true);
-    expect(ok).toBe(true);
-    expect(todo).toMatchObject({
-      verdict: "ok",
-      direction: "neutral",
-      added: [],
-      conceded: ["no-routes: more-routes.ts"],
+      await clear("2026-10-03T00:00:00Z");
+      commit("mirrored");
     });
-    expect(todo.measures).toEqual([
-      expect.objectContaining({ before: 9, after: 13, recorded: 13, back: false, conceded: true }),
-    ]);
-    expect(text).toContain("conceded on this branch, in the ledger: no-routes: more-routes.ts");
-    expect(text).toContain("lines: 9 → 13 (recorded 13, tolerance 2)  conceded");
-    expect(text).toContain("onTouch: ratchet — ok");
-  });
-});
+
+    it("refuses a rise under a ratcheting phase, in both modes", async () => {
+      write(
+        "src/todo/service.ts",
+        readFileSync(path.join(root, "src/todo/service.ts"), "utf8") +
+          ["export const a = 1;", "export const b = 2;", "export const c = 3;", ""].join("\n"),
+      );
+      write("src/todo/more-routes.ts", 'export const more = [route("/todos/x")];\n');
+      for (const flags of [[], ["--base", "HEAD"]]) {
+        const { exit, ok, text, todo } = await nudge(...flags);
+        expect(Exit.isFailure(exit)).toBe(true);
+        expect(ok).toBe(false);
+        expect(todo).toMatchObject({
+          phase: { id: "moved" },
+          judged: { id: "moved" },
+          onTouch: "ratchet",
+          verdict: "back",
+          direction: "back",
+          added: ["no-routes: more-routes.ts"],
+          conceded: [],
+          entered: [],
+        });
+        expect(todo.measures).toEqual([
+          expect.objectContaining({
+            before: 9,
+            after: 13,
+            recorded: 9,
+            back: true,
+            conceded: false,
+          }),
+        ]);
+        expect(text.trimEnd().endsWith("not ok")).toBe(true);
+      }
+    });
+
+    it("lets a rise the branch conceded through in the exact mode, and names it", async () => {
+      for (const objective of ["no-routes", "lines"]) {
+        const conceded = await capture(
+          objectives(
+            await policyAt("2026-10-04T00:00:00Z"),
+            ["src"],
+            [
+              "concede",
+              `strangle/${objective}`,
+              "--reason",
+              "a route the cutover needs",
+              "--by",
+              "me",
+            ],
+          ),
+        );
+        expect(Exit.isSuccess(conceded.exit), conceded.failure).toBe(true);
+      }
+      // The ledger mode already read the ledger: it is quiet about both.
+      const ledgerMode = await nudge();
+      expect(ledgerMode.ok).toBe(true);
+      expect(ledgerMode.todo).toMatchObject({ verdict: "ok", direction: "neutral", added: [] });
+      // The exact mode compares the two trees, and the rise is still there —
+      // receipted in the head's ledger, which is what it is held to.
+      const { exit, ok, text, todo } = await nudge("--base", "HEAD");
+      expect(Exit.isSuccess(exit), text).toBe(true);
+      expect(ok).toBe(true);
+      expect(todo).toMatchObject({
+        verdict: "ok",
+        direction: "neutral",
+        added: [],
+        conceded: ["no-routes: more-routes.ts"],
+      });
+      expect(todo.measures).toEqual([
+        expect.objectContaining({
+          before: 9,
+          after: 13,
+          recorded: 13,
+          back: false,
+          conceded: true,
+        }),
+      ]);
+      expect(text).toContain("conceded on this branch, in the ledger: no-routes: more-routes.ts");
+      expect(text).toContain("lines: 9 → 13 (recorded 13, tolerance 2)  conceded");
+      expect(text).toContain("onTouch: ratchet — ok");
+    });
+  },
+);

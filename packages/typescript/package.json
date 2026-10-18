@@ -47,7 +47,7 @@
   },
   "dependencies": {
     "@goodbones/core": "workspace:*",
-    "effect": "4.0.0-beta.94",
+    "effect": "4.0.5",
     "oxc-parser": "0.148.0",
     "unrs-resolver": "^1.12.2"
   },

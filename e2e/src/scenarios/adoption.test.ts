@@ -28,7 +28,7 @@ afterAll(() => {
   repo.dispose();
 });
 
-describe.sequential("adoption", () => {
+describe("adoption", { concurrent: false }, () => {
   it("init writes a starter manifest and says what to run next", () => {
     const wrote = cli(repo, ["init"]);
     expect(wrote.code, wrote.stderr).toBe(0);

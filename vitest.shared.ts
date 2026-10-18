@@ -18,7 +18,7 @@ const entry = (dir: string, file: string) =>
   );
 
 const config: ViteUserConfig = {
-  esbuild: {
+  oxc: {
     target: "es2020",
   },
   test: {

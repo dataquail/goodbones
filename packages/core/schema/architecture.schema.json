@@ -1468,11 +1468,7 @@
                             "properties": {
                               "id": {
                                 "type": "string",
-                                "allOf": [
-                                  {
-                                    "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-                                  }
-                                ]
+                                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
                               },
                               "intent": {
                                 "type": "string"
@@ -1486,11 +1482,7 @@
                                     "type": "array",
                                     "items": {
                                       "type": "string",
-                                      "allOf": [
-                                        {
-                                          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-                                        }
-                                      ]
+                                      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
                                     }
                                   }
                                 ]
@@ -1523,11 +1515,7 @@
                                     "type": "array",
                                     "items": {
                                       "type": "string",
-                                      "allOf": [
-                                        {
-                                          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-                                        }
-                                      ]
+                                      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
                                     }
                                   }
                                 ]
@@ -2391,11 +2379,7 @@
                                                           "items": {
                                                             "type": "string"
                                                           },
-                                                          "allOf": [
-                                                            {
-                                                              "minItems": 1
-                                                            }
-                                                          ]
+                                                          "minItems": 1
                                                         }
                                                       ]
                                                     }
@@ -2416,11 +2400,7 @@
                                                           "items": {
                                                             "type": "string"
                                                           },
-                                                          "allOf": [
-                                                            {
-                                                              "minItems": 1
-                                                            }
-                                                          ]
+                                                          "minItems": 1
                                                         }
                                                       ]
                                                     }
@@ -2685,11 +2665,7 @@
                                                               "items": {
                                                                 "type": "string"
                                                               },
-                                                              "allOf": [
-                                                                {
-                                                                  "minItems": 1
-                                                                }
-                                                              ]
+                                                              "minItems": 1
                                                             }
                                                           ]
                                                         }
@@ -2710,11 +2686,7 @@
                                                               "items": {
                                                                 "type": "string"
                                                               },
-                                                              "allOf": [
-                                                                {
-                                                                  "minItems": 1
-                                                                }
-                                                              ]
+                                                              "minItems": 1
                                                             }
                                                           ]
                                                         }
@@ -2909,11 +2881,7 @@
                                                                               "items": {
                                                                                 "type": "string"
                                                                               },
-                                                                              "allOf": [
-                                                                                {
-                                                                                  "minItems": 1
-                                                                                }
-                                                                              ]
+                                                                              "minItems": 1
                                                                             }
                                                                           ]
                                                                         }
@@ -2934,11 +2902,7 @@
                                                                               "items": {
                                                                                 "type": "string"
                                                                               },
-                                                                              "allOf": [
-                                                                                {
-                                                                                  "minItems": 1
-                                                                                }
-                                                                              ]
+                                                                              "minItems": 1
                                                                             }
                                                                           ]
                                                                         }
@@ -3111,11 +3075,7 @@
                                                                               "items": {
                                                                                 "type": "string"
                                                                               },
-                                                                              "allOf": [
-                                                                                {
-                                                                                  "minItems": 1
-                                                                                }
-                                                                              ]
+                                                                              "minItems": 1
                                                                             }
                                                                           ]
                                                                         }
@@ -3136,11 +3096,7 @@
                                                                               "items": {
                                                                                 "type": "string"
                                                                               },
-                                                                              "allOf": [
-                                                                                {
-                                                                                  "minItems": 1
-                                                                                }
-                                                                              ]
+                                                                              "minItems": 1
                                                                             }
                                                                           ]
                                                                         }
@@ -3280,22 +3236,14 @@
                             },
                             "tolerance": {
                               "type": "number",
-                              "allOf": [
-                                {
-                                  "minimum": 0
-                                }
-                              ]
+                              "minimum": 0
                             },
                             "target": {
                               "type": "number"
                             },
                             "until": {
                               "type": "string",
-                              "allOf": [
-                                {
-                                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-                                }
-                              ]
+                              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
                             },
                             "over": {
                               "type": "string",
@@ -3632,11 +3580,7 @@
                 },
                 "staleAfter": {
                   "type": "string",
-                  "allOf": [
-                    {
-                      "pattern": "^\\d+[dh]$"
-                    }
-                  ]
+                  "pattern": "^\\d+[dh]$"
                 },
                 "onComplete": {
                   "type": "string",
@@ -5179,11 +5123,7 @@
                                   "items": {
                                     "type": "string"
                                   },
-                                  "allOf": [
-                                    {
-                                      "minItems": 1
-                                    }
-                                  ]
+                                  "minItems": 1
                                 }
                               ]
                             }
@@ -5204,11 +5144,7 @@
                                   "items": {
                                     "type": "string"
                                   },
-                                  "allOf": [
-                                    {
-                                      "minItems": 1
-                                    }
-                                  ]
+                                  "minItems": 1
                                 }
                               ]
                             }

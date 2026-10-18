@@ -186,7 +186,7 @@ afterAll(() => {
   rmSync(root, { force: true, recursive: true });
 });
 
-describe.sequential("a phase that grows a scalar", () => {
+describe("a phase that grows a scalar", { concurrent: false }, () => {
   it("does not refuse the rise it expects: the nudge says so, and check asks for a clear", async () => {
     // One write mirrored, and the module three lines longer for it.
     write(

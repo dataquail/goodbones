@@ -14,8 +14,12 @@ import { loadPolicyFromFile } from "./config-loader.js";
 // and the `campaigns` rule, which a configuration may still turn on, says
 // once what to install rather than leave oxlint to call it unknown.
 
-RuleTester.describe = describe.sequential;
-RuleTester.it = it.sequential;
+RuleTester.describe = (text, fn) => {
+  describe(text, { concurrent: false }, fn);
+};
+RuleTester.it = (text, fn) => {
+  it(text, { concurrent: false }, fn);
+};
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 // Inside the package, as config-loader.test.ts explains: Vitest resolves the
@@ -45,8 +49,8 @@ const MANIFEST = {
   },
 };
 
-describe.sequential("the plugin without @goodbones/campaigns", () => {
-  it.sequential("loads a manifest with no campaigns", async () => {
+describe("the plugin without @goodbones/campaigns", { concurrent: false }, () => {
+  it("loads a manifest with no campaigns", { concurrent: false }, async () => {
     const policy = await loadPolicyFromFile(
       repoRoot,
       writeConfig("plain.json", MANIFEST),
@@ -55,17 +59,21 @@ describe.sequential("the plugin without @goodbones/campaigns", () => {
     expect(policy.importRules.map((rule) => rule.name)).toEqual(["packages-core-src/imports"]);
   });
 
-  it.sequential("refuses a manifest that declares a campaign, naming the package", async () => {
-    await expect(
-      loadPolicyFromFile(
-        repoRoot,
-        writeConfig("with-campaigns.json", { ...MANIFEST, campaigns: {} }),
-        campaignsNotInstalled,
-      ),
-    ).rejects.toThrow(
-      /campaigns: belongs to a family that is not installed\. Install `@goodbones\/campaigns`/,
-    );
-  });
+  it(
+    "refuses a manifest that declares a campaign, naming the package",
+    { concurrent: false },
+    async () => {
+      await expect(
+        loadPolicyFromFile(
+          repoRoot,
+          writeConfig("with-campaigns.json", { ...MANIFEST, campaigns: {} }),
+          campaignsNotInstalled,
+        ),
+      ).rejects.toThrow(
+        /campaigns: belongs to a family that is not installed\. Install `@goodbones\/campaigns`/,
+      );
+    },
+  );
 });
 
 // One rule instance across both files, as one oxlint process holds one.

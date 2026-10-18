@@ -2,7 +2,7 @@
 // auto:changes-requested, resume the session that implemented it with the
 // review, push the fix once CI is green, and hand it back for another review.
 
-import { defineFlow, Implement, Review } from '@overmander/sdk';
+import { defineFlow, Implement, Review } from '@chernabog/sdk';
 
 export default defineFlow({
   trigger: Review.fixTrigger,

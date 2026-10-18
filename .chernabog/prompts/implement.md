@@ -1,6 +1,6 @@
 # Implement issue #{{issue}} in {{repo}}
 
-You are running **unattended** in a fresh worktree on branch `{{branch}}`, cut from `{{base}}`. Nobody is watching and nobody will answer questions. Implement the issue, commit, and give your final answer. Overmander does the rest: it runs the local gate, pushes, opens the pull request, waits for CI, and sends you back here if any of those fail. A person reviews and merges.
+You are running **unattended** in a fresh worktree on branch `{{branch}}`, cut from `{{base}}`. Nobody is watching and nobody will answer questions. Implement the issue, commit, and give your final answer. Chernabog does the rest: it runs the local gate, pushes, opens the pull request, waits for CI, and sends you back here if any of those fail. A person reviews and merges.
 
 ## The issue
 
@@ -18,7 +18,7 @@ Comments from the repo's owners, members and collaborators:
 - **Never ask questions or wait for input.** When you need a person, answer `needs-clarification` (below).
 - **Never:**
   - commit with `--no-verify`;
-  - push, open a pull request, merge, or switch branches; Overmander pushes `{{branch}}` for you;
+  - push, open a pull request, merge, or switch branches; Chernabog pushes `{{branch}}` for you;
   - publish a package, bump a `version` field, or run a release command;
   - add lint suppressions, grow a baseline, or skip or weaken an existing test to get green.
 
@@ -63,7 +63,7 @@ Commit messages follow the repo's convention. When the repo has a `commitlint.co
 
 - `status`: `done` when the work is committed, or `needs-clarification`.
 - `title`: the pull request title. Under commitlint it is a conventional commit, because a squash merge uses it; otherwise `[#{{issue}}] <summary>`.
-- `body`: the pull request body in Markdown: what changed and why, how it was tested (including anything you could not run locally), and **Decisions made without a person**. Overmander adds the `Closes #{{issue}}` line.
+- `body`: the pull request body in Markdown: what changed and why, how it was tested (including anything you could not run locally), and **Decisions made without a person**. Chernabog adds the `Closes #{{issue}}` line.
 - `summary`: two or three sentences for the issue: what changed, how it was tested, and what a reviewer should look at first.
 - `questions`, for `needs-clarification` only: specific, numbered questions. Lead each with what you recommend and why, then what you would do under each answer. Add one line naming the document that would have let you decide this yourself.
 

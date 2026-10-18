@@ -1,6 +1,6 @@
 # Review {{round}} of pull request #{{pullRequest}} asks for changes
 
-A reviewer read the pull request you opened and asked for changes. You are back in the same worktree, on the same branch, unattended. Address every point below, commit, and give your final answer in the same format as before. Overmander pushes the branch, waits for CI and asks for another review.
+A reviewer read the pull request you opened and asked for changes. You are back in the same worktree, on the same branch, unattended. Address every point below, commit, and give your final answer in the same format as before. Chernabog pushes the branch, waits for CI and asks for another review.
 
 {{review}}
 

@@ -6,7 +6,7 @@
 // again, up to limits.reviewRounds. It ends when a person merges, the timeout
 // labels the pull request auto:stale, or the loop cap labels it auto:needs-human.
 
-import { defineFlow, Review } from '@overmander/sdk';
+import { defineFlow, Review } from '@chernabog/sdk';
 
 export default defineFlow({
   trigger: Review.trigger,

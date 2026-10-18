@@ -1,0 +1,15 @@
+// Types flows and steps against .chernabog/node_modules, whatever the rest of
+// the repo uses. Install package.json's dev dependencies here for the editor.
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "types": []
+  },
+  "include": ["**/*.ts"]
+}

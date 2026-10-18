@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=./config.schema.json
 #
-# What work Overmander does in this repo, and how. Committed, so the whole team
-# shares it. Each person's .overmander/local.yaml (gitignored) decides when it
+# What work Chernabog does in this repo, and how. Committed, so the whole team
+# shares it. Each person's .chernabog/local.yaml (gitignored) decides when it
 # runs for them and with which agent.
 
 baseBranch: main
@@ -40,6 +40,14 @@ notes:
 # flows:
 #   review:
 #     agent: codex
+
+# Where interactive agent sessions run: orca, tmux, headless (claude -p) or a
+# launcher a person defines in their machine config. Each person can choose
+# their own in machine config or local.yaml; launcher here is only the default,
+# and allowedLaunchers limits what they may choose. Unset: any launcher, with
+# headless as the default.
+# launcher: orca
+# allowedLaunchers: [orca, tmux, headless]
 
 limits:
   localGateRounds: 2

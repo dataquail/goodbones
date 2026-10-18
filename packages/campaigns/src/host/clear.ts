@@ -82,26 +82,32 @@ const clearMeasure = (
 ): ClearOutcome => {
   const { rule } = evaluation;
   const existing = measureLedgerOf(policy, rule, objective);
+
   const before =
     existing ?? EMPTY_MEASURE_LEDGER(rule.id, objective.id, objective.direction, policy.now);
+
   let ledger = before;
   const entered: Array<string> = [];
   const rebaselined: Array<string> = [];
   const improved: Array<{ sector: string; from: number; to: number }> = [];
   const grown: Array<{ sector: string; from: number; to: number; phase: string | null }> = [];
   let closed = 0;
+
   for (const [name, state] of evaluation.sectors) {
     if (!ledgeredFor(rule, objective, name)) continue;
     const value = state.values[objective.id] ?? Number.NaN;
     const own = ledger.sectors[name];
+
     if (!state.inWindow.some((one) => one.id === objective.id)) {
       // Behind the window, the record is held for the sector's return.
       if (isBehind(rule, objective, state.phase, state.position)) continue;
       const next = clearedMeasure(ledger, name, value, objective.tolerance, policy.now, "outside");
+
       if (next !== ledger) closed += 1;
       ledger = next;
       continue;
     }
+
     if (own === undefined || own.closed !== null) {
       const next = clearedMeasure(
         ledger,
@@ -112,20 +118,24 @@ const clearMeasure = (
         "inside",
         by,
       );
+
       if (next !== ledger) entered.push(name);
       ledger = next;
       continue;
     }
+
     if (receipted !== null) {
       const next = concededMeasure(ledger, name, value, {
         at: policy.now,
         by,
         reason: `phase ${receipted.id} changed: ${receipted.concessions.at(-1)?.reason ?? ""}`,
       });
+
       if (next !== ledger) rebaselined.push(name);
       ledger = next;
       continue;
     }
+
     if (
       growsFor(policy, rule, name, objective.id) &&
       measureStandingOf(ledger, name, value, objective.tolerance) === "breached"
@@ -135,6 +145,7 @@ const clearMeasure = (
       const at = isShared(rule, name)
         ? null
         : (rule.phases[ledgerPhaseOf(policy, rule, name)]?.id ?? null);
+
       ledger = concededMeasure(ledger, name, value, {
         at: policy.now,
         by,
@@ -146,7 +157,9 @@ const clearMeasure = (
       grown.push({ sector: name, from: own.recorded, to: value, phase: at });
       continue;
     }
+
     const next = clearedMeasure(ledger, name, value, objective.tolerance, policy.now, "inside");
+
     if (next !== ledger) {
       improved.push({
         sector: name,
@@ -154,14 +167,17 @@ const clearMeasure = (
         to: next.sectors[name]?.recorded ?? own.recorded,
       });
     }
+
     ledger = next;
   }
+
   // Sectors the code no longer births are past every window.
   for (const [name, own] of Object.entries(ledger.sectors)) {
     if (evaluation.sectors.has(name) || own.closed !== null) continue;
     ledger = clearedMeasure(ledger, name, own.recorded, objective.tolerance, policy.now, "outside");
     closed += 1;
   }
+
   if (ledger !== before || existing === undefined) {
     writeJson(
       policy.repoRoot,
@@ -169,6 +185,7 @@ const clearMeasure = (
       serializeMeasureLedger(ledger),
     );
   }
+
   return {
     campaign: rule.id,
     objective: objective.id,
@@ -199,28 +216,35 @@ export const clear = (
   const counted = hitsInWindow(evaluation);
   const plan = planDiffOf(rule, campaignsOf(policy).plans.get(rule.id));
   const outcomes: Array<ClearOutcome> = [];
+
   for (const objective of rule.objectives) {
     if (only !== null && objective.id !== only) continue;
     const phase = rule.phases.find((one) => one.objectives.includes(objective.id));
+
     // The phase naming the objective, when it changed with a receipt.
     const receipted =
       phase !== undefined && plan.changed.includes(phase.id) && !plan.unreceipted.includes(phase.id)
         ? phase
         : null;
+
     if (objective.measure !== null) {
       outcomes.push(clearMeasure(policy, evaluation, objective, receipted, by));
       continue;
     }
+
     const before =
       ledgerOf(policy, rule, objective) ?? EMPTY_LEDGER(rule.id, objective.id, policy.now);
+
     let ledger = before;
     const entered: Array<string> = [];
     const rebaselined: Array<string> = [];
     let rewritten = 0;
+
     for (const [name, state] of evaluation.sectors) {
       if (!ledgeredFor(rule, objective, name)) continue;
       const inWindow = state.inWindow.some((one) => one.id === objective.id);
       const entries = entriesOf(counted, objective.id, name);
+
       if (!inWindow) {
         // Behind the window — a regression sent the sector below the phase
         // naming it — the holdouts are work still owed: held, not closed,
@@ -229,29 +253,37 @@ export const clear = (
         ledger = clearedSector(ledger, name, entries, objective.unit, policy.now, "outside");
         continue;
       }
+
       if (ledger.sectors[name] === undefined) entered.push(name);
       else rewritten += reconcileSector(ledger, name, entries, objective.unit).drifted.length;
+
       if (receipted !== null && ledger.sectors[name] !== undefined) {
         const concession = receipted.concessions.at(-1);
+
         const next = rebaselinedSector(ledger, name, entries, {
           at: policy.now,
           by,
           reason: `phase ${receipted.id} changed: ${concession?.reason ?? ""}`,
         });
+
         if (next !== ledger) rebaselined.push(name);
         ledger = next;
         continue;
       }
+
       ledger = clearedSector(ledger, name, entries, objective.unit, policy.now, "inside");
     }
+
     // Sectors the code no longer births are past every window.
     for (const name of Object.keys(ledger.sectors)) {
       if (!evaluation.sectors.has(name)) {
         ledger = clearedSector(ledger, name, [], objective.unit, policy.now, "outside");
       }
     }
+
     const sum = (one: Ledger, pick: (sector: Ledger["sectors"][string]) => number): number =>
       Object.values(one.sectors).reduce((total, sector) => total + pick(sector), 0);
+
     outcomes.push({
       campaign: rule.id,
       objective: objective.id,
@@ -262,6 +294,7 @@ export const clear = (
       rebaselined,
       left: sum(ledger, (one) => one.holdouts.length),
     });
+
     if (ledger !== before || ledgerOf(policy, rule, objective) === undefined) {
       writeJson(
         policy.repoRoot,
@@ -270,12 +303,14 @@ export const clear = (
       );
     }
   }
+
   if (only === null) {
     for (const [name, state] of evaluation.sectors) {
       // Neither stands on the ladder, so neither has a record of reaching.
       if (name === LEGACY_SECTOR || isShared(rule, name)) continue;
       const before = recordOf(policy, rule, name) ?? EMPTY_SECTOR_RECORD(rule.id, name, policy.now);
       const after = reachedRecord(before, rule, state.phase, policy.now);
+
       if (after !== before || recordOf(policy, rule, name) === undefined) {
         writeJson(
           policy.repoRoot,
@@ -284,14 +319,17 @@ export const clear = (
         );
       }
     }
+
     writeJson(
       policy.repoRoot,
       planPathOf(campaignsOf(policy).ledgerDir, rule.id),
       serializePlanRecord(planOf(rule)),
     );
     const legacy = campaignsOf(policy).legacyLedgers.get(rule.id);
+
     if (legacy !== undefined) rmSync(path.resolve(policy.repoRoot, legacy), { force: true });
   }
+
   return outcomes;
 };
 
@@ -316,10 +354,12 @@ export const sectorMovesOf = (
 ): ReadonlyArray<SectorMove> => {
   const { rule } = evaluation;
   const moves: Array<SectorMove> = [];
+
   for (const [name, state] of evaluation.sectors) {
     // A sector no `clear` has placed has not moved: it is placed.
     if (name === LEGACY_SECTOR || isShared(rule, name)) continue;
     const record = recordOf(policy, rule, name);
+
     if (record === undefined) continue;
     // Where the ledgers place it — or, when that is where the tree has it
     // already (an attestation since the last `clear` moved it there), the
@@ -327,6 +367,7 @@ export const sectorMovesOf = (
     const placed = ledgerPhaseOf(policy, rule, name);
     const { reached } = positionOf(rule, record);
     const from = placed === state.phase && reached >= 0 ? Math.min(reached, placed) : placed;
+
     if (from === state.phase) continue;
     moves.push({
       campaign: rule.id,
@@ -340,5 +381,6 @@ export const sectorMovesOf = (
         .map((phase) => phase.id),
     });
   }
+
   return moves;
 };

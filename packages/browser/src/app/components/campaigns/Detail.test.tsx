@@ -225,6 +225,7 @@ const show = (nudge: Nudge | null, shown: Parameters<typeof Detail>[0]["shown"])
     campaigns: [campaign],
     nudge,
   };
+
   const { container } = render(
     <Detail
       view={view}
@@ -234,6 +235,7 @@ const show = (nudge: Nudge | null, shown: Parameters<typeof Detail>[0]["shown"])
       onPick={() => undefined}
     />,
   );
+
   return container.textContent;
 };
 

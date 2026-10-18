@@ -5,6 +5,7 @@ import {
   type Document,
   isAlias,
   isMap,
+  isNode,
   isScalar,
   isSeq,
   LineCounter,
@@ -56,6 +57,7 @@ export type ManifestFile = {
 export const findManifestFile = (repoRoot: string): string => {
   const present = MANIFEST_FILENAMES.filter((name) => existsSync(path.resolve(repoRoot, name)));
   const [found] = present;
+
   if (found === undefined) {
     throw new ConfigInvalid({
       configPath: repoRoot,
@@ -64,6 +66,7 @@ export const findManifestFile = (repoRoot: string): string => {
         `in this directory; \`architecture init\` writes a starter architecture.yaml.`,
     });
   }
+
   if (present.length > 1) {
     throw new ConfigInvalid({
       configPath: repoRoot,
@@ -72,6 +75,7 @@ export const findManifestFile = (repoRoot: string): string => {
         `can be the policy. Delete the others, or name one with ARCHITECTURE_CONFIG.`,
     });
   }
+
   return path.resolve(repoRoot, found);
 };
 
@@ -91,6 +95,7 @@ export const readManifestFile = async (configPath: string): Promise<ManifestFile
     : isModuleManifest(configPath)
       ? await readModule(configPath)
       : undefined;
+
   if (root === undefined) {
     throw new ConfigInvalid({
       configPath,
@@ -99,7 +104,9 @@ export const readManifestFile = async (configPath: string): Promise<ManifestFile
         `not ${JSON.stringify(path.basename(configPath))}.`,
     });
   }
+
   const assembled = expandIncludes(configPath, root, { exists: existsSync, read: parseDataFile });
+
   return {
     configPath,
     manifest: assembled.value,
@@ -112,8 +119,10 @@ const readModule = async (configPath: string): Promise<SourceDocument> => {
   const module: unknown = await importFresh(configPath).catch((cause: unknown) => {
     throw new ConfigInvalid({ configPath, detail: String(cause) });
   });
+
   const value =
     typeof module === "object" && module !== null && "default" in module ? module.default : module;
+
   return { value, locate: undefined };
 };
 
@@ -125,6 +134,7 @@ const readModule = async (configPath: string): Promise<SourceDocument> => {
 // would be a manifest only one runtime could read.
 const parseDataFile = (configPath: string): SourceDocument => {
   let text: string;
+
   try {
     text = readFileSync(configPath, "utf8");
   } catch (cause) {
@@ -132,6 +142,7 @@ const parseDataFile = (configPath: string): SourceDocument => {
   }
 
   const lines = new LineCounter();
+
   const document = parseDocument(text, {
     merge: true,
     uniqueKeys: true,
@@ -140,7 +151,9 @@ const parseDataFile = (configPath: string): SourceDocument => {
     // A JSON file is read by the same parser; strict JSON is valid YAML.
     schema: "core",
   });
+
   const problems = [...document.errors, ...document.warnings];
+
   if (problems.length > 0) {
     const file = path.basename(configPath);
     throw new ConfigInvalid({
@@ -150,10 +163,12 @@ const parseDataFile = (configPath: string): SourceDocument => {
         problems
           .map((problem) => {
             const [position] = problem.linePos ?? [];
+
             const at =
               position === undefined
                 ? ""
                 : `${file}:${String(position.line)}:${String(position.col)}  `;
+
             return `  ${at}${problem.code}: ${problem.message.split("\n")[0] ?? problem.message}`;
           })
           .join("\n"),
@@ -177,23 +192,35 @@ const keyMatches = (pair: Pair, segment: PropertyKey): boolean =>
 const makeLocator = (document: Document, lines: LineCounter): ManifestLocator => {
   const positionOf = (node: Node | null | undefined): ManifestPosition | null => {
     const offset = node?.range?.[0];
+
     if (offset === undefined) return null;
     const { col, line } = lines.linePos(offset);
+
     return { line, column: col };
   };
-  const resolved = (node: unknown): unknown => (isAlias(node) ? node.resolve(document) : node);
+
+  // An alias stands for the node its anchor names; anything that is not a node
+  // is where the walk stops.
+  const resolved = (node: unknown): Node | null => {
+    if (isAlias(node)) return node.resolve(document) ?? null;
+
+    return isNode(node) ? node : null;
+  };
 
   return (manifestPath: ManifestPath) => {
     let current: unknown = resolved(document.contents);
     let position = positionOf(document.contents);
+
     for (const segment of manifestPath) {
       if (isMap(current)) {
         const pair = current.items.find((one) => keyMatches(one, segment));
+
         if (pair === undefined) break;
         position = positionOf(isScalar(pair.key) ? pair.key : null) ?? position;
         current = resolved(pair.value);
       } else if (isSeq(current) && typeof segment === "number") {
         const item = current.items[segment];
+
         if (item === undefined) break;
         position = positionOf(item as Node) ?? position;
         current = resolved(item);
@@ -201,6 +228,7 @@ const makeLocator = (document: Document, lines: LineCounter): ManifestLocator =>
         break;
       }
     }
+
     return position;
   };
 };

@@ -94,6 +94,7 @@ describe("relationsOf", () => {
       ...atlas(),
       edges: [...atlas().edges, edge("svc/main.go", "svc/adapters/pg.go")],
     };
+
     expect(relationsOf(both, "svc/main.go", false).get("svc/adapters/pg.go")).toBe("both");
     const reversed = { ...both, edges: [...both.edges].reverse() };
     expect(relationsOf(reversed, "svc/main.go", false).get("svc/adapters/pg.go")).toBe("both");
@@ -113,6 +114,7 @@ describe("relationsOf", () => {
           : file,
       ),
     };
+
     const relations = relationsOf(withOwed, "svc/main.go", false);
     expect([...relations.entries()]).toEqual([
       ["svc/main.go", "focus"],

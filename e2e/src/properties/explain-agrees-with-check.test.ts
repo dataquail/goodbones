@@ -26,18 +26,22 @@ describe("explain agrees with check", () => {
         fc.asyncProperty(arbTree(typescript), async (tree) => {
           await tick();
           const repo = repoOf(tree);
+
           try {
             repo.writeManifest(tightManifest(repo.profile));
             const { json, stderr } = check(repo, ["src"]);
             expect(json.unresolved, stderr).toEqual([]);
 
             const byFile = new Map<string, Set<string>>();
+
             for (const one of json.violations) {
               byFile.set(one.file, (byFile.get(one.file) ?? new Set()).add(one.ruleName));
             }
+
             for (const [file, rules] of [...byFile].slice(0, EXPLAINED_PER_TREE)) {
               const explained = cli(repo, ["explain", file]);
               expect(explained.code, explained.stderr).toBe(0);
+
               for (const rule of rules) expect(explained.stdout, file).toContain(rule);
             }
           } finally {

@@ -33,6 +33,7 @@ import { describe, expect, it } from "vitest";
 import { makeCampaignsRule } from "./campaigns/rule.js";
 
 RuleTester.describe = describe;
+
 RuleTester.it = it;
 
 // The campaigns family's parity contract is "one engine": the plugin parses
@@ -110,23 +111,23 @@ const rules: ReadonlyArray<CampaignRule> = [
 ];
 
 const compiled = compileCampaignRules(rules);
+
 if (Result.isFailure(compiled)) throw compiled.failure;
 
 const resolver = {
-  resolve: (_from: string, specifier: string) =>
-    specifier === "react"
-      ? Result.succeed({
-          path: "node_modules/react/index.js",
+  resolve: (_from: string, specifier: string) => {
+    switch (specifier) {
+      case "react":
+      case "vendor":
+        return Result.succeed({
+          path: `node_modules/${specifier}/index.js`,
           kind: "external" as const,
-          package: "react",
-        })
-      : specifier === "vendor"
-        ? Result.succeed({
-            path: "node_modules/vendor/index.js",
-            kind: "external" as const,
-            package: "vendor",
-          })
-        : Result.fail(new Error("unresolved") as never),
+          package: specifier,
+        });
+      default:
+        return Result.fail(new Error("unresolved") as never);
+    }
+  },
 };
 
 const matcher = astGrepMatcher();
@@ -211,6 +212,7 @@ new RuleTester({ cwd: repoRoot }).run(
           .sort((left, right) => {
             const at = (hit: (typeof hits)[number]) => hit.range?.start ?? { line: 0, column: 0 };
             const byLine = at(left).line - at(right).line;
+
             return byLine === 0 ? at(left).column - at(right).column : byLine;
           })
           .map((hit) => ({ message: formatMessage(hit.violation) })),
@@ -223,7 +225,9 @@ new RuleTester({ cwd: repoRoot }).run(
 // component's entry missing, both report exactly that one.
 const ledgerFor = (rule: CampaignRule, entries: ReadonlyArray<string>): [string, Ledger] => {
   const [one] = rule.objectives;
+
   if (one === undefined) throw new Error("no objective");
+
   return [
     ledgerKeyOf(rule.id, one.id),
     clearedSector(
@@ -236,6 +240,7 @@ const ledgerFor = (rule: CampaignRule, entries: ReadonlyArray<string>): [string,
     ),
   ];
 };
+
 const ledgered = new Map(
   rules.map((rule) =>
     ledgerFor(
@@ -244,6 +249,7 @@ const ledgered = new Map(
     ),
   ),
 );
+
 new RuleTester({ cwd: repoRoot }).run(
   "campaigns parity: ledgered",
   makeCampaignsRule(policyWith(ledgered)),
@@ -255,8 +261,11 @@ new RuleTester({ cwd: repoRoot }).run(
 
 const partial = new Map(ledgered);
 const [reactRule] = rules;
+
 if (reactRule === undefined) throw new Error("no rule");
+
 partial.set(...ledgerFor(reactRule, []));
+
 new RuleTester({ cwd: repoRoot }).run(
   "campaigns parity: one unledgered",
   makeCampaignsRule(policyWith(partial)),

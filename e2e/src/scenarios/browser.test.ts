@@ -55,17 +55,21 @@ describe("browser", () => {
 
     const bin = path.join(path.dirname(installed.bin), "goodbones-browser");
     expect(existsSync(bin)).toBe(true);
+
     const run = spawnSync(process.execPath, [bin, "build", "--out", "out", ...EVERY_FAMILY_ROOTS], {
       cwd: repo.root,
       encoding: "utf8",
     });
+
     expect(run.status, run.stderr).toBe(0);
     expect(run.stdout).toContain("wrote out:");
 
     expect(repo.exists("out/index.html")).toBe(true);
+
     const atlas = JSON.parse(
       readFileSync(repo.path("out/__goodbones/atlas.json"), "utf8"),
     ) as AtlasJson;
+
     expect(atlas.version).toBe(1);
     expect(atlas.name).toBe(path.basename(repo.root));
     expect(atlas.files.length).toBeGreaterThan(0);
@@ -79,6 +83,7 @@ describe("browser", () => {
       campaigns: ReadonlyArray<{ readonly id: string; readonly sectors: ReadonlyArray<unknown> }>;
       nudge: unknown;
     };
+
     expect(campaigns.campaigns.map((one) => one.id)).toEqual(["legacy-to-modern"]);
     expect(campaigns.campaigns[0]?.sectors.length).toBeGreaterThan(0);
     // A static export runs no git: the nudge is the served page's alone.
@@ -87,6 +92,7 @@ describe("browser", () => {
     const status = JSON.parse(readFileSync(repo.path("out/__goodbones/status.json"), "utf8")) as {
       live: boolean;
     };
+
     expect(status.live).toBe(false);
   });
 });

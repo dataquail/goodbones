@@ -13,6 +13,7 @@ const scratch = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../.tmp-manifest-include",
 );
+
 mkdirSync(scratch, { recursive: true });
 
 afterAll(() => {
@@ -20,15 +21,18 @@ afterAll(() => {
 });
 
 let counter = 0;
+
 // Writes each file at its path under a fresh repository, directories included.
 const repo = (files: Readonly<Record<string, string>>): string => {
   counter += 1;
   const root = path.join(scratch, `repo-${String(counter)}`);
+
   for (const [name, text] of Object.entries(files)) {
     const at = path.join(root, name);
     mkdirSync(path.dirname(at), { recursive: true });
     writeFileSync(at, text);
   }
+
   return root;
 };
 
@@ -41,6 +45,7 @@ const refused = async (root: string, name?: string): Promise<string> => {
     if (error instanceof ConfigInvalid) return error.detail;
     throw error;
   }
+
   throw new Error("expected the manifest to be refused");
 };
 
@@ -59,6 +64,7 @@ describe("include", () => {
       "architecture.yaml": `tree:\n  "packages/server/": { include: packages/server/architecture.yaml }\n`,
       "packages/server/architecture.yaml": NODE,
     });
+
     const manifest = await read(root);
     expect(manifest.manifest).toEqual({
       tree: {
@@ -81,6 +87,7 @@ describe("include", () => {
       "architecture.yaml": `tree:\n  "packages/server/": { include: packages/server/architecture.yaml }\n`,
       "packages/server/architecture.yaml": NODE,
     });
+
     const { locate } = await read(root);
     expect(locate?.(["tree", "packages/server/", "members", 0, "subject"])).toEqual({
       line: 5,
@@ -103,6 +110,7 @@ describe("include", () => {
       "packages/architecture.yaml": `children:\n  "server/": { include: ./server/node.yaml }\n`,
       "packages/server/node.yaml": NODE,
     });
+
     const { locate, manifest } = await read(root);
     expect(
       (manifest as { tree: { "packages/": { children: object } } }).tree["packages/"].children,
@@ -136,6 +144,7 @@ describe("include", () => {
       "architecture.json": '{ "tree": { "src/": { "include": "src.json" } } }',
       "src.json": '{\n  "$schema": "https://…",\n  "layout": "open",\n  "children": {}\n}\n',
     });
+
     const manifest = await read(root, "architecture.json");
     expect(manifest.manifest).toEqual({ tree: { "src/": { layout: "open", children: {} } } });
     expect(manifest.locate?.(["tree", "src/", "layout"])).toEqual({
@@ -150,6 +159,7 @@ describe("include", () => {
       "architecture.config.mjs": 'export default { tree: { "src/": { include: "src.yaml" } } };',
       "src.yaml": "layout: open\nchildren: {}\n",
     });
+
     const manifest = await read(root, "architecture.config.mjs");
     expect(manifest.manifest).toEqual({ tree: { "src/": { layout: "open", children: {} } } });
     expect(manifest.locate?.(["tree", "src/", "children"])).toEqual({
@@ -173,6 +183,7 @@ describe("include", () => {
       "graph.yaml": 'cycles:\n  - name: no-cycles\n    message: m\n    within: "**"\n',
       "tree.yaml": '"src/": { layout: open, children: {} }\n',
     });
+
     const manifest = await read(root);
     expect(manifest.manifest).toEqual({
       graph: { cycles: [{ name: "no-cycles", message: "m", within: "**" }] },
@@ -193,6 +204,7 @@ describe("include, as a list item", () => {
         "exports:\n  - name: first\n  - include: rules/shared.yaml\n  - name: last\n",
       "rules/shared.yaml": "- name: shared-a\n- name: shared-b\n",
     });
+
     const { locate, manifest } = await read(root);
     expect(manifest).toEqual({
       exports: [{ name: "first" }, { name: "shared-a" }, { name: "shared-b" }, { name: "last" }],
@@ -218,6 +230,7 @@ describe("include, as a list item", () => {
       "a.yaml": "- name: a-1\n- include: b.yaml\n- name: a-3\n",
       "b.yaml": "- name: b\n",
     });
+
     const { locate, manifest } = await read(root);
     expect(manifest).toEqual({
       exports: [{ name: "a-1" }, { name: "b" }, { name: "a-3" }, { name: "last" }],
@@ -232,6 +245,7 @@ describe("include, as a list item", () => {
       "architecture.yaml": "exports:\n  - include: rule.yaml\n",
       "rule.yaml": "name: one\n",
     });
+
     const { manifest } = await read(root);
     expect(manifest).toEqual({ exports: [{ name: "one" }] });
   });
@@ -245,6 +259,7 @@ describe("include and defs", () => {
       "src.yaml":
         "defs:\n  local-rule: { subject: calls, message: m }\nmembers: [{ use: local-rule }]\n",
     });
+
     const { locate, manifest } = await read(root);
     expect(manifest).toEqual({
       defs: { floor: { allow: [] }, "local-rule": { subject: "calls", message: "m" } },
@@ -263,6 +278,7 @@ describe("include and defs", () => {
       "architecture.yaml": "defs: { include: defs.yaml }\ntree: {}\n",
       "defs.yaml": "defs: { subject: calls }\n$schema: { subject: members }\n",
     });
+
     const { manifest } = await read(root);
     expect(manifest).toEqual({
       defs: { defs: { subject: "calls" }, $schema: { subject: "members" } },
@@ -276,6 +292,7 @@ describe("include and defs", () => {
       "a.yaml": "defs:\n  rule: { subject: calls }\n",
       "b.yaml": "defs:\n  rule: { subject: calls }\n",
     });
+
     await expect(refused(root)).resolves.toMatch(
       /b\.yaml:2:3 {2}defs\.rule: `defs\.rule` is already defined in a\.yaml/,
     );
@@ -286,6 +303,7 @@ describe("include and defs", () => {
       "architecture.yaml": 'defs:\n  rule: {}\ntree:\n  "a/": { include: a.yaml }\n',
       "a.yaml": "defs:\n  rule: { subject: calls }\n",
     });
+
     await expect(refused(root)).resolves.toMatch(
       /architecture\.yaml:2:3 {2}defs\.rule: `defs\.rule` is also defined in a\.yaml/,
     );
@@ -297,6 +315,7 @@ describe("include, refused", () => {
     const root = repo({
       "architecture.yaml": 'tree:\n  "src/":\n    include: nope/src.yaml\n',
     });
+
     // At the key that holds the reference, where the reader's eye lands.
     await expect(refused(root)).resolves.toBe(
       "the manifest does not include:\n" +
@@ -310,6 +329,7 @@ describe("include, refused", () => {
       "architecture.yaml": 'tree:\n  "src/": { include: src/node.yaml }\n',
       "src/node.yaml": "children:\n  x/: { include: missing.yaml }\n",
     });
+
     await expect(refused(root)).resolves.toMatch(
       /src\/node\.yaml:2:3 {2}children\["x\/"\]: `include: "missing\.yaml"` names a file that does not exist \(looked for src\/missing\.yaml, relative to src\/node\.yaml\)/,
     );
@@ -321,6 +341,7 @@ describe("include, refused", () => {
       "a.yaml": "x: { include: b.yaml }\n",
       "b.yaml": "y: { include: a.yaml }\n",
     });
+
     await expect(refused(root)).resolves.toMatch(
       /b\.yaml:1:1 {2}y: `include: "a\.yaml"` includes a file that is already being included: architecture\.yaml → a\.yaml → b\.yaml → a\.yaml\./,
     );
@@ -343,6 +364,7 @@ describe("include, refused", () => {
       "architecture.yaml": 'tree:\n  "src/": { include: src.yaml, layout: open }\n',
       "src.yaml": "children: {}\n",
     });
+
     await expect(refused(root)).resolves.toMatch(
       /tree\["src\/"\]: `include: "src\.yaml"` stands alone: .* nothing for `layout` to override/,
     );
@@ -358,6 +380,7 @@ describe("include, refused", () => {
       "architecture.yaml": "tree: { include: tree.yaml }\n",
       "tree.yaml": "src/: {\n",
     });
+
     await expect(read(root)).rejects.toMatchObject({
       configPath: path.join(root, "tree.yaml"),
       detail: expect.stringMatching(/does not parse/) as string,

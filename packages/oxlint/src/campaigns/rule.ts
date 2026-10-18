@@ -64,12 +64,15 @@ const unledgered = (
 ): ReadonlyArray<CampaignHit> => {
   const carried = new Set<CampaignHit>();
   const byObjective = new Map<string, Array<CampaignHit>>();
+
   for (const hit of hits) {
     byObjective.set(hit.objective, [...(byObjective.get(hit.objective) ?? []), hit]);
   }
+
   for (const [objectiveId, own] of byObjective) {
     const objective = rule.objectives.find((one) => one.id === objectiveId);
     const ledger = campaignsOf(policy).ledgers.get(ledgerKeyOf(rule.id, objectiveId));
+
     if (objective === undefined || ledger === undefined) continue;
     const entries = own.map((hit) => sectorEntryOf(hit.violation, root));
     const known = new Set(reconcileSector(ledger, sector, entries, objective.unit).ledgered);
@@ -77,6 +80,7 @@ const unledgered = (
       if (known.has(entries[i] ?? "")) carried.add(hit);
     });
   }
+
   return hits.filter((hit) => !carried.has(hit));
 };
 
@@ -98,6 +102,7 @@ const inWindowFor = (
         ledgerPhaseOf(policy, rule, sector),
         positionOf(rule, campaignsOf(policy).sectorRecords.get(ledgerKeyOf(rule.id, sector))),
       ).filter((one) => !one.overShared);
+
   return window.filter((one) => one.detect !== null);
 };
 
@@ -120,6 +125,7 @@ export const makeCampaignsRule = (
   // per `createOnce`, which a host may call more often than that.
   const said = new Set<string>();
   const known = new Set(policy.languages.flatMap((one) => one.extensions));
+
   return {
     meta: {
       type: "problem" as const,
@@ -137,6 +143,7 @@ export const makeCampaignsRule = (
       return {
         before() {
           file = toRepoRelative(policy.repoRoot, context.filename);
+
           if (file.startsWith("..")) return false;
           // A file the packs would not walk — one oxlint lints anyway — is
           // seen only by a campaign that widened its scope to it, so both
@@ -146,18 +153,22 @@ export const makeCampaignsRule = (
             (rule) =>
               known.size === 0 || known.has(extension) || rule.extensions.includes(extension),
           );
+
           return selected.length > 0;
         },
 
         Program(node: Program) {
           const text = context.sourceCode.text;
+
           const detectors = selected.flatMap((rule) => [
             ...rule.objectives.flatMap((one) => {
               const detect = detectorOf(one);
+
               return detect === null ? [] : [detect];
             }),
             ...(rule.perimeter?.kind === "match" ? [rule.perimeter.detect] : []),
           ]);
+
           const input: CampaignInput = {
             file,
             text,
@@ -168,35 +179,45 @@ export const makeCampaignsRule = (
             functions: campaignsOf(policy).functions,
             reports: campaignsOf(policy).reports,
           };
+
           // One campaign at a time, so a report one of them cannot read costs
           // that campaign's answer for this file and not its neighbours'.
           const unrecorded: Array<CampaignHit> = [];
+
           for (const rule of selected) {
             try {
               const perimeter = rule.perimeter;
+
               const anchors =
                 perimeter?.kind === "match"
                   ? detectorCandidatesOf(perimeter.detect, perimeter.unit, input).map(
                       (one) => one.key.split("#")[0] ?? one.key,
                     )
                   : [];
+
               const place = membershipOf(rule, file, indexes.get(rule.id) ?? null, anchors);
               // Hits grouped by the sector they fall in, then judged
               // against that sector's window and ledger.
               const bySector = new Map<string, { root: string; hits: Array<CampaignHit> }>();
               const windows = new Map<string, ReadonlySet<string>>();
+
               const placedAt = (subject: string | null) => {
                 const placement = place(subject);
+
                 if (placement === null) return null;
+
                 if (!windows.has(placement.sector)) {
                   windows.set(
                     placement.sector,
                     new Set(inWindowFor(policy, rule, placement.sector).map((one) => one.id)),
                   );
                 }
+
                 return placement;
               };
+
               const whole = placedAt(null);
+
               const candidates =
                 whole === null
                   ? rule.objectives.filter((one) => one.detect !== null)
@@ -204,15 +225,20 @@ export const makeCampaignsRule = (
                       (one) =>
                         one.detect !== null && (windows.get(whole.sector)?.has(one.id) ?? false),
                     );
+
               if (perimeter?.kind !== "match" && whole === null) continue;
+
               for (const hit of evaluateObjectives(candidates, input)) {
                 const placement = placedAt(hit.violation.subject);
+
                 if (placement === null) continue;
+
                 if (!(windows.get(placement.sector)?.has(hit.objective) ?? false)) continue;
                 const group = bySector.get(placement.sector) ?? { root: placement.root, hits: [] };
                 group.hits.push(hit);
                 bySector.set(placement.sector, group);
               }
+
               for (const [sector, group] of bySector) {
                 for (const hit of unledgered(policy, rule, sector, group.root, group.hits)) {
                   unrecorded.push(hit);
@@ -221,6 +247,7 @@ export const makeCampaignsRule = (
             } catch (cause) {
               if (!(cause instanceof ReportUnavailable)) throw cause;
               const message = aside(cause);
+
               if (said.has(message)) continue;
               said.add(message);
               context.report({ message, loc: { line: 1, column: 0 } });

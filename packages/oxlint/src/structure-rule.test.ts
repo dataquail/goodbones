@@ -20,6 +20,7 @@ import { describe, it } from "vitest";
 import { makeStructureRule } from "./structure-rule.js";
 
 RuleTester.describe = describe;
+
 RuleTester.it = it;
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -63,7 +64,9 @@ const HANDLER = "packages/server/src/modules/todos/commands/create-todo.handler.
 
 const policy = (present: ReadonlyArray<string>): LoadedPolicy => {
   const structure = compileStructure(config.structure);
+
   if (Result.isFailure(structure)) throw structure.failure;
+
   return {
     repoRoot,
     config: { resolve: config.resolve, tree: {} },

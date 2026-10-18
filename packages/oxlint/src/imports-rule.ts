@@ -45,11 +45,13 @@ export const makeImportsRule = (policy: LoadedPolicy): OxlintRule => ({
 
       if (Result.isFailure(outcome)) {
         if (policy.config.resolve.unresolved === "off") return;
+
         if (policy.ignoreUnresolved.some((pattern) => pattern.test(specifier))) return;
         context.report({
           node: at(edge.node),
           message: unresolvedMessage(specifier, outcome.failure.detail),
         });
+
         return;
       }
 
@@ -65,8 +67,10 @@ export const makeImportsRule = (policy: LoadedPolicy): OxlintRule => ({
     return {
       before() {
         importer = toRepoRelative(policy.repoRoot, context.filename);
+
         if (importer.startsWith("..")) return false;
         selected = rulesSelecting(policy.importRules, importer);
+
         return selected.length > 0;
       },
       Program(node: Program) {

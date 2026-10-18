@@ -1,3 +1,4 @@
+import * as Result from "effect/Result";
 import { describe, expect, it } from "vitest";
 
 import { lowerManifest } from "./compile.js";
@@ -65,11 +66,14 @@ const OPTIONS: InferOptions = {
 const nodeAt = (tree: Readonly<Record<string, ManifestNode>>, ...keys: ReadonlyArray<string>) => {
   let at: ManifestNode | undefined;
   let children: Readonly<Record<string, ManifestNode>> | undefined = tree;
+
   for (const key of keys) {
     at = children?.[key];
     children = at?.children;
   }
+
   if (at === undefined) throw new Error(`no node at ${keys.join(" ")}`);
+
   return at;
 };
 
@@ -119,10 +123,13 @@ describe("inferManifest", () => {
 
   it("marks every node unrestricted and counts them in the ceiling", () => {
     const nodes: Array<ManifestNode> = [];
+
     const walk = (node: ManifestNode) => {
       nodes.push(node);
+
       for (const child of Object.values(node.children ?? {})) walk(child);
     };
+
     for (const root of Object.values(manifest.tree)) walk(root);
     const withImports = nodes.filter((node) => node.imports !== undefined);
     expect(withImports.every((node) => node.imports?.unrestricted === true)).toBe(true);
@@ -140,10 +147,12 @@ describe("inferManifest", () => {
   it("writes a no-cycles rule only when the tree has no cycle today", () => {
     expect(manifest.graph?.cycles?.[0]?.within).toBe("src/**");
     expect(inferManifest(APP, { ...OPTIONS, hasCycles: true }).manifest.graph).toBeUndefined();
+
     const two = inferManifest(
       { ...APP, roots: ["src", "lib"] },
       { ...OPTIONS, resolve: OPTIONS.resolve },
     ).manifest;
+
     expect(two.graph?.cycles?.[0]?.within).toEqual(["src/**", "lib/**"]);
   });
 
@@ -172,6 +181,14 @@ describe("inferManifest", () => {
 });
 
 describe("inferManifest: depth and packages", () => {
+  const MONOREPO_TARGETS = new Map<string, ReadonlyArray<InferredTarget>>([
+    [
+      "packages/cli/src/main.ts",
+      [local("packages/core/src/index.ts"), local("packages/core/src/domain/x.ts")],
+    ],
+    ["packages/core/src/domain/deep/y.ts", [local("packages/core/src/domain/x.ts")]],
+  ]);
+
   const MONOREPO: InferInput = {
     files: [
       "packages/core/vitest.config.ts",
@@ -180,12 +197,7 @@ describe("inferManifest: depth and packages", () => {
       "packages/core/src/domain/deep/y.ts",
       "packages/cli/src/main.ts",
     ],
-    targetsOf: (file) =>
-      file === "packages/cli/src/main.ts"
-        ? [local("packages/core/src/index.ts"), local("packages/core/src/domain/x.ts")]
-        : file === "packages/core/src/domain/deep/y.ts"
-          ? [local("packages/core/src/domain/x.ts")]
-          : [],
+    targetsOf: (file) => MONOREPO_TARGETS.get(file) ?? [],
     roots: ["packages"],
     packages: [
       { root: "packages/core", source: "packages/core/src" },
@@ -280,6 +292,7 @@ describe("candidatesOf", () => {
       packages: [],
       depth: 3,
     };
+
     // Files, not folders: nothing to group.
     expect(candidatesOf(flat)).toEqual([]);
 
@@ -293,6 +306,7 @@ describe("candidatesOf", () => {
         "src/features/c/readme.ts",
       ],
     };
+
     expect(candidatesOf(folders)).toMatchObject([
       { parent: "src/features", members: ["a", "b"], capture: "feature", crossReach: null },
     ]);
@@ -300,6 +314,7 @@ describe("candidatesOf", () => {
 
   it("offers nothing inside a node already generalized", () => {
     const [group] = candidates;
+
     if (group === undefined) throw new Error("expected a candidate");
     expect(candidatesOf(APP, [{ ...group, crossReach: null }])).toEqual([]);
   });
@@ -307,11 +322,14 @@ describe("candidatesOf", () => {
 
 describe("inferManifest: generalization", () => {
   const [group] = candidatesOf(APP);
+
   if (group === undefined) throw new Error("expected a candidate");
+
   const tightened = inferManifest(APP, {
     ...OPTIONS,
     generalize: [{ ...group, crossReach: "index.ts" }],
   }).manifest;
+
   const loose = inferManifest(APP, {
     ...OPTIONS,
     generalize: [{ ...group, crossReach: null }],
@@ -347,7 +365,8 @@ describe("inferManifest: generalization", () => {
 
   it("loads: the captured key and the entries that use it decode as a manifest", () => {
     const decoded = decodeManifest("architecture.yaml", tightened);
-    if (decoded._tag !== "Success") throw new Error(decoded.failure.message);
+
+    if (Result.isFailure(decoded)) throw new Error(decoded.failure.message);
     const lowered = lowerManifest(decoded.success.manifest);
     expect(lowered.adoption.unrestricted).toContain("src/modules/{module}");
   });
@@ -382,6 +401,7 @@ describe("inferManifest: collapse", () => {
   it("leaves them alone otherwise", () => {
     const { manifest } = inferManifest(RING, OPTIONS);
     expect(Object.keys(nodeAt(manifest.tree, "lib/").children ?? {})).toEqual(["a/", "b/", "c/"]);
+
     const differing = inferManifest(
       {
         ...RING,
@@ -389,6 +409,7 @@ describe("inferManifest: collapse", () => {
       },
       { ...OPTIONS, collapse: true },
     ).manifest;
+
     expect(Object.keys(nodeAt(differing.tree, "lib/").children ?? {})).toEqual(["a/", "b/", "c/"]);
   });
 });

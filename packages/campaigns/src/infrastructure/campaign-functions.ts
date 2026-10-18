@@ -37,6 +37,7 @@ export const loadCampaignFunctions = async (
 ): Promise<LoadedCampaignFunctions> => {
   const functions = new Map<string, CampaignPredicate>();
   const root = path.dirname(manifestPath);
+
   const refuse = (detail: string): never => {
     throw new ConfigInvalid({ configPath: manifestPath, detail });
   };
@@ -44,15 +45,18 @@ export const loadCampaignFunctions = async (
   const imported = async (reference: string): Promise<void> => {
     if (functions.has(reference)) return;
     const parsed = REFERENCE.exec(reference);
+
     if (parsed === null) {
       return refuse(
         `the \`fn\` term ${JSON.stringify(reference)} is not \`module#export\`: name the ` +
           `module (relative to the manifest) and the export, joined by \`#\`.`,
       );
     }
+
     const [, module = "", exportName = ""] = parsed;
     const at = path.resolve(root, module);
     let loaded: unknown;
+
     try {
       // As it is on disk now: a host that lives long must not go on
       // answering with the function it imported first.
@@ -62,37 +66,52 @@ export const loadCampaignFunctions = async (
         `the \`fn\` term ${JSON.stringify(reference)} names a module that does not load: ${String(cause)}`,
       );
     }
+
     const found = isRecord(loaded) ? loaded[exportName] : undefined;
+
     if (typeof found !== "function") {
       return refuse(
         `the \`fn\` term ${JSON.stringify(reference)} names an export that is not a function ` +
           `(${found === undefined ? "absent" : typeof found}).`,
       );
     }
+
     functions.set(reference, found as CampaignPredicate);
   };
 
   let synthesized = 0;
+
   const lift = async (value: unknown): Promise<unknown> => {
     if (Array.isArray(value)) {
       const items: Array<unknown> = [];
+
       for (const item of value) items.push(await lift(item));
+
       return items;
     }
+
     if (!isRecord(value)) return value;
+
     if (isFnTerm(value)) {
       const fn = value.fn;
+
       if (typeof fn === "function") {
         synthesized += 1;
         const name = `<manifest>#fn${String(synthesized)}`;
         functions.set(name, fn as CampaignPredicate);
+
         return { fn: name };
       }
+
       if (typeof fn === "string") await imported(fn);
+
       return value;
     }
+
     const rebuilt: Record<string, unknown> = {};
+
     for (const [key, entry] of Object.entries(value)) rebuilt[key] = await lift(entry);
+
     return rebuilt;
   };
 

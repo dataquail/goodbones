@@ -15,12 +15,15 @@ import { loadPolicyFromFile } from "./config-loader.js";
 // once what to install rather than leave oxlint to call it unknown.
 
 RuleTester.describe = describe.sequential;
+
 RuleTester.it = it.sequential;
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+
 // Inside the package, as config-loader.test.ts explains: Vitest resolves the
 // loader's dynamic import of an `.mjs` manifest through its own module graph.
 const scratch = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.tmp-absent-tests");
+
 mkdirSync(scratch, { recursive: true });
 
 afterAll(() => {
@@ -29,6 +32,7 @@ afterAll(() => {
 
 const writeConfig = (name: string, value: unknown): string => {
   writeFileSync(path.join(scratch, name), JSON.stringify(value));
+
   return path.join(scratch, name);
 };
 
@@ -52,6 +56,7 @@ describe.sequential("the plugin without @goodbones/campaigns", () => {
       writeConfig("plain.json", MANIFEST),
       campaignsNotInstalled,
     );
+
     expect(policy.importRules.map((rule) => rule.name)).toEqual(["packages-core-src/imports"]);
   });
 

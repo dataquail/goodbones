@@ -8,12 +8,15 @@ import type { FileSystem } from "../ports/file-system.js";
 // memoised for the life of the run.
 export const makeFileSystemLive = (repoRoot: string): FileSystem => {
   const cache = new Map<string, boolean>();
+
   return {
     exists: (repoRelativePath) => {
       const cached = cache.get(repoRelativePath);
+
       if (cached !== undefined) return cached;
       const answer = existsSync(path.resolve(repoRoot, repoRelativePath));
       cache.set(repoRelativePath, answer);
+
       return answer;
     },
     readText: (repoRelativePath) => {

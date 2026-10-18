@@ -23,6 +23,7 @@ describe("factsOfText", () => {
         "export = Port;",
       ].join("\n"),
     );
+
     expect(facts.specifiers).toEqual(["dynamic", "equals"]);
     expect(facts.bindings.get("dynamic")).toEqual([{ symbol: "*", kind: "namespace" }]);
     expect(facts.bindings.get("equals")).toEqual([
@@ -41,6 +42,7 @@ describe("factsOfText", () => {
       "x.ts",
       "type Base = { fromBase(): void };\ntype T = Base & ({ inParens(): void } | Base);",
     );
+
     expect(facts.memberSites.map((site) => `${site.in ?? ""}.${site.name}`)).toEqual([
       "Base.fromBase",
       "T.inParens",
@@ -57,6 +59,7 @@ describe("factsOfText", () => {
       "view.tsx",
       'import { useThing } from "hooks";\nexport const V = () => <div onClick={() => useThing()} />;',
     );
+
     expect(view.specifiers).toEqual(["hooks"]);
     expect(view.memberSites.map((site) => site.name)).toEqual(["useThing"]);
     expect(view.exportSites.map((site) => site.name)).toEqual(["V"]);
@@ -86,6 +89,7 @@ describe("factsOfText", () => {
       "",
       "<div class={cn(tone)}>{format(tone)}<Icon /></div>",
     ].join("\n");
+
     const facts = factsOfText("badge.svelte", component);
 
     expect(facts.specifiers).toEqual(["./cn", "./icon.svelte"]);
@@ -135,6 +139,7 @@ describe("readProgram", () => {
     "export const x = 1;",
     "run();",
   ].join("\n");
+
   const { program } = parseSync("x.ts", source, { preserveParens: false });
   const read = readProgram("x.ts", program);
 
@@ -168,6 +173,7 @@ describe("readProgram", () => {
 
   it("strips to the facts the core sees", () => {
     expect(sourceFactsOf(read)).toEqual(factsOfText("x.ts", source));
+
     for (const site of sourceFactsOf(read).memberSites) expect(site).not.toHaveProperty("node");
   });
 });

@@ -79,7 +79,9 @@ export const Ledger = Schema.Struct({
 });
 
 export type Ledger = typeof Ledger.Type;
+
 export type SectorLedger = typeof SectorLedger.Type;
+
 export type Concession = typeof Concession.Type;
 
 // The family's first ledger: one campaign, one detector, one flat list.
@@ -105,6 +107,7 @@ const LedgerV1 = Schema.Struct({
 });
 
 const decode = Schema.decodeUnknownResult(Ledger, { errors: "all", onExcessProperty: "error" });
+
 const decodeV1 = Schema.decodeUnknownResult(LedgerV1, {
   errors: "all",
   onExcessProperty: "error",
@@ -129,8 +132,10 @@ export const isLegacyLedger = (raw: unknown): boolean =>
 export const decodeLedger = (raw: unknown): Result.Result<Ledger, string> => {
   if (isLegacyLedger(raw)) {
     const decoded = decodeV1(raw);
+
     if (Result.isFailure(decoded)) return Result.fail(String(decoded.failure.issue));
     const old = decoded.success;
+
     return Result.succeed({
       version: 2,
       campaign: old.id,
@@ -156,7 +161,9 @@ export const decodeLedger = (raw: unknown): Result.Result<Ledger, string> => {
       })),
     });
   }
+
   const decoded = decode(raw);
+
   return Result.isFailure(decoded)
     ? Result.fail(String(decoded.failure.issue))
     : Result.succeed(decoded.success);
@@ -176,7 +183,9 @@ const concededTotal = (ledger: Ledger, sector: string): number =>
 
 export const sectorArithmeticHolds = (ledger: Ledger, sector: string): boolean => {
   const own = ledger.sectors[sector];
+
   if (own === undefined) return concededTotal(ledger, sector) === 0;
+
   return (
     own.holdouts.length === own.initial + concededTotal(ledger, sector) - own.cleared - own.closed
   );
@@ -197,6 +206,7 @@ const anchorOf = (entry: string): string => entry.slice(0, entry.lastIndexOf("#"
 const contentOf = (entry: string): string | null => {
   const first = entry.indexOf("#");
   const last = entry.lastIndexOf("#");
+
   return first === -1 || first === last
     ? null
     : `${entry.slice(0, first)}#${entry.slice(last + 1)}`;
@@ -235,11 +245,14 @@ export const reconcileEntries = (
   const ledgered: Array<string> = [];
   const unmatched: Array<string> = [];
   const current = new Set<string>();
+
   for (const entry of entries) {
     current.add(entry);
+
     if (known.has(entry)) ledgered.push(entry);
     else unmatched.push(entry);
   }
+
   let stale = holdouts.filter((entry) => !current.has(entry));
   const drifted: Array<{ from: string; to: string }> = [];
   let unrecorded: Array<string> = [];
@@ -254,26 +267,35 @@ export const reconcileEntries = (
       candidates: ReadonlyArray<string>,
     ): Array<string> => {
       const byKey = new Map<string, Array<string>>();
+
       for (const entry of stale) {
         const key = keyOf(entry);
+
         if (key !== null) byKey.set(key, [...(byKey.get(key) ?? []), entry]);
       }
+
       const paired = new Set<string>();
       const left: Array<string> = [];
+
       for (const entry of candidates) {
         const key = keyOf(entry);
         const from = key === null ? undefined : byKey.get(key)?.shift();
+
         if (from === undefined) {
           left.push(entry);
           continue;
         }
+
         paired.add(from);
         drifted.push({ from, to: entry });
         ledgered.push(entry);
       }
+
       stale = stale.filter((entry) => !paired.has(entry));
+
       return left;
     };
+
     unrecorded = pass(contentOf, pass(anchorOf, unmatched));
   } else {
     unrecorded = unmatched;
@@ -296,8 +318,10 @@ export const clearedSector = (
 ): Ledger => {
   const at = new Date(now).toISOString();
   const own = ledger.sectors[sector];
+
   if (window === "outside") {
     if (own === undefined || own.holdouts.length === 0) return ledger;
+
     return {
       ...ledger,
       sectors: {
@@ -306,8 +330,10 @@ export const clearedSector = (
       },
     };
   }
+
   if (own === undefined) {
     const holdouts = sorted(entries);
+
     return {
       ...ledger,
       sectors: {
@@ -323,12 +349,15 @@ export const clearedSector = (
       },
     };
   }
+
   const { drifted, stale } = reconcileSector(ledger, sector, entries, unit);
   const rewritten = new Map(drifted.map((one) => [one.from, one.to]));
   const gone = new Set(stale);
+
   const holdouts = sorted(
     own.holdouts.filter((entry) => !gone.has(entry)).map((entry) => rewritten.get(entry) ?? entry),
   );
+
   return {
     ...ledger,
     sectors: {
@@ -361,8 +390,10 @@ export const concededSector = (
   const own = ledger.sectors[sector];
   const present = new Set(own?.holdouts ?? []);
   const added = sorted([...entries].filter((entry) => !present.has(entry)));
+
   if (added.length === 0) return ledger;
   const at = new Date(record.at).toISOString();
+
   const base: SectorLedger = own ?? {
     entered: at,
     initial: 0,
@@ -371,6 +402,7 @@ export const concededSector = (
     lastCleared: at,
     holdouts: [],
   };
+
   return {
     ...ledger,
     sectors: {
@@ -396,6 +428,7 @@ export const rebaselinedSector = (
   const own = ledger.sectors[sector];
   const holdouts = sorted(entries);
   const at = new Date(record.at).toISOString();
+
   const base: SectorLedger = own ?? {
     entered: at,
     initial: 0,
@@ -404,12 +437,14 @@ export const rebaselinedSector = (
     lastCleared: at,
     holdouts: [],
   };
+
   if (
     base.holdouts.length === holdouts.length &&
     base.holdouts.every((one, i) => one === holdouts[i])
   ) {
     return ledger;
   }
+
   return {
     ...ledger,
     sectors: { ...ledger.sectors, [sector]: { ...base, holdouts } },
@@ -451,6 +486,7 @@ export const progressOf = (ledger: Ledger): number => {
     initialOf(ledger) +
     ledger.concessions.reduce((sum, one) => sum + deltaOf(one), 0) -
     closedOf(ledger);
+
   return total <= 0 ? 1 : 1 - holdoutsOf(ledger) / total;
 };
 
@@ -461,13 +497,16 @@ export const isComplete = (ledger: Ledger): boolean => holdoutsOf(ledger) === 0;
 // ledger has not recorded, `1` for one that entered with nothing to pay.
 export const sectorProgressOf = (ledger: Ledger | undefined, sector: string): number => {
   const own = ledger?.sectors[sector];
+
   if (own === undefined) return 0;
   const total = own.cleared + own.holdouts.length;
+
   return total <= 0 ? 1 : own.cleared / total;
 };
 
 export const lastClearedOf = (ledger: Ledger): string | null => {
   const stamps = Object.values(ledger.sectors).map((one) => one.lastCleared);
+
   return stamps.length === 0 ? null : stamps.reduce((a, b) => (a > b ? a : b));
 };
 
@@ -482,9 +521,11 @@ export const isStalled = (
   sectorClock: string | null = null,
 ): boolean => {
   if (rule.staleAfter === null || isComplete(ledger)) return false;
+
   const last = [lastClearedOf(ledger), sectorClock]
     .filter((one): one is string => one !== null)
     .reduce((a, b) => (a > b ? a : b), ledger.created);
+
   return now - Date.parse(last) > rule.staleAfter;
 };
 
@@ -542,7 +583,9 @@ export const MeasureLedger = Schema.Struct({
 });
 
 export type MeasureLedger = typeof MeasureLedger.Type;
+
 export type MeasureSectorLedger = typeof MeasureSectorLedger.Type;
+
 export type MeasureConcession = typeof MeasureConcession.Type;
 
 const decodeMeasure = Schema.decodeUnknownResult(MeasureLedger, {
@@ -557,6 +600,7 @@ export const isMeasureLedger = (raw: unknown): boolean =>
 
 export const decodeMeasureLedger = (raw: unknown): Result.Result<MeasureLedger, string> => {
   const decoded = decodeMeasure(raw);
+
   return Result.isFailure(decoded)
     ? Result.fail(String(decoded.failure.issue))
     : Result.succeed(decoded.success);
@@ -593,9 +637,12 @@ export const measureArithmeticHolds = (ledger: MeasureLedger, sector: string): b
   const risen = ledger.concessions
     .filter((one) => one.sector === sector)
     .reduce((sum, one) => sum + worseBy(ledger.direction, one.from, one.to), 0);
+
   const own = ledger.sectors[sector];
+
   if (own === undefined) return Math.abs(risen) < EPSILON;
   const expected = worseBy(ledger.direction, own.initial, own.recorded);
+
   return Math.abs(expected - (risen - own.improved)) < EPSILON;
 };
 
@@ -612,7 +659,9 @@ export const measureStandingOf = (
   tolerance: number,
 ): Standing | "unrecorded" => {
   const own = ledger.sectors[sector];
+
   if (own === undefined || own.closed !== null) return "unrecorded";
+
   return standingOf({ direction: ledger.direction, limit: own.recorded, tolerance }, value);
 };
 
@@ -630,8 +679,10 @@ export const clearedMeasure = (
 ): MeasureLedger => {
   const at = new Date(now).toISOString();
   const own = ledger.sectors[sector];
+
   if (window === "outside") {
     if (own === undefined || own.closed !== null) return ledger;
+
     return {
       ...ledger,
       sectors: {
@@ -640,7 +691,9 @@ export const clearedMeasure = (
       },
     };
   }
+
   if (Number.isNaN(value)) return ledger;
+
   if (own === undefined) {
     return {
       ...ledger,
@@ -657,6 +710,7 @@ export const clearedMeasure = (
       },
     };
   }
+
   if (own.closed !== null) {
     // A sector born again after it was closed — its marker restored, say —
     // enters again at its value, and the move from its old record is a
@@ -673,12 +727,14 @@ export const clearedMeasure = (
             ],
     };
   }
+
   if (
     standingOf({ direction: ledger.direction, limit: own.recorded, tolerance }, value) !==
     "surpassed"
   ) {
     return ledger;
   }
+
   return {
     ...ledger,
     sectors: {
@@ -703,8 +759,11 @@ export const concededMeasure = (
   record: ConcessionRecord,
 ): MeasureLedger => {
   const own = ledger.sectors[sector];
+
   if (own === undefined || own.closed !== null || Number.isNaN(value)) return ledger;
+
   if (own.recorded === value) return ledger;
+
   return {
     ...ledger,
     sectors: { ...ledger.sectors, [sector]: { ...own, recorded: value } },
@@ -732,6 +791,7 @@ export const recordedOf = (ledger: MeasureLedger): number =>
 
 export const lastImprovedOf = (ledger: MeasureLedger): string | null => {
   const stamps = Object.values(ledger.sectors).map((one) => one.lastImproved);
+
   return stamps.length === 0 ? null : stamps.reduce((a, b) => (a > b ? a : b));
 };
 
@@ -740,12 +800,15 @@ export const lastImprovedOf = (ledger: MeasureLedger): string | null => {
 // target to come toward, and reads as its improvement over its initial.
 export const measureProgressOf = (ledger: MeasureLedger, target: number | null): number => {
   const open = Object.values(ledger.sectors).filter((one) => one.closed === null);
+
   if (open.length === 0) return 1;
   const initial = open.reduce((sum, one) => sum + one.initial, 0);
   const recorded = open.reduce((sum, one) => sum + one.recorded, 0);
   const goal = target === null ? 0 : target * open.length;
   const span = worseBy(ledger.direction, goal, initial);
+
   if (span <= 0) return 1;
+
   return Math.min(1, Math.max(0, 1 - worseBy(ledger.direction, goal, recorded) / span));
 };
 
@@ -757,9 +820,12 @@ export const measureSectorProgressOf = (
   target: number | null,
 ): number => {
   const own = ledger?.sectors[sector];
+
   if (ledger === undefined || own === undefined || target === null) return 0;
   const span = worseBy(ledger.direction, target, own.initial);
+
   if (span <= 0) return 1;
+
   return Math.min(1, Math.max(0, 1 - worseBy(ledger.direction, target, own.recorded) / span));
 };
 
@@ -805,7 +871,9 @@ export const SectorRecord = Schema.Struct({
 });
 
 export type SectorRecord = typeof SectorRecord.Type;
+
 export type Attestation = typeof Attestation.Type;
+
 export type Note = typeof Note.Type;
 
 const decodeRecord = Schema.decodeUnknownResult(SectorRecord, {
@@ -815,6 +883,7 @@ const decodeRecord = Schema.decodeUnknownResult(SectorRecord, {
 
 export const decodeSectorRecord = (raw: unknown): Result.Result<SectorRecord, string> => {
   const decoded = decodeRecord(raw);
+
   return Result.isFailure(decoded)
     ? Result.fail(String(decoded.failure.issue))
     : Result.succeed(decoded.success);
@@ -861,7 +930,9 @@ export const reachedRecord = (
 ): SectorRecord => {
   const current = positionOf(rule, record).reached;
   const id = rule.phases[phase]?.id ?? null;
+
   if (phase <= current || id === null) return record;
+
   return { ...record, reached: id, since: new Date(now).toISOString() };
 };
 
@@ -904,11 +975,13 @@ export const notedRecord = (
       `a note is at most ${String(NOTE_LENGTH)} characters, and this one is ${String(note.text.length)}: split it, or say less. Nothing was recorded.`,
     );
   }
+
   if (record.notes.length >= NOTE_CAP) {
     return Result.fail(
       `${record.sector} already holds ${String(NOTE_CAP)} notes, the most a sector keeps: remove one from its record in its own commit, then leave this one. Nothing was recorded.`,
     );
   }
+
   return Result.succeed({
     ...record,
     notes: [...record.notes, { ...note, at: new Date(note.at).toISOString() }],
@@ -957,6 +1030,7 @@ const decodePlan = Schema.decodeUnknownResult(PlanRecord, {
 
 export const decodePlanRecord = (raw: unknown): Result.Result<PlanRecord, string> => {
   const decoded = decodePlan(raw);
+
   return Result.isFailure(decoded)
     ? Result.fail(String(decoded.failure.issue))
     : Result.succeed(decoded.success);
@@ -1000,18 +1074,23 @@ const keptInOrder = (
 ): ReadonlySet<string> => {
   const lengths: Array<Array<number>> = before.map(() => after.map(() => 0));
   const at = (i: number, j: number): number => lengths[i]?.[j] ?? 0;
+
   for (let i = before.length - 1; i >= 0; i -= 1) {
     for (let j = after.length - 1; j >= 0; j -= 1) {
       const row = lengths[i];
+
       if (row === undefined) continue;
       row[j] = before[i] === after[j] ? at(i + 1, j + 1) + 1 : Math.max(at(i + 1, j), at(i, j + 1));
     }
   }
+
   const kept = new Set<string>();
   let i = 0;
   let j = 0;
+
   while (i < before.length && j < after.length) {
     const id = before[i];
+
     if (id !== undefined && id === after[j]) {
       kept.add(id);
       i += 1;
@@ -1019,6 +1098,7 @@ const keptInOrder = (
     } else if (at(i + 1, j) >= at(i, j + 1)) i += 1;
     else j += 1;
   }
+
   return kept;
 };
 
@@ -1027,38 +1107,48 @@ export const planDiffOf = (rule: CompiledCampaign, recorded: PlanRecord | undefi
   const refined: Array<string> = [];
   const changed: Array<string> = [];
   const unreceipted: Array<string> = [];
+
   // The phases both plans have, in each one's order: what stands outside
   // their longest common run moved relative to the rest.
   const stayed = keptInOrder(
     recorded.phases.map((one) => one.id).filter((id) => rule.phases.some((one) => one.id === id)),
     rule.phases.map((one) => one.id).filter((id) => recorded.phases.some((one) => one.id === id)),
   );
+
   for (const phase of rule.phases) {
     const index = recorded.phases.findIndex((one) => one.id === phase.id);
     const before = recorded.phases[index];
+
     if (before === undefined) {
       refined.push(phase.id);
       continue;
     }
+
     const asked =
       recorded.version === 1
         ? placedHashOf(phase, index) === before.hash
         : before.hash === phase.hash;
+
     if (asked && stayed.has(phase.id)) continue;
+
     if (!before.defined) {
       // An open phase is last wherever it is; only what it asks can change.
       if (!asked) refined.push(phase.id);
       continue;
     }
+
     changed.push(phase.id);
+
     if (phase.concessions.length <= before.concessions) unreceipted.push(phase.id);
   }
+
   for (const before of recorded.phases) {
     if (before.defined && !rule.phases.some((phase) => phase.id === before.id)) {
       changed.push(before.id);
       unreceipted.push(before.id);
     }
   }
+
   return { refined, changed, unreceipted };
 };
 

@@ -1,5 +1,6 @@
 import {
   type Allowance,
+  type BindingKind,
   type ExportRule,
   type GraphConfig,
   type ImportRule,
@@ -79,8 +80,10 @@ const alternativesOf = (key: string): ReadonlyArray<string> =>
 export const expandAliases = (glob: string, aliases: Readonly<Record<string, string>>): string => {
   for (const [alias, target] of Object.entries(aliases)) {
     if (glob === alias) return target;
+
     if (glob.startsWith(`${alias}/`)) return target + glob.slice(alias.length);
   }
+
   return glob;
 };
 
@@ -116,15 +119,19 @@ const PROBE_WORDS = ["alpha", "beta", "gamma", "delta"];
 
 const probePathOf = (pathGlob: string, leaf: string): string => {
   let word = 0;
+
   const filled = pathGlob
     .replace(/\{[a-zA-Z][a-zA-Z0-9]*\}/g, () => {
       const value = PROBE_WORDS[word % PROBE_WORDS.length] ?? "alpha";
       word += 1;
+
       return value;
     })
     .replace(/\*\*/g, "deep")
     .replace(/\*/g, "zz");
+
   if (leaf === "") return filled;
+
   return filled === "" ? leaf : `${filled}/${leaf}`;
 };
 
@@ -133,11 +140,29 @@ const probePathOf = (pathGlob: string, leaf: string): string => {
 const probeMemberName = (match: string | ReadonlyArray<string> | undefined): string => {
   if (match === undefined) return "zzProbeMember";
   const first = globsOf(match)[0] ?? "";
+
   return `${first
     // A character class stands for one character, so the probe uses the first
     // one it admits: `use[A-Z]*` has to be proven with `useA…`, not `use[A-Z]…`.
     .replace(/\[\^?([^\]])[^\]]*\]/g, "$1")
     .replace(/\*/g, "")}ZzProbe`;
+};
+
+// The name a synthetic export probe of `kind` binds: a default binding is
+// only ever named `default` and a namespace one `*`; a named one takes the
+// rule's first `symbols` entry, when it lists any.
+const probeSymbolOfKind = (
+  kind: BindingKind,
+  symbols: ReadonlyArray<string> | undefined,
+): string | undefined => {
+  switch (kind) {
+    case "namespace":
+      return "*";
+    case "default":
+      return "default";
+    case "named":
+      return symbols?.[0];
+  }
 };
 
 // Each convention pairs the shape a name must have with a name that does not
@@ -173,13 +198,17 @@ export const CONVENTIONS: Readonly<
 const namingMessageOf = (spec: NamingSpec, subject: "file" | "folder"): string => {
   const what =
     subject === "folder" ? "This folder's name" : "The concept name in front of the stereotype";
+
   if (typeof spec === "string") {
     return `${what} is ${spec} here — ${CONVENTIONS[spec]?.shape ?? ""}.`;
   }
+
   if (spec.message !== undefined) return spec.message;
+
   if ("like" in spec) {
     return "A file here is named after its folder, so its concept name is the folder's own.";
   }
+
   return `${what} matches /${spec.regex}/ here.`;
 };
 
@@ -191,18 +220,23 @@ const VIOLATING_CANDIDATES = ["zzProbeStray", "zz-probe-stray", "ZZ_PROBE_STRAY"
 const violatingSampleFor = (spec: NamingSpec, ruleName: string): string => {
   if (typeof spec === "string") {
     const convention = CONVENTIONS[spec];
+
     if (convention === undefined) throw new Error(`unknown naming convention "${spec}"`);
+
     return convention.violating;
   }
+
   if ("like" in spec) return "zzprobestray";
   const matcher = new RegExp(spec.regex);
   const found = VIOLATING_CANDIDATES.find((candidate) => !matcher.test(candidate));
+
   if (found === undefined) {
     throw new Error(
       `naming rule "${ruleName}" states /${spec.regex}/, which admits every name this ` +
         `compiler can think of. A convention nothing can violate is a rule that never reports.`,
     );
   }
+
   return found;
 };
 
@@ -217,7 +251,9 @@ const namingProbeOf = (
 ): string => {
   const found = new RegExp(patternSource, "d").exec(probe);
   const span = found?.indices?.[subject];
+
   if (span === undefined) return probe;
+
   return probe.slice(0, span[0]) + violating + probe.slice(span[1]);
 };
 
@@ -259,8 +295,10 @@ const mergeImports = (
 
   const via = (key: "allow" | "external"): Pick<Allowance, "fragment"> => {
     const fragment = provenance(key);
+
     return fragment === undefined ? {} : { fragment };
   };
+
   const own: ReadonlyArray<Allowance> = [
     ...globsOf(spec.allow ?? []).map((glob) => ({
       node,
@@ -276,6 +314,7 @@ const mergeImports = (
       ...via("external"),
     })),
   ];
+
   const deny = (spec.deny ?? []).flatMap((entry) =>
     globsOf(entry.match).map((glob) => ({
       match: compileAllow(glob),
@@ -290,6 +329,7 @@ const mergeImports = (
   // resetting can never make a subtree quieter than its ancestors — the direction
   // a mistake here would be dangerous in.
   const dropping = spec.reset === true || spec.unrestricted === true;
+
   return {
     allowances: dropping ? own : [...frame.allowances, ...own],
     // Only what this node declares. A prohibition is emitted once, over its whole
@@ -324,7 +364,9 @@ export const lowerManifest = (
     const scope = manifest.resolve.scopes.find((one) =>
       new RegExp(one.files).test(`${folder}/zzprobe`),
     );
+
     const language = languages.find((one) => one.id === scope?.language);
+
     return language?.extensions[0] ?? "";
   };
 
@@ -348,17 +390,21 @@ export const lowerManifest = (
     ruleName: string,
   ): string => {
     const candidates = [`zzprobe-stray${extension}`, "zzprobe-stray", "zzprobe.stray.zz"];
+
     const rejected = candidates.find(
       (candidate) => !admitted.some((pattern) => new RegExp(pattern).test(candidate)),
     );
+
     if (rejected === undefined) {
       throw new Error(
         `"${ruleName}" admits every file name this compiler can think of, so it enumerates ` +
           `nothing. A folder that does not police its file names is \`layout: "open"\`; say so.`,
       );
     }
+
     return rejected;
   };
+
   const imports: Array<ImportRule> = [];
   const exports: Array<ExportRule> = [];
   const members: Array<MemberRule> = [];
@@ -382,28 +428,35 @@ export const lowerManifest = (
     nodePath: ManifestPath,
   ): void => {
     const siblings = siblingNodes.map(([siblingKey]) => siblingKey);
+
     const literalSiblings = siblings
       .filter((sibling) => sibling !== key)
       .flatMap(alternativesOf)
       .filter((sibling) => !/[*{]/.test(sibling));
+
     const alternatives = alternativesOf(key).map((one) => expandAliases(one, aliases));
     const [first = ""] = alternatives;
 
     if (node.partial === true) partialNodes.push(name);
+
     if (node.imports?.unrestricted === true) unrestrictedNodes.push(name);
+
     if (alternatives.length > 1 && alternatives.some((one) => one.includes("{"))) {
       throw new Error(
         `key "${key}" both names several patterns and declares a capture. A capture has to come ` +
           `from one place, so give the capturing pattern its own key.`,
       );
     }
+
     // The probe, the path and every descendant hang off the first alternative;
     // the rest only widen what the pattern matches.
     const joinedGlob = parent.pathGlob === "" ? first : `${parent.pathGlob}/${first}`;
+
     const compiledFirst = globToRegexSource(first, parent.captures, {
       declaring: true,
       nextGroup: parent.nextGroup,
     });
+
     const compiled =
       alternatives.length === 1
         ? compiledFirst
@@ -419,13 +472,16 @@ export const lowerManifest = (
               )
               .join("|")})`,
           };
+
     // `(?!domain-services$|ports$)` — written by the compiler, from the fact that
     // those keys are siblings of this one.
     const guarded =
       literalSiblings.length > 0 && /[*{]/.test(first)
         ? `(?!(?:${literalSiblings.map((one) => one.replace(/[.+^$()|[\]\\*?{}]/g, "\\$&")).join("|")})(?:/|$))${compiled.source}`
         : compiled.source;
+
     const pathSource = parent.pathSource === "" ? guarded : `${parent.pathSource}/${guarded}`;
+
     const nextGroup =
       parent.nextGroup +
       (Object.keys(compiled.captures).length - Object.keys(parent.captures).length);
@@ -439,7 +495,9 @@ export const lowerManifest = (
       name,
       (field) => fragmentOf(substitutions, [...nodePath, "imports", field]),
     );
+
     const ownDenials = merged.deny;
+
     const frame: Frame = {
       pathSource,
       pathGlob: joinedGlob,
@@ -462,10 +520,12 @@ export const lowerManifest = (
     // matched: the key `*-live.<ext>` matches `todos.repository-live.<ext>`, whose
     // wildcard spans a stereotype segment as well as the concept.
     const naming = frame.naming;
+
     if (naming !== undefined) {
       const declaredHere = Object.keys(compiled.captures).filter(
         (one) => parent.captures[one] === undefined,
       );
+
       const lastDeclared = declaredHere[declaredHere.length - 1];
       const isLike = typeof naming === "object" && "like" in naming;
 
@@ -509,6 +569,7 @@ export const lowerManifest = (
       if (isFolder && !isLike) {
         if (lastDeclared !== undefined) {
           const subject = compiled.captures[lastDeclared];
+
           if (subject !== undefined) {
             emit(
               `${name}/naming-folder`,
@@ -520,6 +581,7 @@ export const lowerManifest = (
             );
           }
         }
+
         emit(
           `${name}/naming`,
           [anchored(`${pathSource}/([^/.]+)[^/]*`)],
@@ -536,17 +598,21 @@ export const lowerManifest = (
             capturing: true,
           }),
         );
+
         const [firstNaming] = namingCompiled;
         const subject = firstNaming?.wildcards[firstNaming.wildcards.length - 1];
+
         const sameAs =
           typeof naming === "object" && "like" in naming
             ? parent.captures[naming.like.replace(/[{}]/g, "")]
             : undefined;
+
         if (typeof naming === "object" && "like" in naming && sameAs === undefined) {
           throw new Error(
             `naming at "${key}" is like ${naming.like}, which no ancestor path declares.`,
           );
         }
+
         if (subject !== undefined && sameAs !== undefined) {
           emit(
             `${name}/naming`,
@@ -564,6 +630,7 @@ export const lowerManifest = (
     }
 
     const childEntries = Object.entries(node.children ?? {});
+
     // The nearest descendants — at any depth — that state their own import
     // policy. A folder's allowlist covers its whole subtree except these, and
     // each of them emits a rule over its own subtree in turn. Descent stops at a
@@ -583,12 +650,16 @@ export const lowerManifest = (
             declaring: true,
             nextGroup: atGroup,
           });
+
           const source = `${atPath}/${childCompiled.source}`;
+
           const childGroup =
             atGroup + (Object.keys(childCompiled.captures).length - Object.keys(atCaptures).length);
+
           if (child.imports !== undefined) {
             return [isFolderKey(childKey) ? prefixed(`${source}/`) : anchored(source)];
           }
+
           return isFolderKey(childKey)
             ? overridingDescendants(child, source, childCompiled.captures, childGroup)
             : [];
@@ -605,8 +676,10 @@ export const lowerManifest = (
     if (isFolder) {
       const childKeys = childEntries;
       const fileKeys = childKeys.filter(([childKey]) => !isFolderKey(childKey));
+
       if (node.partial !== true) {
         const ruleName = `${name}/layout`;
+
         // An open folder still CLAIMS its folder — otherwise no rule governs
         // it and the taxonomy root fires — it just admits any file name.
         const admitted =
@@ -620,11 +693,14 @@ export const lowerManifest = (
                   ),
                 ),
               );
+
         const folderProbe = probePathOf(joinedGlob, "");
+
         const stray =
           node.layout === "open"
             ? `zzprobe-stray${extensionFor(folderProbe)}`
             : strayBasenameFor(admitted, extensionFor(folderProbe), ruleName);
+
         folders.push({
           name: ruleName,
           message: node.message ?? "This folder does not admit that file.",
@@ -633,6 +709,7 @@ export const lowerManifest = (
           files: admitted,
         });
       }
+
       for (const [childKey, child] of childKeys) {
         walk(childKey, child, frame, `${name}/${alternativesOf(childKey)[0] ?? ""}`, childKeys, [
           ...nodePath,
@@ -651,6 +728,7 @@ export const lowerManifest = (
     const emitsOwnImports = isFolder ? node.imports !== undefined : node.imports !== undefined;
     const scope = isFolder ? prefixed(`${pathSource}/`) : selfPattern;
     const scopeProbe = isFolder ? probeIn(joinedGlob, "zzprobe") : probePathOf(joinedGlob, "");
+
     // The folder a probe of this node sits in, for "a file of the same language".
     const ownFolder = isFolder
       ? probePathOf(joinedGlob, "")
@@ -659,9 +737,11 @@ export const lowerManifest = (
     const allow = frame.allowances.flatMap((one) =>
       one.pattern === undefined ? [] : [one.pattern],
     );
+
     const externals = frame.allowances
       .filter((one) => one.kind === "external")
       .map((one) => one.entry);
+
     const admitsEverything = allow.some((pattern) => pattern === "^.*" || pattern === "^");
     const hasAllowlist = frame.allowances.length > 0 && !admitsEverything;
 
@@ -684,25 +764,34 @@ export const lowerManifest = (
     // other's are one kind written twice, and are refused. Prohibitions are
     // untouched: a `deny` composes, and nothing opts out of one.
     const narrowerSiblings: Array<string> = [];
+
     if (emitsOwnImports && !isFolder) {
       for (const [siblingKey, sibling] of siblingNodes) {
         if (siblingKey === key || sibling.imports === undefined) continue;
+
         if (isFolderKey(siblingKey) || sibling.children !== undefined) continue;
+
         for (const alternative of alternativesOf(siblingKey)) {
           const theirGlob = expandAliases(alternative, aliases);
+
           const theirSource = globToRegexSource(theirGlob, parent.captures, {
             declaring: true,
             nextGroup: parent.nextGroup,
           }).source;
+
           const theirs = anchored(
             parent.pathSource === "" ? theirSource : `${parent.pathSource}/${theirSource}`,
           );
+
           const theirProbe = probePathOf(
             parent.pathGlob === "" ? theirGlob : `${parent.pathGlob}/${theirGlob}`,
             "",
           );
+
           const selectsTheirs = new RegExp(selfPattern).test(theirProbe);
+
           if (!selectsTheirs) continue;
+
           if (new RegExp(theirs).test(scopeProbe)) {
             // Said once, from the key that sorts first.
             if (key < siblingKey) {
@@ -712,8 +801,10 @@ export const lowerManifest = (
                   `once; make them one key, or narrow one of them.`,
               );
             }
+
             continue;
           }
+
           narrowerSiblings.push(theirs);
         }
       }
@@ -761,6 +852,7 @@ export const lowerManifest = (
       // than emit a rule whose exemptions do not work.
       for (const allowed of globsOf(node.importedBy.allow)) {
         const referenced = allowed.match(/\{[a-zA-Z][a-zA-Z0-9]*\}/g) ?? [];
+
         if (referenced.length > 0) {
           throw new Error(
             `"${name}" allows ${referenced.join(", ")} in importedBy, but a capture from this ` +
@@ -771,6 +863,7 @@ export const lowerManifest = (
           );
         }
       }
+
       const asTarget = (glob: string) =>
         prefixed(
           globToRegexSource(expandAliases(glob, aliases), compiled.captures, {
@@ -778,6 +871,7 @@ export const lowerManifest = (
             nextGroup,
           }).source,
         );
+
       // On a folder the restriction covers the whole subtree — "a module is
       // private" is a statement about everything under it, not about the folder
       // node itself.
@@ -786,6 +880,7 @@ export const lowerManifest = (
           `${pathSource}/${globToRegexSource(glob, compiled.captures, { declaring: false, nextGroup }).source}`,
         ),
       );
+
       imports.push({
         name: `${name}/imported-by`,
         message: node.importedBy.message,
@@ -804,6 +899,7 @@ export const lowerManifest = (
             globToRegexSource(one, compiled.captures, { declaring: false, nextGroup }).source,
           ),
         );
+
       members.push({
         name: `${name}/members-${String(index)}`,
         message: spec.message,
@@ -835,12 +931,14 @@ export const lowerManifest = (
 
     for (const [index, spec] of (node.surface ?? []).entries()) {
       const ruleName = `${name}/surface-${String(index)}`;
+
       const asName = (globs: string | ReadonlyArray<string>) =>
         globsOf(globs).map((one) =>
           anchored(
             globToRegexSource(one, compiled.captures, { declaring: false, nextGroup }).source,
           ),
         );
+
       const asPath = (glob: string) =>
         prefixed(
           globToRegexSource(expandAliases(glob, aliases), compiled.captures, {
@@ -852,6 +950,7 @@ export const lowerManifest = (
       const demands = [spec.allow, spec.convention, spec.count].filter(
         (one) => one !== undefined,
       ).length;
+
       if (demands > 1) {
         throw new Error(
           `surface rule "${ruleName}" states more than one of allow, convention and count. ` +
@@ -860,6 +959,7 @@ export const lowerManifest = (
       }
 
       const kind = spec.kinds?.[0] ?? "named";
+
       const conventionSource =
         spec.convention === undefined
           ? undefined
@@ -878,22 +978,27 @@ export const lowerManifest = (
             : spec.convention !== undefined
               ? violatingSampleFor(spec.convention, ruleName)
               : probeMemberName(spec.match);
+
       const oneSite = {
         name: siteName,
         kind,
         ...(spec.declares?.[0] === undefined ? {} : { declares: spec.declares[0] }),
         ...(spec.reexport === undefined ? {} : { reexport: spec.reexport }),
       };
+
       const probeSites = (): ReadonlyArray<typeof oneSite> => {
         if (spec.count === undefined) return [oneSite];
         const min = spec.count.min ?? 0;
+
         if (min > 0) return [];
+
         if (spec.count.max === undefined) {
           throw new Error(
             `surface rule "${ruleName}" states a count with no minimum and no maximum, ` +
               `which nothing can violate.`,
           );
         }
+
         return Array.from({ length: spec.count.max + 1 }, (_, i) => ({
           ...oneSite,
           name: `${siteName}${String(i)}`,
@@ -926,6 +1031,7 @@ export const lowerManifest = (
         (basename) =>
           `/${globToRegexSource(basename, compiled.captures, { declaring: false, nextGroup }).source}$`,
       );
+
       parity.push({
         name: `${name}/requires`,
         message: node.message ?? "This file needs its sibling.",
@@ -950,6 +1056,7 @@ export const lowerManifest = (
   // Repo-wide prohibitions: `from` is every file, so no tier can be written
   // that escapes them.
   const globalFrame: Frame = { ...emptyFrame };
+
   for (const [index, denial] of mergeImports(
     globalFrame,
     { unrestricted: true, deny: manifest.deny ?? [] },
@@ -1012,15 +1119,15 @@ export const lowerManifest = (
         globToRegexSource(expandAliases(glob, aliases), {}, { declaring: false, nextGroup: 1 })
           .source,
       );
+
     // The synthetic probe is a binding of the rule's first kind. A default
     // binding is only ever named `default` and a namespace one `*`, so a rule
     // that lists `symbols` alongside those kinds cannot cover its probe — and
     // is refused at load, which is right: it could never fire on such a form.
     const kind = rule.kinds?.[0] ?? "named";
-    const symbol =
-      rule.probe?.symbol ??
-      (kind === "namespace" ? "*" : kind === "default" ? "default" : rule.symbols?.[0]) ??
-      "zzProbeSymbol";
+
+    const symbol = rule.probe?.symbol ?? probeSymbolOfKind(kind, rule.symbols) ?? "zzProbeSymbol";
+
     exports.push({
       name: rule.name,
       message: rule.message,
@@ -1048,8 +1155,10 @@ export const lowerManifest = (
       globToRegexSource(expandAliases(glob, aliases), {}, { declaring: false, nextGroup: 1 })
         .source,
     );
+
   const asGraphPatterns = (globs: string | ReadonlyArray<string> | undefined) =>
     globs === undefined ? undefined : globsOf(globs).map(asGraphPattern);
+
   // A synthetic file inside a graph scope. A glob whose last segment names a
   // file shape (`src/**/*.<ext>`) is filled in place and keeps its extension; a
   // folder glob (`src/**`) gets a file of its language's added beneath it.
@@ -1057,16 +1166,20 @@ export const lowerManifest = (
     const glob = expandAliases(globsOf(globs)[0] ?? "", aliases);
     const at = glob.lastIndexOf("/");
     const last = glob.slice(at + 1);
+
     if (!last.includes(".")) return probeIn(glob, stem);
+
     return probePathOf(
       at === -1 ? "" : glob.slice(0, at),
       last.replace(/\{[a-zA-Z][a-zA-Z0-9]*\}|\*+/g, stem),
     );
   };
+
   const graph: GraphConfig = {
     cycles: (manifest.graph?.cycles ?? []).map((rule) => {
       const a = probeFileIn(rule.within, "zz-alpha");
       const b = probeFileIn(rule.within, "zz-beta");
+
       return {
         name: rule.name,
         message: rule.message,

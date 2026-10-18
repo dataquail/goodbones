@@ -12,6 +12,7 @@ import { importOptional } from "./import-optional.js";
 // resolved by Node from that module's location, as a host's import of its
 // peer is. The tests run concurrently, so no directory is shared.
 const roots: Array<string> = [];
+
 afterAll(() => {
   for (const root of roots) rmSync(root, { recursive: true, force: true });
 });
@@ -22,6 +23,7 @@ const fixture = (): {
 } => {
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), "import-optional-")));
   roots.push(root);
+
   return {
     writePackage: (name, source) => {
       writePackage(root, name, source);
@@ -44,11 +46,15 @@ const writePackage = (root: string, name: string, source: string): void => {
 const writeGlue = (root: string, peer: string): string => {
   const file = path.join(root, "glue.js");
   writeFileSync(file, `export { answer } from "${peer}";\n`);
+
   return pathToFileURL(file).href;
 };
 
-const loadGlue = (url: string) => (): Promise<{ readonly answer: number }> =>
-  import(/* @vite-ignore */ url) as Promise<{ readonly answer: number }>;
+const loadGlue = (url: string) => {
+  const importGlue = (): Promise<{ readonly answer: number }> => import(/* @vite-ignore */ url);
+
+  return importGlue;
+};
 
 describe("importOptional", () => {
   it("answers the module when the peer is installed", async () => {

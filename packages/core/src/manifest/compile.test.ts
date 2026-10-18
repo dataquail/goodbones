@@ -10,6 +10,7 @@ import { decodeManifest, type Manifest } from "./manifest.js";
 const TYPESCRIPT: ReadonlyArray<ProbeLanguage> = [
   { id: "typescript", extensions: [".ts", ".tsx"] },
 ];
+
 const lowerManifest = (manifest: Manifest) => lowerWith(manifest, TYPESCRIPT);
 
 const base = (tree: Manifest["tree"]): Manifest => ({
@@ -25,7 +26,9 @@ const ruleNamed = <A extends { readonly name: string }>(
   suffix: string,
 ): A => {
   const found = rules.find((rule) => rule.name.endsWith(suffix));
+
   if (found === undefined) throw new Error(`no rule ending in ${suffix}`);
+
   return found;
 };
 
@@ -57,9 +60,12 @@ describe("multi-pattern keys", () => {
 
   it("admits every alternative in the folder's layout allowlist", () => {
     const folder = lowered.structure.folders[0];
+
     if (folder === undefined) throw new Error("no folder rule emitted");
+
     const admits = (basename: string) =>
       (folder.files as ReadonlyArray<string>).some((one) => new RegExp(one).test(basename));
+
     expect(admits("todo.aggregate-ops.ts")).toBe(true);
     expect(admits("todo.entity-ops.ts")).toBe(true);
     expect(admits("todo.value-object-ops.ts")).toBe(true);
@@ -201,9 +207,11 @@ describe("file kinds that overlap", () => {
       },
     }),
   );
+
   const selects = (rule: ImportRule, file: string): boolean =>
     [rule.from].flat().some((one) => new RegExp(one).test(file)) &&
     ![rule.fromNot ?? []].flat().some((one) => new RegExp(one).test(file));
+
   const unit = "pkg/src/platform/guard.test.ts";
   const integration = "pkg/src/platform/guard.integration.test.ts";
 
@@ -241,6 +249,7 @@ describe("file kinds that overlap", () => {
         },
       }),
     );
+
     // Said once, naming both keys; `loadPolicy` makes it a `ConfigInvalid`.
     expect(refusals).toHaveLength(1);
     expect(refusals[0]).toMatch(
@@ -331,6 +340,7 @@ describe("external", () => {
         },
       }),
     );
+
     const rule = ruleNamed(runtimeOnly.imports, "scripts/imports");
     expect(rule.externals).toEqual(["effect"]);
     expect(rule.toNot).toEqual([]);
@@ -453,6 +463,7 @@ describe("folder keys with alternatives", () => {
     const pattern = new RegExp(
       ruleNamed(lowered.structure.folders, "/http/layout").folder as string,
     );
+
     expect(pattern.test("pkg/src/interface/http")).toBe(true);
     expect(pattern.test("pkg/src/interface/cli")).toBe(true);
     expect(pattern.test("pkg/src/interface/events")).toBe(false);
@@ -722,6 +733,7 @@ describe("surface rules", () => {
       except: ["@/handlers/main.ts"],
       probe: { source: "export default 1;" },
     });
+
     expect(rule?.probe.source).toBe("export default 1;");
     const [exempt] = rule?.fromNot ?? [];
     expect(exempt).toBeDefined();
@@ -792,6 +804,7 @@ describe("adoption", () => {
         },
       }),
     );
+
     expect(lowered.adoption).toEqual({ unrestricted: ["legacy"], partial: ["wip"] });
   });
 });
@@ -863,6 +876,7 @@ describe("member rules", () => {
         },
       }),
     );
+
     expect(lowered.members[0]?.probe.declares).toBe("class");
   });
 });
@@ -911,6 +925,7 @@ describe("naming", () => {
         tree("kebab-case", { name: { like: "{subdomain}" } }).structure.naming,
         "*.root.ts/naming",
       );
+
       expect(rule.sameAs).toBeDefined();
       expect(rule.subject).not.toBe(rule.sameAs);
     });
@@ -946,6 +961,7 @@ describe("naming edge cases", () => {
       name: { regex: "^x[a-z]+$", message: "A file here starts with x." },
       children: { "*.ts": {} },
     });
+
     expect(rule?.message).toBe("A file here starts with x.");
   });
 
@@ -972,6 +988,7 @@ describe("taxonomy roots whose names share a prefix", () => {
   it("claims its own folder and not a sibling that begins with its name", () => {
     const rootOf = (file: string) =>
       lowered.structure.roots.find((root) => claims(root, file))?.name;
+
     expect(rootOf("pkg/components/stray/x.ts")).toBe("pkg/components/taxonomy");
     expect(rootOf("pkg/components-svelte/stray/x.ts")).toBe("pkg/components-svelte/taxonomy");
   });
@@ -988,6 +1005,7 @@ describe("taxonomy roots whose names share a prefix", () => {
 
 describe("probe files and the language", () => {
   const GO: ReadonlyArray<ProbeLanguage> = [{ id: "go", extensions: [".go"] }];
+
   const goManifest: Manifest = {
     resolve: { scopes: [{ files: "^svc/", language: "go" }] },
     graph: {
@@ -1005,6 +1023,7 @@ describe("probe files and the language", () => {
       },
     },
   };
+
   const lowered = lowerWith(goManifest, GO);
 
   // The whole point: nothing in lowering spells `.ts`. A scope in another
@@ -1027,8 +1046,10 @@ describe("probe files and the language", () => {
 
   it("proves a folder's layout with a basename the folder rejects", () => {
     const domain = ruleNamed(lowered.structure.folders, "svc/domain/layout");
+
     const admitted = (basename: string) =>
       (domain.files as ReadonlyArray<string>).some((one) => new RegExp(one).test(basename));
+
     const stray = domain.probe.path.split("/").pop() ?? "";
     expect(admitted("thing.go")).toBe(true);
     expect(admitted(stray)).toBe(false);
@@ -1066,6 +1087,7 @@ describe("probe files and the language", () => {
         reach: [{ name: "r", message: "…", from: "@/a/*.root.ts", to: "@/b/**" }],
       },
     });
+
     expect(one.graph.cycles?.[0]?.probe.edges[0]).toEqual([
       "pkg/src/deep/zz-alpha.ts",
       "pkg/src/deep/zz-beta.ts",
@@ -1083,11 +1105,14 @@ describe("allowance provenance", () => {
   // every entry as authored where it sits. Raw input, as a file would give it.
   const lowerRaw = (raw: Record<string, unknown>) => {
     const decoded = decodeManifest("architecture.yaml", raw);
+
     if (Result.isFailure(decoded)) throw new Error(decoded.failure.detail);
+
     return lowerWith(decoded.success.manifest, TYPESCRIPT, {
       substitutions: decoded.success.substitutions,
     });
   };
+
   const rawBase = (tree: Record<string, unknown>, defs?: Record<string, unknown>) => ({
     resolve: {
       scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.json" } }],
@@ -1096,6 +1121,7 @@ describe("allowance provenance", () => {
     tree,
     ...(defs === undefined ? {} : { defs }),
   });
+
   // The allowances of one rule, minus the compiled pattern nobody wrote.
   const provenanceOf = (rules: ReadonlyArray<ImportRule>, suffix: string) =>
     (ruleNamed(rules, suffix).allowances ?? []).map(({ entry, fragment, kind, node }) => ({
@@ -1118,6 +1144,7 @@ describe("allowance provenance", () => {
         { shared: { message: "m", allow: ["@/a/**"], external: ["effect"] } },
       ),
     );
+
     expect(provenanceOf(lowered.imports, "a/imports")).toEqual([
       { node: "a", kind: "allow", entry: "pkg/src/a/**", fragment: "shared" },
       { node: "a", kind: "external", entry: "effect", fragment: "shared" },
@@ -1138,6 +1165,7 @@ describe("allowance provenance", () => {
         },
       ),
     );
+
     expect(provenanceOf(lowered.imports, "a/imports")).toEqual([
       { node: "a", kind: "allow", entry: "pkg/src/a/**", fragment: "shared" },
     ]);
@@ -1157,6 +1185,7 @@ describe("allowance provenance", () => {
         { shared: { message: "m", allow: ["@/a/**"], external: ["effect"] } },
       ),
     );
+
     expect(provenanceOf(lowered.imports, "a/imports")).toEqual([
       { node: "a", kind: "allow", entry: "pkg/src/a/**" },
       { node: "a", kind: "allow", entry: "pkg/src/lib/**" },
@@ -1168,6 +1197,7 @@ describe("allowance provenance", () => {
     const lowered = lowerManifest(
       base({ "@/a/": { imports: { message: "m", allow: ["@/a/**"] }, children: { "*.ts": {} } } }),
     );
+
     expect(provenanceOf(lowered.imports, "a/imports")).toEqual([
       { node: "a", kind: "allow", entry: "pkg/src/a/**" },
     ]);

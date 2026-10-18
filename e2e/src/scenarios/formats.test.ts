@@ -46,6 +46,7 @@ const EXPECTED = [
 // The report, less the field that names the file it was read from.
 const sansManifest = (json: CheckJson): Omit<CheckJson, "manifest"> => {
   const { manifest: _manifest, ...rest } = json;
+
   return rest;
 };
 
@@ -72,8 +73,10 @@ describe.sequential("manifest formats", () => {
       expect(result.code).toBe(1);
       expect(result.json.manifest.path).toBe(MANIFEST_FILENAMES[format]);
       expect(result.json.violations.map((one) => one.fingerprint).sort()).toEqual(EXPECTED);
+
       return sansManifest(result.json);
     });
+
     expect(reports[1]).toEqual(reports[0]);
     expect(reports[2]).toEqual(reports[0]);
   });

@@ -12,6 +12,7 @@ import { loadPolicy } from "./policy.js";
 // resolver from another, which is all the loader ever asks of a language — so
 // if this loads, a second real pack needs no change here.
 const PORT_SOURCE = "type Repo interface { FindOne() }";
+
 const go = (facts: Parameters<typeof makeFactExtractorFake>[0] = {}): Language => ({
   id: "go",
   extensions: [".go"],
@@ -53,6 +54,7 @@ const load = (input: unknown, languages: ReadonlyArray<Language>, files = makeFi
 
 const unwrap = <A, E>(result: Result.Result<A, E>): A => {
   if (Result.isFailure(result)) throw result.failure;
+
   return result.success;
 };
 
@@ -86,6 +88,7 @@ describe("loadPolicy with a language that is not TypeScript", () => {
       allow: ["FindMany"],
       probe: { source: PORT_SOURCE, name: "FindOne" },
     };
+
     const parses = go({
       [PORT_SOURCE]: {
         memberSites: [
@@ -93,6 +96,7 @@ describe("loadPolicy with a language that is not TypeScript", () => {
         ],
       },
     });
+
     expect(unwrap(load(manifest([rule]), [parses])).memberRules).toHaveLength(1);
   });
 
@@ -104,6 +108,7 @@ describe("loadPolicy with a language that is not TypeScript", () => {
       allow: ["FindMany"],
       probe: { source: PORT_SOURCE, name: "FindOne" },
     };
+
     const outcome = load(manifest([rule]), [go()]);
     expect(Result.isFailure(outcome) && outcome.failure.message).toMatch(
       /svc\/domain\/members-0 — probe parsed by go, selected by the scope "\^svc\/"/,
@@ -124,6 +129,7 @@ describe("loadPolicy with a language that is not TypeScript", () => {
         },
       ],
     };
+
     const outcome = load(withFix, [go()]);
     expect(Result.isFailure(outcome) && outcome.failure.message).toMatch(
       /subpaths \(subpath-namespace-import\)/,
@@ -150,6 +156,7 @@ describe("loadPolicy with a language that is not TypeScript", () => {
       fileSystem: makeFileSystemFake([]),
       uninstalled: [{ manifestKeys: ["campaigns"], install: "@goodbones/campaigns" }],
     });
+
     expect(Result.isFailure(outcome) && outcome.failure.message).toMatch(
       /campaigns: belongs to a family that is not installed\. Install `@goodbones\/campaigns`/,
     );
@@ -158,9 +165,11 @@ describe("loadPolicy with a language that is not TypeScript", () => {
   // The baseline comes through the port, never off the disk from here.
   it("reads the baseline through the file system it is given", () => {
     const entry = "import|svc/domain/imports|svc/domain/repo.go|svc/main.go";
+
     const files = makeFileSystemFake([], {
       ".architecture-baseline.json": JSON.stringify({ version: 1, entries: [entry] }),
     });
+
     const policy = unwrap(load(manifest(), [go()], files));
     expect(
       policy.baseline.isBaselined({

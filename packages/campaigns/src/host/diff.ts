@@ -77,6 +77,7 @@ export const gitPathsOf = (
   try {
     const at = (name: string): string =>
       path.resolve(repoRoot, git(repoRoot, ["rev-parse", "--git-path", name]).trim());
+
     return { head: at("HEAD"), index: at("index") };
   } catch {
     return null;
@@ -97,23 +98,30 @@ export const parseDiff = (
   const deleted = new Set<string>();
   const added = new Set<string>();
   let current: string | null = null;
+
   for (const line of text.split("\n")) {
     const header = HEADER.exec(line);
+
     if (header !== null) {
       current = header[2] ?? null;
       continue;
     }
+
     if (current === null) continue;
+
     if (line.startsWith("deleted file mode")) {
       deleted.add(current);
       touched.delete(current);
       continue;
     }
+
     if (line.startsWith("new file mode")) {
       added.add(current);
+
       if (!touched.has(current)) touched.set(current, []);
       continue;
     }
+
     if (line.startsWith("+++ ")) {
       if (line.slice(4) === "/dev/null") {
         deleted.add(current);
@@ -121,9 +129,12 @@ export const parseDiff = (
       } else if (!deleted.has(current) && !touched.has(current)) {
         touched.set(current, []);
       }
+
       continue;
     }
+
     const hunk = HUNK.exec(line);
+
     if (hunk !== null && !deleted.has(current)) {
       const start = Number(hunk[3]);
       const count = hunk[4] === undefined ? 1 : Number(hunk[4]);
@@ -132,10 +143,12 @@ export const parseDiff = (
       touched.set(current, hunks);
     }
   }
+
   // A file added whole with no hunk of its own (empty) covers itself.
   for (const file of added) {
     if ((touched.get(file) ?? []).length === 0) touched.set(file, [{ start: 1, end: 1 }]);
   }
+
   return { touched, deleted: [...deleted].sort(), added: [...added].sort() };
 };
 
@@ -144,15 +157,18 @@ export const parseDiff = (
 export const readDiff = (repoRoot: string, base: string | null): Diff => {
   const against = base ?? "HEAD";
   const parsed = parseDiff(git(repoRoot, ["diff", "-U0", "--no-color", "--no-ext-diff", against]));
+
   const untracked = git(repoRoot, ["ls-files", "--others", "--exclude-standard"])
     .split("\n")
     .map((one) => one.trim())
     .filter((one) => one !== "");
+
   for (const file of untracked) {
     if (parsed.touched.has(file)) continue;
     parsed.touched.set(file, [{ start: 1, end: Number.MAX_SAFE_INTEGER }]);
     parsed.added.push(file);
   }
+
   return {
     base,
     touched: parsed.touched,
@@ -165,10 +181,13 @@ export const readDiff = (repoRoot: string, base: string | null): Diff => {
 // when they overlap. `Infinity` for a file with no hunk.
 export const distanceToHunks = (hunks: ReadonlyArray<Hunk>, start: number, end: number): number => {
   let nearest = Number.POSITIVE_INFINITY;
+
   for (const hunk of hunks) {
     const distance = hunk.end < start ? start - hunk.end : end < hunk.start ? hunk.start - end : 0;
+
     if (distance < nearest) nearest = distance;
   }
+
   return nearest;
 };
 
@@ -203,9 +222,11 @@ export const materializeTree = (
     },
   );
   const modules = path.join(repoRoot, "node_modules");
+
   if (existsSync(modules) && !existsSync(path.join(root, "node_modules"))) {
     symlinkSync(modules, path.join(root, "node_modules"), "dir");
   }
+
   return {
     root,
     dispose: () => {
@@ -228,6 +249,7 @@ export const commitsTouching = (
   since: string | null,
 ): ReadonlyArray<Commit> => {
   const range = since === null ? [] : [`${since}..HEAD`];
+
   const log = git(repoRoot, [
     "log",
     "--reverse",
@@ -237,7 +259,9 @@ export const commitsTouching = (
     "--",
     ...paths,
   ]);
+
   const commits: Array<Commit> = [];
+
   for (const block of log.split("\u0000")) {
     if (block.trim() === "") continue;
     const [head = "", ...rest] = block.split("\n");
@@ -249,5 +273,6 @@ export const commitsTouching = (
       files: rest.map((one) => one.trim()).filter((one) => one !== ""),
     });
   }
+
   return commits;
 };

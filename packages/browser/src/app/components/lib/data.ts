@@ -26,25 +26,31 @@ export const useModel = <T>(route: string, version: number): Loaded<T> => {
     fetch(urlOf(route), { cache: "no-store" })
       .then(async (response) => {
         const body: unknown = await response.json();
+
         if (cancelled) return;
+
         if (!response.ok) {
           setLoaded((previous) => ({
             state: "failed",
             value: previous.value,
             error: errorOf(body, response.status),
           }));
+
           return;
         }
+
         setLoaded({ state: "ready", value: body as T, error: null });
       })
       .catch((cause: unknown) => {
         if (cancelled) return;
         setLoaded((previous) => ({ state: "failed", value: previous.value, error: String(cause) }));
       });
+
     return () => {
       cancelled = true;
     };
   }, [route, version]);
+
   return loaded;
 };
 
@@ -64,8 +70,10 @@ export const useFeed = (): Feed => {
     });
     events.addEventListener("changed", (event) => {
       let files: ReadonlyArray<string> = [];
+
       try {
         const data: unknown = JSON.parse((event as MessageEvent<string>).data);
+
         if (
           typeof data === "object" &&
           data !== null &&
@@ -77,6 +85,7 @@ export const useFeed = (): Feed => {
       } catch {
         files = [];
       }
+
       setFeed((previous) => ({ live: true, version: previous.version + 1, changed: files }));
     });
     events.addEventListener("error", () => {
@@ -85,10 +94,12 @@ export const useFeed = (): Feed => {
         setFeed((previous) => ({ ...previous, live: false }));
       }
     });
+
     return () => {
       events.close();
     };
   }, []);
+
   return feed;
 };
 
@@ -104,6 +115,7 @@ export const routeOf = (hash: string): Route => {
   const at = trimmed.indexOf("/");
   const tab = at === -1 ? trimmed : trimmed.slice(0, at);
   const selection = at === -1 ? null : decodeURIComponent(trimmed.slice(at + 1));
+
   return { tab: tab === "campaigns" ? "campaigns" : "architecture", selection };
 };
 
@@ -116,15 +128,19 @@ export const useRoute = (): readonly [Route, (route: Route) => void] => {
     const onChange = (): void => {
       setRoute(routeOf(window.location.hash));
     };
+
     window.addEventListener("hashchange", onChange);
+
     return () => {
       window.removeEventListener("hashchange", onChange);
     };
   }, []);
+
   return [
     route,
     (next) => {
       const hash = hashOf(next);
+
       if (window.location.hash !== hash) window.history.replaceState(null, "", hash);
       setRoute(next);
     },

@@ -45,16 +45,21 @@ const parse = (argv: ReadonlyArray<string>): Args => {
   let out: string | null = null;
   let nudge = true;
   const rest = [...argv];
+
   if (rest[0] === "serve" || rest[0] === "build") command = rest.shift() as Args["command"];
+
   while (rest.length > 0) {
     const argument = rest.shift() as string;
+
     switch (argument) {
       case "--port": {
         const value = Number(rest.shift());
+
         if (!Number.isInteger(value) || value < 0) throw new Error("--port needs a number");
         port = value;
         break;
       }
+
       case "--host":
         host = rest.shift() ?? host;
         break;
@@ -77,24 +82,35 @@ const parse = (argv: ReadonlyArray<string>): Args => {
         roots.push(argument);
     }
   }
+
   if (command === "build" && out === null) throw new Error(`build needs --out <dir>\n\n${USAGE}`);
+
   return { command, roots: roots.length > 0 ? roots : ["packages"], port, host, open, out, nudge };
 };
 
 // Relative when it reads well, absolute when it would climb out of the repo.
 const describePath = (repoRoot: string, target: string): string => {
   const relative = path.relative(repoRoot, target);
+
   if (relative === "") return ".";
+
   return relative.startsWith("..") ? target : relative;
 };
 
+const openerOf = (url: string): readonly [string, ReadonlyArray<string>] => {
+  switch (process.platform) {
+    case "darwin":
+      return ["open", [url]];
+    case "win32":
+      return ["cmd", ["/c", "start", "", url]];
+    default:
+      return ["xdg-open", [url]];
+  }
+};
+
 const openBrowser = (url: string): void => {
-  const [bin, args] =
-    process.platform === "darwin"
-      ? ["open", [url]]
-      : process.platform === "win32"
-        ? ["cmd", ["/c", "start", "", url]]
-        : ["xdg-open", [url]];
+  const [bin, args] = openerOf(url);
+
   spawn(bin, args, { stdio: "ignore", detached: true })
     .on("error", () => undefined)
     .unref();
@@ -104,6 +120,7 @@ const main = async (): Promise<void> => {
   const args = parse(process.argv.slice(2));
   const repoRoot = process.cwd();
   const configFilename = process.env.ARCHITECTURE_CONFIG;
+
   if (!existsSync(SITE_DIR)) {
     throw new Error(
       `the page is not built: ${SITE_DIR} is missing. In this repository, run \`pnpm exec nx build @goodbones/browser\`.`,
@@ -117,6 +134,7 @@ const main = async (): Promise<void> => {
     process.stdout.write(
       `wrote ${describePath(repoRoot, out)}: ${String(collected.atlas.files.length)} files, ${String(collected.campaigns.campaigns.length)} campaigns. Serve it from the root of a host.\n`,
     );
+
     return;
   }
 
@@ -127,20 +145,25 @@ const main = async (): Promise<void> => {
     nudge: args.nudge,
     watch: true,
   });
+
   const served = await serve({
     siteDir: SITE_DIR,
     handler: makeHandler(source),
     port: args.port,
     host: args.host,
   });
+
   process.stdout.write(
     `goodbones-browser: ${served.url} over ${path.basename(repoRoot)} (${args.roots.join(", ")}); watching for changes.\n`,
   );
+
   if (args.open) openBrowser(served.url);
+
   const stop = (): void => {
     source.close();
     void served.close().then(() => process.exit(0));
   };
+
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
 };
@@ -150,6 +173,7 @@ main().catch((cause: unknown) => {
     typeof cause === "object" && cause !== null && "message" in cause
       ? String(cause.message)
       : String(cause);
+
   process.stderr.write(`\n${message}\n`);
   process.exitCode = 1;
 });

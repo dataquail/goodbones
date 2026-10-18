@@ -31,22 +31,27 @@ import { makeCampaignsRule } from "./rule.js";
 // or the file itself, and need nothing here.
 const discoverSectorIndexes = (policy: LoadedPolicy): ReadonlyMap<string, SectorIndex> => {
   const indexes = new Map<string, SectorIndex>();
+
   const needing = campaignsOf(policy).campaignRules.filter(
     (rule) => rule.perimeter?.kind === "marker" || rule.perimeter?.kind === "nx",
   );
+
   if (needing.length === 0) return indexes;
   const widened = [...new Set(needing.flatMap((rule) => rule.extensions))];
   const files = listSourceFiles(policy.repoRoot, ["."], policy.languages, widened);
   const known = new Set(policy.languages.flatMap((one) => one.extensions));
+
   const projects = needing.some((rule) => rule.perimeter?.kind === "nx")
     ? listWorkspaceProjects(policy.repoRoot, ["."])
     : [];
+
   for (const rule of needing) {
     const scoped = files.filter(
       (file) =>
         rule.scope.some((pattern) => pattern.test(file)) &&
         (known.has(path.extname(file)) || rule.extensions.includes(path.extname(file))),
     );
+
     indexes.set(
       rule.id,
       discoverSectors(rule, {
@@ -57,6 +62,7 @@ const discoverSectorIndexes = (policy: LoadedPolicy): ReadonlyMap<string, Sector
       }),
     );
   }
+
   return indexes;
 };
 
@@ -70,6 +76,7 @@ export const liveCampaigns: CampaignsFamily = {
   // restarts. A report the build writes to a file is the predictable form.
   compose: async (repoRoot, configPath, manifest) => {
     const loaded = await loadCampaignFunctions(configPath, manifest);
+
     return {
       manifest: loaded.manifest,
       extensions: [
@@ -95,6 +102,7 @@ export const liveCampaigns: CampaignsFamily = {
     await Promise.all(
       reportSpecsOf(campaigns.campaignRules).map(async (spec) => {
         if (campaigns.reports.read !== undefined) return campaigns.reports.read(spec);
+
         try {
           campaigns.reports.diagnosticsOf(spec, "");
         } catch (cause) {

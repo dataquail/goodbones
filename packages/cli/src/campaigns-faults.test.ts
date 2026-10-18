@@ -114,6 +114,7 @@ const git = (...args: ReadonlyArray<string>): string =>
 
 const policyAt = (now = "2026-10-01T00:00:00Z") => {
   process.env.ARCHITECTURE_NOW = now;
+
   return loadPolicy(root);
 };
 
@@ -122,13 +123,17 @@ const capture = async (effect: Effect.Effect<void, CliFailure>) => {
   const original = process.stdout.write.bind(process.stdout);
   process.stdout.write = (chunk: string) => {
     lines.push(String(chunk));
+
     return true;
   };
+
   try {
     const exit = await Effect.runPromiseExit(effect);
+
     const failure = Exit.isFailure(exit)
       ? (Cause.squash(exit.cause) as { message?: string })
       : null;
+
     return { exit, output: lines.join(""), failure: failure?.message ?? "" };
   } finally {
     process.stdout.write = original;
@@ -142,12 +147,14 @@ const check = async () => {
       manifestPath: path.join(root, "architecture.json"),
     }),
   );
+
   return { ...result, report: JSON.parse(result.output) as CheckReport };
 };
 
 const clear = async (now: string) => {
   const cleared = await capture(objectives(await policyAt(now), ["src"], ["clear"]));
   expect(Exit.isSuccess(cleared.exit), cleared.failure).toBe(true);
+
   return cleared.output;
 };
 
@@ -163,6 +170,7 @@ const reset = (): void => {
 };
 
 type SectorLedger = { initial: number; cleared: number; closed: number; holdouts: Array<string> };
+
 const sectorsOf = (objective: string): Record<string, SectorLedger> =>
   (
     JSON.parse(readFileSync(path.join(ledgerDir, `${objective}.json`), "utf8")) as {
@@ -197,12 +205,16 @@ const nudge = async (...flags: ReadonlyArray<string>) => {
   const json = await capture(
     campaigns(await policyAt(), ["src"], ["status", "--changed", ...flags, "--json"]),
   );
+
   const text = await capture(
     campaigns(await policyAt(), ["src"], ["status", "--changed", ...flags]),
   );
+
   const parsed = JSON.parse(json.output) as { ok: boolean; sectors: Array<Sector> };
   const billing = parsed.sectors.find((one) => one.sector === "billing");
+
   if (billing === undefined) throw new Error("the diff did not touch the billing sector");
+
   return { exit: json.exit, ok: parsed.ok, billing, text: text.output };
 };
 
@@ -234,6 +246,7 @@ describe.sequential("the faults a strangling plants", () => {
     // A read served before the backfill is attested: a served-phase holdout
     // paid down while billing waits at backfilled.
     write("src/billing/service.ts", SERVICE(['  proxy("a");', '  return localRoute("b");']));
+
     for (const flags of [[], ["--base", "HEAD"]]) {
       const { billing, exit, ok, text } = await nudge(...flags);
       expect(Exit.isSuccess(exit), text).toBe(true);
@@ -248,9 +261,11 @@ describe.sequential("the faults a strangling plants", () => {
         "ahead of plan: routes-local −1 belongs to served; billing is at backfilled (not yet attested) — onAhead: advise",
       );
     }
+
     const manifest = JSON.parse(MANIFEST) as { campaigns: { strangle: Record<string, unknown> } };
     manifest.campaigns.strangle.onAhead = "ratchet";
     write("architecture.json", JSON.stringify(manifest));
+
     for (const flags of [[], ["--base", "HEAD"]]) {
       const { billing, exit, ok, text } = await nudge(...flags);
       expect(Exit.isFailure(exit)).toBe(true);
@@ -258,6 +273,7 @@ describe.sequential("the faults a strangling plants", () => {
       expect(billing).toMatchObject({ verdict: "ahead", onAhead: "ratchet" });
       expect(text.trimEnd().endsWith("not ok")).toBe(true);
     }
+
     const failed = await capture(campaigns(await policyAt(), ["src"], ["status", "--changed"]));
     expect(failed.failure).toBe("the diff works ahead of a sector's phase under its onAhead");
     reset();
@@ -281,18 +297,23 @@ describe.sequential("the faults a strangling plants", () => {
           } & Record<string, unknown>;
         };
       };
+
       const strangle = manifest.campaigns.strangle;
       Object.assign(strangle, campaign);
+
       for (const [id, settings] of Object.entries(objectives))
         Object.assign(strangle.objectives[id] ?? {}, settings);
+
       for (const phase of strangle.phases) Object.assign(phase, phases[phase.id] ?? {});
       write("architecture.json", JSON.stringify(manifest));
     };
+
     const BOTH = [[], ["--base", "HEAD"]];
     unlinkSync(path.join(root, "src/billing/model.ts"));
 
     // Unset under a ratcheting campaign: refused, as O1 always was.
     withSettings({ onAhead: "ratchet" });
+
     for (const flags of BOTH) {
       const { billing, ok, text } = await nudge(...flags);
       expect(ok, text).toBe(false);
@@ -305,6 +326,7 @@ describe.sequential("the faults a strangling plants", () => {
 
     // `ignore`: left out of the JSON and the text, and the verdict stands.
     withSettings({ onAhead: "ratchet" }, { "no-models": { onAhead: "ignore" } });
+
     for (const flags of BOTH) {
       const { billing, exit, ok, text } = await nudge(...flags);
       expect(Exit.isSuccess(exit), text).toBe(true);
@@ -315,6 +337,7 @@ describe.sequential("the faults a strangling plants", () => {
 
     // `advise` under a ratcheting campaign: listed, not refused.
     withSettings({ onAhead: "ratchet" }, { "no-models": { onAhead: "advise" } });
+
     for (const flags of BOTH) {
       const { billing, ok, text } = await nudge(...flags);
       expect(ok, text).toBe(true);
@@ -329,6 +352,7 @@ describe.sequential("the faults a strangling plants", () => {
 
     // `ratchet` under an advising campaign: refused.
     withSettings({}, { "no-models": { onAhead: "ratchet" } });
+
     for (const flags of BOTH) {
       const { billing, ok } = await nudge(...flags);
       expect(ok).toBe(false);
@@ -338,16 +362,19 @@ describe.sequential("the faults a strangling plants", () => {
     // A phase's word at the judged phase still reaches an objective with
     // none of its own, and an objective's own word beats it.
     withSettings({}, {}, { backfilled: { onAhead: "ratchet" } });
+
     for (const flags of BOTH) {
       const { billing, ok } = await nudge(...flags);
       expect(ok).toBe(false);
       expect(billing).toMatchObject({ verdict: "ahead", onAhead: "ratchet" });
     }
+
     withSettings(
       {},
       { "no-models": { onAhead: "ignore" } },
       { backfilled: { onAhead: "ratchet" } },
     );
+
     for (const flags of BOTH) {
       const { billing, ok } = await nudge(...flags);
       expect(ok).toBe(true);
@@ -358,6 +385,7 @@ describe.sequential("the faults a strangling plants", () => {
     // weight when they differ.
     write("src/billing/service.ts", SERVICE(['  proxy("a");', '  return localRoute("b");']));
     withSettings({ onAhead: "ratchet" }, { "no-models": { onAhead: "ignore" } });
+
     for (const flags of BOTH) {
       const { billing, ok } = await nudge(...flags);
       expect(ok).toBe(false);
@@ -367,7 +395,9 @@ describe.sequential("the faults a strangling plants", () => {
       });
       expect(billing.ahead).toHaveLength(1);
     }
+
     withSettings({ onAhead: "ratchet" }, { "no-models": { onAhead: "advise" } });
+
     for (const flags of BOTH) {
       const { billing, ok, text } = await nudge(...flags);
       expect(ok).toBe(false);
@@ -376,6 +406,7 @@ describe.sequential("the faults a strangling plants", () => {
         "ahead of plan: routes-local −1 belongs to served (ratchet) · no-models −1 belongs to moved (advise); billing is at backfilled (not yet attested)\n",
       );
     }
+
     reset();
   }, 30_000);
 
@@ -387,6 +418,7 @@ describe.sequential("the faults a strangling plants", () => {
         ["attest", "billing", "backfilled", "--reason", "backfill ran", "--by", "me"],
       ),
     );
+
     expect(Exit.isSuccess(attested.exit), attested.failure).toBe(true);
     // Served has no ledger for billing yet: it was never entered, and is not
     // read as met past the phase billing has reached.
@@ -400,9 +432,11 @@ describe.sequential("the faults a strangling plants", () => {
   it("refuses a note it would have to cut, and stores nothing (C3)", async () => {
     const recordAt = path.join(ledgerDir, "sectors", "billing.json");
     const before = readFileSync(recordAt, "utf8");
+
     const long = await capture(
       campaigns(await policyAt(), ["src"], ["note", "billing", "x".repeat(600), "--by", "me"]),
     );
+
     expect(Exit.isFailure(long.exit)).toBe(true);
     expect(long.failure).toContain("at most 500 characters, and this one is 600");
     expect(readFileSync(recordAt, "utf8")).toBe(before);
@@ -412,6 +446,7 @@ describe.sequential("the faults a strangling plants", () => {
     const text = await capture(
       campaigns(await policyAt(), ["src"], ["status", "--sector", "billing"]),
     );
+
     expect(Exit.isSuccess(text.exit), text.failure).toBe(true);
     expect(text.output).toContain(
       "strangle · billing — phase served (4 of 6), reached served since 2026-10-02",
@@ -425,6 +460,7 @@ describe.sequential("the faults a strangling plants", () => {
     const json = await capture(
       campaigns(await policyAt(), ["src"], ["status", "--sector", "billing", "--json"]),
     );
+
     expect(JSON.parse(json.output)).toMatchObject({
       version: 1,
       sectors: [
@@ -442,9 +478,11 @@ describe.sequential("the faults a strangling plants", () => {
         },
       ],
     });
+
     const unknown = await capture(
       campaigns(await policyAt(), ["src"], ["status", "--sector", "orders"]),
     );
+
     expect(unknown.failure).toContain("no campaign under src has a sector named orders");
 
     // The overview in JSON, bare or as `status` without `--changed`: a row
@@ -457,6 +495,7 @@ describe.sequential("the faults a strangling plants", () => {
         campaigns: [{ id: "strangle", sectors: [{ name: "billing", phase: "served" }] }],
       });
     }
+
     // `status` in text without `--changed` is the overview, not a refusal,
     // and points at the per-sector view.
     const table = await capture(campaigns(await policyAt(), ["src"], ["status"]));
@@ -504,8 +543,10 @@ describe.sequential("the faults a strangling plants", () => {
       '  localRoute("a");',
       '  return localRoute("b");',
     ]);
+
     write("src/billing/service.ts", withWrite);
     await clear("2026-10-03T00:00:00Z");
+
     const conceded = await capture(
       objectives(
         await policyAt("2026-10-03T00:00:00Z"),
@@ -513,14 +554,17 @@ describe.sequential("the faults a strangling plants", () => {
         ["concede", "strangle/writes-not-mirrored", "--reason", "temporary", "--by", "me"],
       ),
     );
+
     expect(Exit.isSuccess(conceded.exit), conceded.failure).toBe(true);
     expect(conceded.output).toContain("this concession moves billing back served → mirrored.");
     expect(conceded.output).toContain(
       "It revokes billing's attestation of backfilled: what was attested no longer holds.",
     );
+
     const record = JSON.parse(
       readFileSync(path.join(ledgerDir, "sectors", "billing.json"), "utf8"),
     ) as { attested: Array<{ phase: string; revoked?: { by: string; reason: string } }> };
+
     expect(record.attested).toHaveLength(1);
     expect(record.attested[0]).toMatchObject({
       phase: "backfilled",
@@ -545,13 +589,16 @@ describe.sequential("the faults a strangling plants", () => {
     // Paid down, billing stops at backfilled again: the backfill must be
     // attested anew before served counts.
     write("src/billing/service.ts", SERVICE(['  localRoute("a");', '  return localRoute("b");']));
+
     const view = await capture(
       campaigns(await policyAt(), ["src"], ["status", "--sector", "billing"]),
     );
+
     expect(view.output).toContain("strangle · billing — phase backfilled (3 of 6, attested)");
     expect(view.output).toContain(
       "(revoked 2026-10-03 by me: conceded writes-not-mirrored: temporary)",
     );
+
     const again = await capture(
       campaigns(
         await policyAt("2026-10-04T00:00:00Z"),
@@ -559,10 +606,13 @@ describe.sequential("the faults a strangling plants", () => {
         ["attest", "billing", "backfilled", "--reason", "backfill rerun", "--by", "me"],
       ),
     );
+
     expect(Exit.isSuccess(again.exit), again.failure).toBe(true);
+
     const after = await capture(
       campaigns(await policyAt(), ["src"], ["status", "--sector", "billing"]),
     );
+
     expect(after.output).toContain("strangle · billing — phase served (4 of 6)");
     reset();
   });
@@ -577,12 +627,14 @@ describe.sequential("the faults a strangling plants", () => {
       "src/billing/service.ts",
       SERVICE(['  localRoute("a");', '  return localRoute("b");']).replace("create", "make"),
     );
+
     for (const flags of [[], ["--base", "HEAD"]]) {
       const { billing, ok, text } = await nudge(...flags);
       expect(ok, text).toBe(true);
       expect(billing).toMatchObject({ verdict: "ok", direction: "neutral", added: [] });
       expect(text).not.toContain("this diff:");
     }
+
     // No `concede` and no `clear`: the ledger already carries both.
     const { exit, failure, report } = await check();
     expect(Exit.isSuccess(exit), failure).toBe(true);
@@ -604,6 +656,7 @@ describe.sequential("the faults a strangling plants", () => {
     await clear("2026-10-04T00:00:00Z");
     commit("served");
     unlinkSync(path.join(root, "src/billing/model.ts"));
+
     for (const flags of [[], ["--base", "HEAD"]]) {
       const { billing, ok, text } = await nudge(...flags);
       expect(ok, text).toBe(true);
@@ -620,6 +673,7 @@ describe.sequential("the faults a strangling plants", () => {
       expect(text).toContain("this diff moves it from moved");
       expect(text).toContain("this diff: −no-models: model.ts  forward");
     }
+
     await clear("2026-10-05T00:00:00Z");
     commit("moved");
   });
@@ -627,6 +681,7 @@ describe.sequential("the faults a strangling plants", () => {
   it("refuses a regression at the open last phase, held by the phase that named it (R1)", async () => {
     // The model comes back, as if its deletion had been forgotten.
     write("src/billing/model.ts", 'export const subscription = model("subscriptions");\n');
+
     for (const flags of [[], ["--base", "HEAD"]]) {
       const { billing, exit, ok, text } = await nudge(...flags);
       expect(Exit.isFailure(exit)).toBe(true);
@@ -645,6 +700,7 @@ describe.sequential("the faults a strangling plants", () => {
       );
       expect(text.trimEnd().endsWith("not ok")).toBe(true);
     }
+
     reset();
   });
 });

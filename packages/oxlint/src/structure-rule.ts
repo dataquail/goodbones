@@ -19,6 +19,7 @@ export const makeStructureRule = (policy: LoadedPolicy): OxlintRule => ({
     return {
       before() {
         const file = toRepoRelative(policy.repoRoot, context.filename);
+
         if (file.startsWith("..")) return false;
 
         for (const violation of evaluateStructure(policy.structure, policy.fileSystem, file)) {
@@ -28,6 +29,7 @@ export const makeStructureRule = (policy: LoadedPolicy): OxlintRule => ({
             loc: { line: 1, column: 0 },
           });
         }
+
         return false;
       },
       Program() {

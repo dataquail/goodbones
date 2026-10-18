@@ -48,6 +48,7 @@ export const makeExportsRule = (policy: LoadedPolicy): OxlintRule => ({
     // for the author.
     const check = (edge: ReadEdge): void => {
       const { bindings: bound, node, specifier } = edge;
+
       if (bound.length === 0) return;
 
       const outcome = evaluateSelectedBindings(selected, policy.resolver, {
@@ -64,9 +65,11 @@ export const makeExportsRule = (policy: LoadedPolicy): OxlintRule => ({
 
       for (const { bindings, rule, violation } of outcome.success) {
         if (policy.baseline.isBaselined(violation)) continue;
+
         const offending = bound.filter((one) =>
           bindings.some((binding) => binding.symbol === one.symbol && binding.kind === one.kind),
         );
+
         // The rewrite is `import * as X from "pkg/<name>"`, which only means
         // something for a named binding — a namespace one has no name to put
         // in the subpath.
@@ -96,8 +99,10 @@ export const makeExportsRule = (policy: LoadedPolicy): OxlintRule => ({
     return {
       before() {
         importer = toRepoRelative(policy.repoRoot, context.filename);
+
         if (importer.startsWith("..")) return false;
         selected = exportRulesSelecting(policy.exportRules, importer);
+
         return selected.length > 0;
       },
       Program(node: Program) {

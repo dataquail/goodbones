@@ -28,11 +28,14 @@ export const compilePatterns = (
 ): Result.Result<ReadonlyArray<RegExp>, PatternInvalid> => {
   const sources = patterns === undefined ? [] : patternsOf(patterns);
   const compiled: Array<RegExp> = [];
+
   for (const source of sources) {
     const one = compilePattern(ruleName, field, source);
+
     if (Result.isFailure(one)) return Result.fail(one.failure);
     compiled.push(one.success);
   }
+
   return Result.succeed(compiled);
 };
 
@@ -50,8 +53,10 @@ export const validateTargetPatterns = (
       field,
       patterns === undefined ? undefined : patternsOf(patterns).map(withPlaceholderCaptures),
     );
+
     if (Result.isFailure(validated)) return Result.fail(validated.failure);
   }
+
   return Result.succeed(undefined);
 };
 
@@ -67,6 +72,7 @@ const REGEX_METACHARACTER = /[.*+?^${}()|[\]\\]/g;
 const substitute = (pattern: string, captures: RegExpExecArray): string =>
   pattern.replaceAll(BACKREFERENCE, (whole, index: string) => {
     const capture = captures[Number(index)];
+
     return capture === undefined ? whole : capture.replace(REGEX_METACHARACTER, "\\$&");
   });
 
@@ -74,9 +80,11 @@ const targetCache = new Map<string, RegExp>();
 
 const compiledTarget = (pattern: string): RegExp => {
   const cached = targetCache.get(pattern);
+
   if (cached !== undefined) return cached;
   const compiled = new RegExp(pattern);
   targetCache.set(pattern, compiled);
+
   return compiled;
 };
 
@@ -93,10 +101,13 @@ export type Selectable = {
 
 export const firstFromMatch = (rule: Selectable, importer: string): RegExpExecArray | null => {
   if (rule.fromNot.some((pattern) => pattern.test(importer))) return null;
+
   for (const pattern of rule.from) {
     const captures = pattern.exec(importer);
+
     if (captures !== null) return captures;
   }
+
   return null;
 };
 
@@ -111,6 +122,8 @@ export const targetAllowed = (
   targetPath: string,
 ): boolean => {
   if (rule.to.length > 0 && !matchesAny(rule.to, captures, targetPath)) return false;
+
   if (rule.toNot.length > 0 && matchesAny(rule.toNot, captures, targetPath)) return false;
+
   return true;
 };

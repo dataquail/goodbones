@@ -37,6 +37,7 @@ import { makeMembersRule } from "./members-rule.js";
 import { makeSurfaceRule } from "./surface-rule.js";
 
 RuleTester.describe = describe;
+
 RuleTester.it = it;
 
 // Both hosts read facts through one reader, the pack's `readProgram`, over
@@ -266,6 +267,7 @@ const config = {
 
 const unwrap = <A, E>(result: Result.Result<A, E>): A => {
   if (Result.isFailure(result)) throw result.failure;
+
   return result.success;
 };
 
@@ -310,6 +312,7 @@ type Expected = (fixture: Fixture, facts: (typeof cliFacts)[number]["facts"]) =>
 
 const expectedImports: Expected = (fixture, facts) => {
   const selected = rulesSelecting(policy.importRules, fixture.file);
+
   return facts.specifiers.flatMap((specifier) =>
     unwrap(evaluateSelectedEdge(selected, resolver, { importer: fixture.file, specifier })).map(
       formatMessage,
@@ -319,6 +322,7 @@ const expectedImports: Expected = (fixture, facts) => {
 
 const expectedExports: Expected = (fixture, facts) => {
   const selected = exportRulesSelecting(policy.exportRules, fixture.file);
+
   return facts.specifiers.flatMap((specifier) =>
     unwrap(
       evaluateSelectedBindings(selected, resolver, {
@@ -332,6 +336,7 @@ const expectedExports: Expected = (fixture, facts) => {
 
 const expectedMembers: Expected = (fixture, facts) => {
   const selected = memberRulesSelecting(policy.memberRules, fixture.file);
+
   return facts.memberSites.flatMap((site) => evaluateMemberSite(selected, site).map(formatMessage));
 };
 
@@ -345,9 +350,11 @@ const expectedSurface: Expected = (fixture, facts) =>
 const casesFor = (expected: Expected) => {
   const valid: Array<{ code: string; filename: string }> = [];
   const invalid: Array<{ code: string; filename: string; errors: Array<{ message: string }> }> = [];
+
   for (const { facts, fixture } of cliFacts) {
     const filename = path.join(repoRoot, fixture.file);
     const messages = expected(fixture, facts);
+
     if (messages.length === 0) valid.push({ code: fixture.code, filename });
     else {
       invalid.push({
@@ -357,6 +364,7 @@ const casesFor = (expected: Expected) => {
       });
     }
   }
+
   return { valid, invalid };
 };
 
@@ -365,16 +373,19 @@ new RuleTester({ cwd: repoRoot }).run(
   makeImportsRule(policy),
   casesFor(expectedImports),
 );
+
 new RuleTester({ cwd: repoRoot }).run(
   "parity: exports",
   makeExportsRule(policy),
   casesFor(expectedExports),
 );
+
 new RuleTester({ cwd: repoRoot }).run(
   "parity: members",
   makeMembersRule(policy),
   casesFor(expectedMembers),
 );
+
 new RuleTester({ cwd: repoRoot }).run(
   "parity: surface",
   makeSurfaceRule(policy),
@@ -387,7 +398,9 @@ new RuleTester({ cwd: repoRoot }).run(
 describe("the corpus exercises every form", () => {
   const facts = (file: string) => {
     const found = cliFacts.find((one) => one.fixture.file === file);
+
     if (found === undefined) throw new Error(`no fixture ${file}`);
+
     return found.facts;
   };
 
@@ -439,6 +452,7 @@ describe("the corpus exercises every form", () => {
     const called = facts("parity/calls.ts")
       .memberSites.filter((site) => site.subject === "calls")
       .map((site) => site.name);
+
     expect(called).toEqual(["f", "f", "f", "f", "f", "f", "g"]);
   });
 
@@ -446,6 +460,7 @@ describe("the corpus exercises every form", () => {
     const surface = facts("parity/surface.ts").exportSites.map(
       (site) => `${site.kind}:${site.name}:${site.declares}${site.reexport ? ":re-export" : ""}`,
     );
+
     expect(surface).toEqual([
       "named:a:variable",
       "named:b:variable",
@@ -474,6 +489,7 @@ describe("the corpus exercises every form", () => {
     const declared = facts("parity/type-members.ts")
       .memberSites.filter((site) => site.subject === "members")
       .map((site) => `${site.in ?? ""}.${site.name}:${site.declares ?? ""}`);
+
     expect(declared).toEqual([
       "Alias.a:type",
       "Alias.b:type",
@@ -494,6 +510,7 @@ describe("the corpus exercises every form", () => {
     const declared = facts("parity/class-members.ts")
       .memberSites.filter((site) => site.subject === "members")
       .map((site) => `${site.in ?? ""}.${site.name}:${site.declares ?? ""}`);
+
     expect(declared).toEqual([
       "Live.a:class",
       "Live.b:class",

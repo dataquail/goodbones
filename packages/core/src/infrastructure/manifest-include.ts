@@ -86,17 +86,28 @@ type Opened = {
   readonly source: Source;
 };
 
+// Where an assembled value is put: an item of a list, a key of a map, a
+// hoisted fragment, or the root. The walk hands each value on rather than
+// answering with it, because a value it has not decoded is the reader's to
+// type, not the walk's.
+type Slot = (value: unknown) => void;
+
 const makeLocator = (mounts: ReadonlyArray<Mount>): ManifestLocator | undefined => {
   if (!mounts.some((mount) => mount.locate !== undefined)) return undefined;
+
   return (manifestPath) => {
     const innermost = mounts
       .filter((mount) => isPrefix(mount.at, manifestPath))
       .sort((a, b) => a.at.length - b.at.length)
       .at(-1);
+
     if (innermost === undefined) return null;
+
     const found =
       innermost.locate?.([...innermost.origin, ...manifestPath.slice(innermost.at.length)]) ?? null;
+
     if (found === null) return null;
+
     return innermost.label === undefined ? found : { ...found, file: innermost.label };
   };
 };
@@ -107,8 +118,10 @@ export const expandIncludes = (
   reader: IncludeReader,
 ): IncludedManifest => {
   const rootDirectory = path.dirname(rootPath);
+
   const labelOf = (file: string): string =>
     path.relative(rootDirectory, file).split(path.sep).join("/");
+
   const nameOf = (source: Source): string => source.label ?? path.basename(rootPath);
 
   const files: Array<string> = [rootPath];
@@ -119,10 +132,12 @@ export const expandIncludes = (
 
   const refuse = (source: Source, origin: ManifestPath, detail: string): never => {
     const position = source.locate?.(origin) ?? null;
+
     const at =
       position === null
         ? ""
         : `${nameOf(source)}:${String(position.line)}:${String(position.column)}  `;
+
     throw new ConfigInvalid({
       configPath: rootPath,
       detail: `the manifest does not include:\n  ${at}${renderManifestPath(origin)}: ${detail}`,
@@ -133,11 +148,14 @@ export const expandIncludes = (
   // where the value lands depends on whether it is a list spliced into a list.
   const open = (reference: IncludeReference, origin: ManifestPath, source: Source): Opened => {
     const { include: specifier, ...rest } = reference;
+
     if (typeof specifier !== "string") {
       return refuse(source, origin, "`include` names a file, as a string.");
     }
+
     const shown = `\`include: ${JSON.stringify(specifier)}\``;
     const beside = Object.keys(rest);
+
     if (beside.length > 0) {
       return refuse(
         source,
@@ -147,7 +165,9 @@ export const expandIncludes = (
           `To override a fragment, put it under \`defs\` and \`use\` it.`,
       );
     }
+
     const target = path.resolve(path.dirname(source.file), specifier);
+
     if (!INCLUDABLE.includes(path.extname(target).toLowerCase())) {
       return refuse(
         source,
@@ -156,6 +176,7 @@ export const expandIncludes = (
           `a module would make the manifest readable by one runtime only.`,
       );
     }
+
     if (source.stack.includes(target)) {
       return refuse(
         source,
@@ -164,6 +185,7 @@ export const expandIncludes = (
           `${[...source.stack, target].map(labelOf).join(" → ")}.`,
       );
     }
+
     if (!reader.exists(target)) {
       return refuse(
         source,
@@ -172,8 +194,10 @@ export const expandIncludes = (
           `relative to ${nameOf(source)}).`,
       );
     }
+
     const document = reader.read(target);
     files.push(target);
+
     return {
       document,
       source: {
@@ -190,19 +214,26 @@ export const expandIncludes = (
   // `$schema` is for the editor — unless the file was included somewhere
   // under `defs`, where it is a fragment or the map itself, and a key by
   // either name is the author's.
-  const place = (opened: Opened, at: ManifestPath): unknown => {
+  const place = (opened: Opened, at: ManifestPath, put: Slot): void => {
     const { document, source } = opened;
     mounts.push({ at, origin: [], label: source.label, locate: source.locate });
+
     if (!isRecord(document.value) || at[0] === "defs") {
-      return walk(document.value, at, [], source);
+      walk(document.value, at, [], source, put);
+
+      return;
     }
+
     const { $schema: _schema, defs, ...body } = document.value;
+
     if (defs !== undefined) {
       if (!isRecord(defs)) {
         return refuse(source, ["defs"], "`defs` must be a map of named fragments.");
       }
+
       for (const [name, fragment] of Object.entries(defs)) {
         const already = definedIn.get(name);
+
         if (already !== undefined) {
           return refuse(
             source,
@@ -211,6 +242,7 @@ export const expandIncludes = (
               `one namespace; rename one of them.`,
           );
         }
+
         definedIn.set(name, nameOf(source));
         mounts.push({
           at: ["defs", name],
@@ -218,10 +250,13 @@ export const expandIncludes = (
           label: source.label,
           locate: source.locate,
         });
-        hoisted[name] = walk(fragment, ["defs", name], ["defs", name], source);
+        walk(fragment, ["defs", name], ["defs", name], source, (walked) => {
+          hoisted[name] = walked;
+        });
       }
     }
-    return walk(body, at, [], source);
+
+    walk(body, at, [], source, put);
   };
 
   // Appends each item of `list` to `items`. An include standing as an item
@@ -239,19 +274,28 @@ export const expandIncludes = (
     for (const [index, item] of list.entries()) {
       const itemOrigin = [...origin, index];
       const slot = [...at, items.length];
+
       if (isInclude(item)) {
         const opened = open(item, itemOrigin, source);
+
         if (Array.isArray(opened.document.value)) {
           append(items, opened.document.value, at, [], opened.source, true);
         } else {
-          items.push(place(opened, slot));
+          place(opened, slot, (placed) => {
+            items.push(placed);
+          });
         }
+
         continue;
       }
+
       if (spliced || items.length !== index) {
         mounts.push({ at: slot, origin: itemOrigin, label: source.label, locate: source.locate });
       }
-      items.push(walk(item, slot, itemOrigin, source));
+
+      walk(item, slot, itemOrigin, source, (walked) => {
+        items.push(walked);
+      });
     }
   };
 
@@ -260,24 +304,37 @@ export const expandIncludes = (
     at: ManifestPath,
     origin: ManifestPath,
     source: Source,
-  ): unknown => {
-    if (isInclude(value)) return place(open(value, origin, source), at);
+    put: Slot,
+  ): void => {
+    if (isInclude(value)) {
+      place(open(value, origin, source), at, put);
+
+      return;
+    }
 
     if (Array.isArray(value)) {
       const items: Array<unknown> = [];
       append(items, value, at, origin, source, false);
-      return items;
+      put(items);
+
+      return;
     }
 
     if (isRecord(value)) {
       const entries: Record<string, unknown> = {};
+
       for (const [key, item] of Object.entries(value)) {
-        entries[key] = walk(item, [...at, key], [...origin, key], source);
+        walk(item, [...at, key], [...origin, key], source, (walked) => {
+          entries[key] = walked;
+        });
       }
-      return entries;
+
+      put(entries);
+
+      return;
     }
 
-    return value;
+    put(value);
   };
 
   const rootSource: Source = {
@@ -286,20 +343,28 @@ export const expandIncludes = (
     locate: root.locate,
     stack: [rootPath],
   };
-  const value = walk(root.value, [], [], rootSource);
+
+  let value: unknown;
+
+  walk(root.value, [], [], rootSource, (walked) => {
+    value = walked;
+  });
 
   // Nothing was included: the value and the locator are the reader's own.
   if (files.length === 1) return { value, locate: root.locate, files };
 
   const names = Object.keys(hoisted);
+
   if (names.length === 0 || !isRecord(value)) {
     return { value, locate: makeLocator(mounts), files };
   }
 
   const own = value.defs;
+
   if (own !== undefined && !isRecord(own)) {
     return refuse(rootSource, ["defs"], "`defs` must be a map of named fragments.");
   }
+
   for (const name of names) {
     if (own !== undefined && name in own) {
       return refuse(
@@ -310,6 +375,7 @@ export const expandIncludes = (
       );
     }
   }
+
   return {
     value: { ...value, defs: { ...(own ?? {}), ...hoisted } },
     locate: makeLocator(mounts),

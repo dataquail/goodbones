@@ -11,9 +11,11 @@ import {
   heightOf,
 } from "./graph.js";
 
-const compile = (config: GraphConfig) => {
+const compile = (config: GraphConfig | undefined) => {
   const compiled = compileGraphRules(config);
+
   if (Result.isFailure(compiled)) throw compiled.failure;
+
   return compiled.success;
 };
 
@@ -53,6 +55,7 @@ describe("cycles", () => {
       ["src/a.ts", "src/b.ts"],
       ["src/a.ts", "src/leaf.ts"],
     ]);
+
     expect(found(CYCLES, at)).toEqual(["no-cycles:src/a.ts:src/a.ts ↔ src/b.ts ↔ src/c.ts"]);
   });
 
@@ -62,12 +65,14 @@ describe("cycles", () => {
       ["src/b.ts", "src/c.ts"],
       ["src/c.ts", "src/a.ts"],
     ]);
+
     const after = graph([
       ["src/a.ts", "src/b.ts"],
       ["src/b.ts", "src/c.ts"],
       ["src/c.ts", "src/a.ts"],
       ["src/a.ts", "src/c.ts"],
     ]);
+
     expect(found(CYCLES, before)).toEqual(found(CYCLES, after));
   });
 
@@ -83,6 +88,7 @@ describe("cycles", () => {
       ["src/a.ts", "src/a.test.ts"],
       ["src/a.test.ts", "src/a.ts"],
     ]);
+
     expect(found(CYCLES, at)).toEqual([]);
   });
 
@@ -93,6 +99,7 @@ describe("cycles", () => {
       ["src/x.ts", "src/y.ts"],
       ["src/y.ts", "src/x.ts"],
     ]);
+
     expect(found(CYCLES, at)).toEqual([
       "no-cycles:src/a.ts:src/a.ts ↔ src/b.ts",
       "no-cycles:src/x.ts:src/x.ts ↔ src/y.ts",
@@ -145,6 +152,7 @@ describe("reach", () => {
       ["src/adapters/a.ts", "src/helpers/h.ts"],
       ["src/helpers/h.ts", "src/infrastructure/live.ts"],
     ]);
+
     const [violation] = evaluateGraph(compile(REACH), at);
     expect(found(REACH, at)).toEqual([
       "through-the-port:src/adapters/a.ts:src/infrastructure/live.ts",
@@ -159,6 +167,7 @@ describe("reach", () => {
       ["src/adapters/a.ts", "src/ports/p.ts"],
       ["src/ports/p.ts", "src/infrastructure/live.ts"],
     ]);
+
     expect(found(REACH, at)).toEqual([]);
   });
 
@@ -168,6 +177,7 @@ describe("reach", () => {
       ["src/adapters/a.ts", "src/helpers/h.ts"],
       ["src/helpers/h.ts", "src/infrastructure/live.ts"],
     ]);
+
     expect(found(REACH, at)).toEqual([
       "through-the-port:src/adapters/a.ts:src/infrastructure/live.ts",
     ]);
@@ -188,6 +198,7 @@ describe("graphRulesFailingTheirProbe", () => {
         },
       ],
     };
+
     expect(graphRulesFailingTheirProbe(compile(drifted))).toEqual(["no-cycles"]);
   });
 
@@ -200,6 +211,7 @@ describe("graphRulesFailingTheirProbe", () => {
         },
       ],
     };
+
     expect(graphRulesFailingTheirProbe(compile(drifted))).toEqual(["no-orphans"]);
   });
 
@@ -212,6 +224,7 @@ describe("graphRulesFailingTheirProbe", () => {
         },
       ],
     };
+
     expect(graphRulesFailingTheirProbe(compile(drifted))).toEqual(["through-the-port"]);
   });
 });
@@ -226,11 +239,12 @@ describe("compileGraphRules", () => {
         },
       ],
     };
+
     expect(Result.isFailure(compileGraphRules(broken))).toBe(true);
   });
 
   it("compiles an absent section to no rules", () => {
-    expect(compile(undefined as unknown as GraphConfig)).toEqual({
+    expect(compile(undefined)).toEqual({
       cycles: [],
       orphans: [],
       reach: [],
@@ -250,6 +264,7 @@ describe("heightOf", () => {
         ["src/lone.ts"],
       ),
     );
+
     expect([...heights.entries()].sort()).toEqual([
       ["src/app.ts", 2],
       ["src/lone.ts", 0],
@@ -265,6 +280,7 @@ describe("heightOf", () => {
       ["src/b.ts", "src/leaf.ts"],
       ["src/c.ts", "src/a.ts"],
     ]);
+
     expect([...heightOf(cyclic).entries()].sort()).toEqual([
       ["src/a.ts", 1],
       ["src/b.ts", 1],

@@ -10,6 +10,8 @@ const LAST_NODE_MODULES = /(?:^|\/)node_modules\/((?:@[^/]+\/)?[^/]+)/g;
 
 export const npmPackageOf = (repoRelativePath: string): string | undefined => {
   let found: string | undefined;
+
   for (const match of repoRelativePath.matchAll(LAST_NODE_MODULES)) found = match[1];
+
   return found;
 };

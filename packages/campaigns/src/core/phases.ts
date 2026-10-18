@@ -40,10 +40,12 @@ export type Window = {
 
 export const windowOf = (rule: CompiledCampaign, objective: CompiledObjective): Window => {
   const from = rule.phases.findIndex((phase) => phase.objectives.includes(objective.id));
+
   const until =
     objective.until === null
       ? Number.POSITIVE_INFINITY
       : rule.phases.findIndex((phase) => phase.id === objective.until);
+
   return { from, until: until === -1 ? Number.POSITIVE_INFINITY : until };
 };
 
@@ -56,6 +58,7 @@ export const isShut = (
   position: SectorPosition,
 ): boolean => {
   const { until } = windowOf(rule, objective);
+
   return Number.isFinite(until) && until <= position.reached;
 };
 
@@ -71,7 +74,9 @@ export const inWindow = (
 ): boolean => {
   if (isShut(rule, objective, position)) return false;
   const { from, until } = windowOf(rule, objective);
+
   if (objective.overShared && from === -1) return false;
+
   return phase >= from && phase < until;
 };
 
@@ -122,15 +127,20 @@ export const derivePhase = (
 ): number => {
   for (const [index, phase] of rule.phases.entries()) {
     if (isOpenPhase(phase)) return index;
+
     if (phase.attested && !position.attested.has(phase.id)) return index;
+
     const residue = phase.objectives.some((objectiveId) => {
       const objective = rule.objectives.find((one) => one.id === objectiveId);
+
       return (
         objective !== undefined && !isShut(rule, objective, position) && counts(objectiveId) > 0
       );
     });
+
     if (residue) return index;
   }
+
   return donePhaseOf(rule);
 };
 
@@ -153,11 +163,15 @@ export const ladderPositionOf = (
 ): number => {
   const steps = stepsOf(rule);
   const at = rule.phases[phase];
+
   if (phase >= steps || at === undefined) return steps;
+
   if (at.objectives.length === 0) return phase;
+
   const paid =
     at.objectives.reduce((sum, objectiveId) => sum + shareOf(objectiveId), 0) /
     at.objectives.length;
+
   return phase + Math.min(1, Math.max(0, paid));
 };
 
@@ -165,6 +179,7 @@ export const ladderPositionOf = (
 // else `advise` for an open phase and `ratchet` for a defined one.
 export const onTouchOf = (rule: CompiledCampaign, phase: number): OnTouch => {
   const at = rule.phases[phase];
+
   return (
     at?.onTouch ?? rule.onTouch ?? (at !== undefined && isOpenPhase(at) ? "advise" : "ratchet")
   );
@@ -194,20 +209,27 @@ export type Direction = "forward" | "back" | "mixed" | "neutral";
 // by a sum.
 export const directionOf = (better: boolean, worse: boolean): Direction => {
   if (better && worse) return "mixed";
+
   if (better) return "forward";
+
   if (worse) return "back";
+
   return "neutral";
 };
 
 export const compareResidue = (before: Residue, after: Residue): Direction => {
   let better = false;
   let worse = false;
+
   for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
     const from = before[key] ?? 0;
     const to = after[key] ?? 0;
+
     if (to < from) better = true;
+
     if (to > from) worse = true;
   }
+
   return directionOf(better, worse);
 };
 

@@ -41,14 +41,17 @@ export const compileImportRule = (
   rule: ImportRule,
 ): Result.Result<CompiledImportRule, PatternInvalid> => {
   const from = compilePatterns(rule.name, "from", rule.from);
+
   if (Result.isFailure(from)) return Result.fail(from.failure);
   const fromNot = compilePatterns(rule.name, "fromNot", rule.fromNot);
+
   if (Result.isFailure(fromNot)) return Result.fail(fromNot.failure);
 
   const targets = validateTargetPatterns(rule.name, [
     ["to", rule.to],
     ["toNot", rule.toNot],
   ]);
+
   if (Result.isFailure(targets)) return Result.fail(targets.failure);
 
   return Result.succeed({
@@ -69,11 +72,14 @@ export const compileImportRules = (
   rules: ReadonlyArray<ImportRule>,
 ): Result.Result<ReadonlyArray<CompiledImportRule>, PatternInvalid> => {
   const compiled: Array<CompiledImportRule> = [];
+
   for (const rule of rules) {
     const one = compileImportRule(rule);
+
     if (Result.isFailure(one)) return Result.fail(one.failure);
     compiled.push(one.success);
   }
+
   return Result.succeed(compiled);
 };
 
@@ -92,10 +98,13 @@ export const rulesSelecting = (
   importer: string,
 ): ReadonlyArray<SelectedRule> => {
   const selected: Array<SelectedRule> = [];
+
   for (const rule of rules) {
     const captures = firstFromMatch(rule, importer);
+
     if (captures !== null) selected.push([rule, captures]);
   }
+
   return selected;
 };
 
@@ -104,6 +113,7 @@ export const rulesSelecting = (
 // speak — so a rule never has to know where a language keeps its packages.
 const reports = (rule: CompiledImportRule, captures: RegExpExecArray, target: ResolvedTarget) => {
   if (rule.dependencyKind !== null && rule.dependencyKind !== target.kind) return false;
+
   if (
     target.kind === "external" &&
     target.package !== undefined &&
@@ -111,6 +121,7 @@ const reports = (rule: CompiledImportRule, captures: RegExpExecArray, target: Re
   ) {
     return false;
   }
+
   return targetAllowed(rule, captures, target.path);
 };
 
@@ -122,6 +133,7 @@ export const evaluateResolvedEdge = (
   target: ResolvedTarget,
 ): ReadonlyArray<Violation> => {
   const violations: Array<Violation> = [];
+
   for (const [rule, captures] of selected) {
     if (reports(rule, captures, target)) {
       violations.push({
@@ -133,6 +145,7 @@ export const evaluateResolvedEdge = (
       });
     }
   }
+
   return violations;
 };
 
@@ -144,7 +157,9 @@ export const evaluateSelectedEdge = (
   if (selected.length === 0) return Result.succeed([]);
 
   const resolved = resolver.resolve(edge.importer, edge.specifier);
+
   if (Result.isFailure(resolved)) return Result.fail(resolved.failure);
+
   return Result.succeed(evaluateResolvedEdge(selected, edge.importer, resolved.success));
 };
 
@@ -159,7 +174,9 @@ export const evaluateImportEdge = (
 // so the probe never has to know how a language spells an external's path.
 export const probeTargetOf = (to: ImportProbeTarget): ResolvedTarget => {
   if (typeof to === "string") return { path: to, kind: "local" };
+
   if ("external" in to) return { path: to.external, kind: "external", package: to.external };
+
   return { path: to.builtin, kind: "builtin" };
 };
 
@@ -171,6 +188,8 @@ export const rulesFailingTheirProbe = (
 ): ReadonlyArray<CompiledImportRule> =>
   rules.filter((rule) => {
     const captures = firstFromMatch(rule, rule.probe.from);
+
     if (captures === null) return true;
+
     return !reports(rule, captures, probeTargetOf(rule.probe.to));
   });

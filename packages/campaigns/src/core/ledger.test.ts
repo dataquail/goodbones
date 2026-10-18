@@ -68,6 +68,7 @@ describe("the arithmetic, per sector", () => {
       by: "me",
       reason: "vendor",
     });
+
     expect(afterConcede.sectors.billing?.holdouts).toEqual(["a.ts", "d.ts", "e.ts"]);
     expect(afterConcede.concessions).toEqual([
       {
@@ -82,11 +83,14 @@ describe("the arithmetic, per sector", () => {
     expect(ledgerArithmeticHolds(afterConcede)).toBe(true);
 
     const billing = afterConcede.sectors.billing;
+
     if (billing === undefined) throw new Error("no billing sector");
+
     const tampered: Ledger = {
       ...afterConcede,
       sectors: { billing: { ...billing, holdouts: [...billing.holdouts, "f.ts"] } },
     };
+
     expect(sectorArithmeticHolds(tampered, "billing")).toBe(false);
     expect(ledgerArithmeticHolds(tampered)).toBe(false);
   });
@@ -100,6 +104,7 @@ describe("the arithmetic, per sector", () => {
       T0,
       "inside",
     );
+
     expect(Object.keys(both.sectors)).toEqual(["billing", "orders"]);
     const cleared = clearedSector(both, "orders", ["x.ts"], "file", T0 + DAY, "inside");
     expect(cleared.sectors.billing).toEqual(both.sectors.billing);
@@ -152,6 +157,7 @@ describe("clear", () => {
       T0,
       "inside",
     );
+
     const now = ["a.ts#Foo#11111111", "a.ts#Foo#33333333"];
     const state = reconcileSector(ledger, "billing", now, "match");
     expect(state.stale).toEqual([]);
@@ -184,6 +190,7 @@ describe("clear", () => {
       T0,
       "inside",
     );
+
     const now = ["a.ts#outcome#11111111", "a.ts#outcome#11111111~2", "b.ts#other#33333333"];
     const state = reconcileSector(ledger, "billing", now, "match");
     expect(state.drifted).toEqual([
@@ -205,11 +212,13 @@ describe("clear", () => {
 
   it("re-baselines a sector under a phase concession, recording from and to", () => {
     const ledger = ledgerOf(["a.ts", "b.ts"]);
+
     const after = rebaselinedSector(ledger, "billing", ["a.ts", "c.ts", "d.ts"], {
       at: T0 + DAY,
       by: "me",
       reason: "phase widened",
     });
+
     expect(after.sectors.billing?.holdouts).toEqual(["a.ts", "c.ts", "d.ts"]);
     expect(after.concessions).toEqual([
       {
@@ -243,6 +252,7 @@ describe("progress, stalls and completion against a fixed clock", () => {
       ["e.ts"],
       { at: T0, by: "me", reason: "r" },
     );
+
     // 3 left of 5 ever ledgered.
     expect(progressOf(ledger)).toBeCloseTo(0.4);
     expect(progressOf(EMPTY_LEDGER("c", "o", T0))).toBe(1);
@@ -290,6 +300,7 @@ describe("the file", () => {
       ],
       entries: ["a.ts", "b.ts", "c.ts"],
     });
+
     expect(Result.isSuccess(decoded) && decoded.success).toEqual({
       version: 2,
       campaign: "x",
@@ -341,7 +352,9 @@ const campaign = (
     })),
     onComplete: "keep",
   });
+
   if (Result.isFailure(compiled)) throw compiled.failure;
+
   return compiled.success;
 };
 
@@ -376,6 +389,7 @@ describe("the sector record", () => {
       ],
       [],
     );
+
     const attested = attestedRecord(
       attestedRecord(EMPTY_SECTOR_RECORD("c", "billing", T0), {
         phase: "a",
@@ -385,12 +399,15 @@ describe("the sector record", () => {
       }),
       { phase: "b", reason: "read", at: T0, by: "me" },
     );
+
     expect([...positionOf(rule, attested).attested].sort()).toEqual(["a", "b"]);
+
     const revoked = revokedRecord(attested, ["a"], {
       at: T0 + DAY,
       by: "you",
       reason: "conceded x: temporary",
     });
+
     expect(revoked.attested).toHaveLength(2);
     expect(revoked.attested[0]?.revoked).toEqual({
       at: new Date(T0 + DAY).toISOString(),
@@ -408,6 +425,7 @@ describe("the sector record", () => {
 
   it("caps notes, round-trips, and refuses a malformed one", () => {
     let record = EMPTY_SECTOR_RECORD("c", "billing", T0);
+
     for (let i = 0; i < 20; i += 1) {
       const next = notedRecord(record, {
         at: T0 + i,
@@ -415,13 +433,16 @@ describe("the sector record", () => {
         phase: "a",
         text: `note ${String(i)}`,
       });
+
       if (Result.isFailure(next)) throw new Error(next.failure);
       record = next.success;
     }
+
     // A 21st note is refused, and the 20 stand: nothing is dropped to make room.
     const crowded = notedRecord(record, { at: T0, by: "me", phase: "a", text: "one more" });
     expect(Result.isFailure(crowded) && crowded.failure).toContain("already holds 20 notes");
     expect(record.notes[0]?.text).toBe("note 0");
+
     // A long note is refused naming the limit and its length, never cut.
     const long = notedRecord(EMPTY_SECTOR_RECORD("c", "billing", T0), {
       at: T0,
@@ -429,15 +450,18 @@ describe("the sector record", () => {
       phase: null,
       text: "x".repeat(600),
     });
+
     expect(Result.isFailure(long) && long.failure).toContain(
       "at most 500 characters, and this one is 600",
     );
+
     const whole = notedRecord(EMPTY_SECTOR_RECORD("c", "billing", T0), {
       at: T0,
       by: "me",
       phase: null,
       text: "x".repeat(500),
     });
+
     expect(Result.isSuccess(whole) && whole.success.notes[0]?.text.length).toBe(500);
     const decoded = decodeSectorRecord(JSON.parse(serializeSectorRecord(record)));
     expect(Result.isSuccess(decoded) && decoded.success).toEqual(record);
@@ -458,6 +482,7 @@ describe("the plan record", () => {
       changed: ["a"],
       unreceipted: ["a"],
     });
+
     // With one: changed, and receipted.
     const receipted = campaign(
       [
@@ -466,6 +491,7 @@ describe("the plan record", () => {
       ],
       ["x"],
     );
+
     expect(planDiffOf(receipted, before)).toEqual({ refined: [], changed: ["a"], unreceipted: [] });
     // A new phase is a refinement; a removed defined one is a change.
     const grown = campaign([phase("a", ["x"]), phase("b", []), phase("c", [])], ["x"]);
@@ -509,12 +535,14 @@ describe("a phase's identity", () => {
       unreceipted: ["a"],
     });
     const moved = plan(["b", "c", "d", "a"]);
+
     const receipted = {
       ...moved,
       phases: moved.phases.map((one) =>
         one.id === "a" ? { ...one, concessions: [{ reason: "r", at: "2026-10-01" }] } : one,
       ),
     };
+
     expect(planDiffOf(receipted, before)).toEqual({ refined: [], changed: ["a"], unreceipted: [] });
   });
 
@@ -522,15 +550,18 @@ describe("a phase's identity", () => {
     // What a phase asks, as the lowering carries it, and the hash a version 1
     // plan wrote for it: the digest of that with the phase's index in it.
     const asked = (id: string) => ({ id, attested: false, endState: null, objectives: [id] });
+
     const defined = (id: string, definition: unknown = asked(id)) => ({
       ...phase(id, [`x-${id}`], digest(definition)),
       definition,
     });
+
     const rule = (phases: ReadonlyArray<ReturnType<typeof defined>>) =>
       campaign(
         phases,
         phases.map((one) => `x-${one.id}`),
       );
+
     const recorded = {
       version: 1 as const,
       campaign: "c",
@@ -541,6 +572,7 @@ describe("a phase's identity", () => {
         concessions: 0,
       })),
     };
+
     expect(Result.isSuccess(decodePlanRecord(recorded))).toBe(true);
     const none = { refined: [], changed: [], unreceipted: [] };
     expect(planDiffOf(rule([defined("a"), defined("b")]), recorded)).toEqual(none);
@@ -607,11 +639,13 @@ describe("a scalar objective's ledger", () => {
 
     // A rise is not clear's to record.
     expect(clearedMeasure(improved, "billing", 11, 0, T0 + 2 * DAY, "inside")).toBe(improved);
+
     const conceded = concededMeasure(improved, "billing", 11, {
       at: T0 + 2 * DAY,
       by: "me",
       reason: "vendored a parser",
     });
+
     expect(conceded.sectors.billing?.recorded).toBe(11);
     expect(conceded.concessions).toEqual([
       {
@@ -629,10 +663,12 @@ describe("a scalar objective's ledger", () => {
 
   it("fails the arithmetic on a record edited by hand", () => {
     const ledger = clearedMeasure(entered(14.2), "billing", 9.8, 0, T0 + DAY, "inside");
+
     const edited: MeasureLedger = {
       ...ledger,
       sectors: { billing: { ...(ledger.sectors.billing ?? fail()), recorded: 12 } },
     };
+
     expect(measureLedgerArithmeticHolds(edited)).toBe(false);
   });
 

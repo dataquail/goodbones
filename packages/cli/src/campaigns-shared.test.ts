@@ -117,6 +117,7 @@ const git = (...args: ReadonlyArray<string>): string =>
 
 const policyAt = (now = "2026-10-01T00:00:00Z") => {
   process.env.ARCHITECTURE_NOW = now;
+
   return loadPolicy(root);
 };
 
@@ -125,13 +126,17 @@ const capture = async (effect: Effect.Effect<void, CliFailure>) => {
   const original = process.stdout.write.bind(process.stdout);
   process.stdout.write = (chunk: string) => {
     lines.push(String(chunk));
+
     return true;
   };
+
   try {
     const exit = await Effect.runPromiseExit(effect);
+
     const failure = Exit.isFailure(exit)
       ? (Cause.squash(exit.cause) as { message?: string })
       : null;
+
     return { exit, output: lines.join(""), failure: failure?.message ?? "" };
   } finally {
     process.stdout.write = original;
@@ -145,12 +150,14 @@ const check = async () => {
       manifestPath: path.join(root, "architecture.json"),
     }),
   );
+
   return { ...result, report: JSON.parse(result.output) as CheckReport };
 };
 
 const clear = async (now: string) => {
   const cleared = await capture(objectives(await policyAt(now), ["src"], ["clear"]));
   expect(Exit.isSuccess(cleared.exit), cleared.failure).toBe(true);
+
   return cleared.output;
 };
 
@@ -186,8 +193,10 @@ const nudge = async () => {
   const json = await capture(
     campaigns(await policyAt(), ["src"], ["status", "--changed", "--json"]),
   );
+
   const text = await capture(campaigns(await policyAt(), ["src"], ["status", "--changed"]));
   const parsed = JSON.parse(json.output) as { ok: boolean; sectors: Array<Sector> };
+
   return {
     ok: parsed.ok,
     of: (name: string) => parsed.sectors.find((one) => one.sector === name),
@@ -196,6 +205,7 @@ const nudge = async () => {
 };
 
 const ledgerDir = path.join(root, ".architecture-campaigns/strangle");
+
 const sectorsOf = (objective: string): Record<string, Record<string, unknown>> =>
   (
     JSON.parse(readFileSync(path.join(ledgerDir, `${objective}.json`), "utf8")) as {
@@ -291,12 +301,14 @@ describe.sequential("the shared files", () => {
     const status = await capture(campaigns(await policyAt(), ["src"], []));
     expect(status.output).toContain("phases: rebuilt 2 → moved 0  · shared 2 files");
     expect(status.output).toMatch(/has-authenticator\s+0%\s+1 left.*over the shared files/);
+
     const snapshot = await capture(
       conformance(await policyAt(), ["src"], {
         format: "json",
         manifestPath: path.join(root, "architecture.json"),
       }),
     );
+
     const [campaign] = (
       JSON.parse(snapshot.output) as {
         campaigns: Array<{
@@ -307,6 +319,7 @@ describe.sequential("the shared files", () => {
         }>;
       }
     ).campaigns;
+
     expect(campaign?.shared).toEqual({ files: 2, holdouts: 2 });
     // The ladder counts the sectors, never the shared files. todo has paid one
     // of `rebuilt`'s two objectives; the other is the shared files' to pay.

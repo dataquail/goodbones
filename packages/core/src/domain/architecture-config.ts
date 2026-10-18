@@ -295,7 +295,6 @@ export const GraphConfig = Schema.Struct({
   reach: Schema.optionalKey(Schema.Array(GraphReachRule)),
 });
 
-
 const PathProbe = Schema.Struct({ path: Schema.String });
 
 // The file taxonomy, as three questions rather than one nested tree.
@@ -363,30 +362,55 @@ const StructureConfig = Schema.Struct({
 });
 
 export type Allowance = (typeof Allowance)["Type"];
+
 export type ImportRule = (typeof ImportRule)["Type"];
+
 export type ResolveConfig = (typeof ResolveConfig)["Type"];
+
 export type ResolveScope = (typeof ResolveScope)["Type"];
+
 export type ImportProbe = (typeof ImportProbe)["Type"];
+
 export type ImportProbeTarget = (typeof ImportProbeTarget)["Type"];
+
 export type ExportRule = (typeof ExportRule)["Type"];
+
 export type ExportProbe = (typeof ExportProbe)["Type"];
+
 export type BindingKind = (typeof BindingKind)["Type"];
+
 export type ExportFix = (typeof ExportFix)["Type"];
+
 export type MemberRule = (typeof MemberRule)["Type"];
+
 export type MemberProbe = (typeof MemberProbe)["Type"];
+
 export type MemberSubject = (typeof MemberSubject)["Type"];
+
 export type GraphProbe = (typeof GraphProbe)["Type"];
+
 export type GraphCycleRule = (typeof GraphCycleRule)["Type"];
+
 export type GraphOrphanRule = (typeof GraphOrphanRule)["Type"];
+
 export type GraphReachRule = (typeof GraphReachRule)["Type"];
+
 export type GraphConfig = (typeof GraphConfig)["Type"];
+
 export type DeclarationKind = (typeof DeclarationKind)["Type"];
+
 export type SurfaceRule = (typeof SurfaceRule)["Type"];
+
 export type SurfaceProbe = (typeof SurfaceProbe)["Type"];
+
 export type StructureConfig = (typeof StructureConfig)["Type"];
+
 export type StructureRoot = (typeof StructureRoot)["Type"];
+
 export type StructureFolder = (typeof StructureFolder)["Type"];
+
 export type StructureParity = (typeof StructureParity)["Type"];
+
 export type StructureNaming = (typeof StructureNaming)["Type"];
 
 // The file pattern an open folder's layout rule carries: it admits any name,

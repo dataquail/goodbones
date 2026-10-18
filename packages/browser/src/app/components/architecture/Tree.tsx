@@ -32,21 +32,29 @@ type ArcClass = "out" | "in" | "within" | "dim";
 
 const classify = (arc: Arc, focus: string | null, focusIsFolder: boolean): ArcClass => {
   if (focus === null) return "dim";
+
   const inside = (path: string): boolean =>
     focusIsFolder ? path === focus || path.startsWith(`${focus}/`) : path === focus;
+
   let out = false;
   let into = false;
   let within = false;
+
   for (const edge of arc.edges) {
     const fromIn = inside(edge.from);
     const toIn = inside(edge.to);
+
     if (fromIn && toIn) within = true;
     else if (fromIn) out = true;
     else if (toIn) into = true;
   }
+
   if (out) return "out";
+
   if (into) return "in";
+
   if (within) return "within";
+
   return "dim";
 };
 
@@ -57,28 +65,37 @@ const arcPath = (from: number, to: number): string => {
   const y2 = to * ROW + ROW / 2;
   const span = Math.abs(from - to);
   const bulge = Math.min(LANE - 12, 18 + span * 5);
+
   return `M6 ${String(y1)} C ${String(6 + bulge)} ${String(y1)}, ${String(6 + bulge)} ${String(y2)}, 10 ${String(y2)}`;
 };
 
 const rowRelation = (row: Row, relations: ReadonlyMap<string, Relation>): Relation => {
   const own = relations.get(row.path);
+
   if (own !== undefined) return own;
+
   if (row.kind === "folder" && !row.expanded) {
     // A collapsed folder carries the strongest relation of what it hides: a
     // file of it reached each way, or files reached one way and the other,
     // make the folder reached both ways.
     let best: Relation = null;
     let edge: Relation = null;
+
     for (const [path, relation] of relations) {
       if (!path.startsWith(`${row.path}/`)) continue;
+
       if (relation === "both") return "both";
+
       if (relation === "dep" || relation === "importer") {
         edge = joinRelations(edge ?? undefined, relation);
+
         if (edge === "both") return "both";
       } else best ??= relation;
     }
+
     return edge ?? best;
   }
+
   return null;
 };
 
@@ -110,14 +127,18 @@ export const Tree = ({
   const selectedVisible = selected !== null && rows.some((row) => row.path === selected);
   useEffect(() => {
     if (!selectedVisible || listRef.current === null) return;
+
     const row = [...listRef.current.children].find(
       (element) => (element as HTMLElement).title === selected,
     );
+
     row?.scrollIntoView({ block: "nearest" });
   }, [selected, selectedVisible]);
+
   const classified = arcs
     .map((arc) => ({ arc, kind: classify(arc, focus, focusIsFolder) }))
     .sort((a, b) => ORDER[a.kind] - ORDER[b.kind]);
+
   return (
     <div
       className={focus === null ? "tree" : "tree focused"}
@@ -129,10 +150,14 @@ export const Tree = ({
         {rows.map((row) => {
           const relation = rowRelation(row, relations);
           const classes = ["row", row.kind];
+
           if (relation !== null) classes.push(relation);
+
           if (isGoverned(row, governedBy)) classes.push("governed");
+
           if (selected === row.path) classes.push("selected");
           const violations = row.kind === "file" ? row.file.violations : row.violations;
+
           return (
             <li
               key={row.path}
@@ -168,11 +193,13 @@ export const Tree = ({
               {row.kind === "folder"
                 ? row.folder.declares.map((id) => {
                     const pill = ["node-pill"];
+
                     if (id === governedBy) pill.push("governing");
                     else if (chain.includes(id)) pill.push("chain");
                     // A key that only repeats the folder's name says nothing
                     // the row does not; it is marked, and named in the title.
                     const key = nodes.get(id)?.key ?? id;
+
                     return (
                       <span key={id} className={pill.join(" ")} title={`manifest node ${key}`}>
                         {key === `${row.name}/` ? "§" : key}
@@ -218,6 +245,7 @@ export const Tree = ({
         {classified.map(({ arc, kind }) => {
           const refused = arc.refused && kind !== "dim";
           const marker = refused ? "refused" : kind;
+
           return (
             <path
               key={`${String(arc.from)}>${String(arc.to)}`}

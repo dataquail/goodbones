@@ -58,6 +58,7 @@ export const globToRegexSource = (
       out += ".*";
       continue;
     }
+
     if (part === "*") {
       if (options.capturing === true) {
         wildcards.push(group);
@@ -66,6 +67,7 @@ export const globToRegexSource = (
       } else out += "[^/]*";
       continue;
     }
+
     if (part === "?") {
       out += "[^/]";
       continue;
@@ -78,21 +80,26 @@ export const globToRegexSource = (
     }
 
     const capture = /^\{([a-zA-Z][a-zA-Z0-9]*)\}$/.exec(part);
+
     if (capture !== null) {
       const name = capture[1] ?? "";
+
       if (options.declaring && declared[name] === undefined) {
         declared[name] = group;
         out += "([^/]+)";
         group += 1;
       } else {
         const index = declared[name];
+
         if (index === undefined) {
           throw new Error(
             `pattern "${glob}" references {${name}}, which no ancestor path declares`,
           );
         }
+
         out += `$${String(index)}`;
       }
+
       continue;
     }
 

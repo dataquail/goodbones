@@ -18,6 +18,7 @@ import { compileSurfaceRules } from "./surface.js";
 
 const unwrap = <A, E>(result: Result.Result<A, E>): A => {
   if (Result.isFailure(result)) throw result.failure;
+
   return result.success;
 };
 
@@ -161,6 +162,7 @@ describe("residueOf", () => {
 
   it("does not name a folder some file of which is reached", () => {
     const mixed = [...FILES, "src/other/core-ish.ts"];
+
     const reachesIt = {
       ...policy,
       memberRules: unwrap(
@@ -175,6 +177,7 @@ describe("residueOf", () => {
         ]),
       ),
     };
+
     expect(residueOf(reachesIt, mixed)).toEqual({ files: ["src/other/d.ts"], folders: [] });
   });
 
@@ -190,6 +193,7 @@ describe("vacancyOf", () => {
     entry,
     pattern: `^${entry.replace("/**", "(/.*)?$")}`,
   });
+
   // `src` allows `src/**`; `src/core/` inherits it and adds `lib/**`;
   // `src/ghost/` resets to its own. Written flat, as lowering emits them.
   const rules = unwrap(

@@ -21,6 +21,7 @@ export const EXTERNALS: Readonly<Record<string, ReadonlyArray<string>>> = {
   zod: [],
   react: [],
 };
+
 const EXTERNAL_SPECIFIERS = Object.entries(EXTERNALS).flatMap(([name, subpaths]) => [
   name,
   ...subpaths.map((subpath) => `${name}/${subpath}`),
@@ -69,17 +70,21 @@ export const specsOf = (tree: Tree, profile: Profile): Readonly<Record<string, F
   Object.fromEntries(
     tree.files.map((file, index) => {
       const edge = tree.edges[index] ?? { local: [], external: [] };
+
       const imports: ReadonlyArray<ImportSpec> = [
         ...edge.local.map((other) => profile.specifier(file, tree.files[other] ?? file)),
         ...edge.external,
       ];
+
       return [file, source({ imports, exports: ["value"] })];
     }),
   );
 
 export const repoOf = (tree: Tree, profile?: Profile): Repo => {
   const repo = createRepo({ ...(profile === undefined ? {} : { profile }), packages: EXTERNALS });
+
   for (const [file, spec] of Object.entries(specsOf(tree, repo.profile))) repo.write(file, spec);
+
   return repo;
 };
 

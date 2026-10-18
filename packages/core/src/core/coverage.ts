@@ -52,6 +52,7 @@ const isAllowlist = (rule: CompiledImportRule): boolean =>
 
 const dirnameOf = (file: string): string => {
   const at = file.lastIndexOf("/");
+
   return at === -1 ? "" : file.slice(0, at);
 };
 
@@ -77,17 +78,21 @@ export const reachOf = (
   files: ReadonlyArray<string>,
 ): ReadonlyArray<Reach> => {
   const allowlists = policy.importRules.filter(isAllowlist);
+
   return files.map((file) => {
     const folder = dirnameOf(file);
+
     const governing = policy.structure.folders.filter((rule) =>
       rule.folder.some((pattern) => pattern.test(folder)),
     );
+
     const structure =
       governing.length === 0
         ? null
         : governing.every((rule) => rule.files.some((pattern) => pattern.source === OPEN_LAYOUT))
           ? "open"
           : "enumerated";
+
     return {
       file,
       imports: allowlists.some((rule) => selects(rule, file)),
@@ -107,6 +112,7 @@ export const coverageOf = (policy: CoverageInputs, files: ReadonlyArray<string>)
   const reach = reachOf(policy, files);
   const count = (is: (one: Reach) => boolean): number => reach.filter(is).length;
   const total = files.length;
+
   return {
     files: total,
     imports: { covered: count((one) => one.imports), total },
@@ -143,6 +149,7 @@ export const residueOf = (policy: CoverageInputs, files: ReadonlyArray<string>):
     )
     .map((one) => one.file)
     .sort();
+
   return { files: unreached, folders: foldersWhollyIn(unreached, files) };
 };
 
@@ -150,10 +157,12 @@ export const residueOf = (policy: CoverageInputs, files: ReadonlyArray<string>):
 const ancestorsOf = (file: string): ReadonlyArray<string> => {
   const folders: Array<string> = [];
   let folder = dirnameOf(file);
+
   while (folder !== "") {
     folders.push(folder);
     folder = dirnameOf(folder);
   }
+
   return folders;
 };
 
@@ -165,19 +174,23 @@ const foldersWhollyIn = (
   files: ReadonlyArray<string>,
 ): ReadonlyArray<string> => {
   const walked = new Map<string, number>();
+
   for (const file of files) {
     for (const folder of ancestorsOf(file)) walked.set(folder, (walked.get(folder) ?? 0) + 1);
   }
+
   const inSubset = new Map<string, number>();
+
   for (const file of subset) {
     for (const folder of ancestorsOf(file)) {
       inSubset.set(folder, (inSubset.get(folder) ?? 0) + 1);
     }
   }
+
   const whole = [...inSubset.entries()]
-    .filter(([folder, count]) => walked.get(folder) === count)
-    .map(([folder]) => folder)
+    .flatMap(([folder, count]) => (walked.get(folder) === count ? [folder] : []))
     .sort();
+
   return whole.filter(
     (folder) => !whole.some((other) => other !== folder && folder.startsWith(`${other}/`)),
   );
@@ -218,14 +231,18 @@ export const vacantNodesOf = (
 ): ReadonlySet<string> => {
   const declaring = new Set<string>();
   const reached = new Set<string>();
+
   for (const rule of rules) {
     if (rule.allowances.length === 0) continue;
     const live = files.some((file) => selects(rule, file));
+
     for (const { node } of rule.allowances) {
       declaring.add(node);
+
       if (live) reached.add(node);
     }
   }
+
   return new Set([...declaring].filter((node) => !reached.has(node)));
 };
 
@@ -237,6 +254,7 @@ export const vacancyOf = (
 ): Vacancy => {
   const vacant = vacantNodesOf(rules, files);
   const entries = new Map<string, Set<string>>();
+
   for (const rule of rules) {
     for (const { entry, kind, node } of rule.allowances) {
       if (!vacant.has(node)) continue;
@@ -245,6 +263,7 @@ export const vacancyOf = (
       entries.set(node, written);
     }
   }
+
   return [...entries.entries()].map(([node, written]) => ({ node, allowances: written.size }));
 };
 
@@ -284,6 +303,7 @@ export const coverageShortfalls = (
   floors: CoverageFloors,
 ): ReadonlyArray<Shortfall> => {
   const actual = fractionsOf(coverage);
+
   const families: ReadonlyArray<CoverageFamily> = [
     "imports",
     "structure",
@@ -291,10 +311,14 @@ export const coverageShortfalls = (
     "surface",
     "graph",
   ];
+
   return families.flatMap((family) => {
     const floor = floors[family];
+
     if (floor === undefined) return [];
+
     if (!breaches({ direction: "up", limit: floor, tolerance: 0 }, actual[family])) return [];
+
     return [{ family, actual: actual[family], floor }];
   });
 };

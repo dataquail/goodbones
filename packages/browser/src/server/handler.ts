@@ -33,6 +33,7 @@ const messageOf = (cause: unknown): string =>
 export const makeHandler = (source: Source): Handler => {
   return async (request, response) => {
     const url = new URL(request.url ?? "/", "http://localhost");
+
     if (!url.pathname.startsWith(PREFIX)) return false;
     const route = url.pathname.slice(PREFIX.length);
 
@@ -42,20 +43,24 @@ export const makeHandler = (source: Source): Handler => {
       response.setHeader("cache-control", "no-store");
       response.setHeader("connection", "keep-alive");
       response.write(`event: hello\ndata: ${JSON.stringify({ live: source.live })}\n\n`);
+
       const unsubscribe = source.subscribe((change) => {
         response.write(`event: changed\ndata: ${JSON.stringify(change)}\n\n`);
       });
+
       const heartbeat = setInterval(() => response.write(": keep-alive\n\n"), HEARTBEAT_MS);
       request.on("close", () => {
         clearInterval(heartbeat);
         unsubscribe();
       });
+
       return true;
     }
 
     if (route === "atlas.json" || route === "campaigns.json" || route === "status.json") {
       try {
         const collected = await source.current();
+
         if (route === "atlas.json") json(response, 200, collected.atlas);
         else if (route === "campaigns.json") json(response, 200, collected.campaigns);
         else {
@@ -68,10 +73,12 @@ export const makeHandler = (source: Source): Handler => {
       } catch (cause) {
         json(response, 500, { error: messageOf(cause) });
       }
+
       return true;
     }
 
     json(response, 404, { error: `no such route: ${url.pathname}` });
+
     return true;
   };
 };

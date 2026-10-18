@@ -54,26 +54,33 @@ describe("ledger round trip", () => {
         fc.asyncProperty(arbTreeWithHit(), async (tree) => {
           await tick();
           const repo = repoOf(tree);
+
           try {
             repo.writeManifest(campaignManifest(repo.profile));
             const before = check(repo, ["src"]);
             expect(before.json.unresolved, before.stderr).toEqual([]);
+
             const hitsOf = (json: typeof before.json, id: string, objective: string) =>
               json.violations
                 .filter((one) => one.ruleName === `campaign/${id}/${objective}`)
                 .map(entryOf)
                 .sort();
+
             const written = (id: string, objective: string) => {
               const ledger = JSON.parse(
                 repo.read(`.architecture-campaigns/${id}/${objective}.json`),
               ) as Ledger;
+
               const scope = ledger.sectors.scope;
+
               if (scope === undefined) throw new Error("no implicit sector in the ledger");
+
               return scope;
             };
 
             const cleared = cli(repo, ["objectives", "clear", "src"]);
             expect(cleared.code, cleared.stderr).toBe(0);
+
             for (const [id, objective] of CAMPAIGNS) {
               expect(written(id, objective).holdouts).toEqual([
                 ...new Set(hitsOf(before.json, id, objective)),
@@ -99,6 +106,7 @@ describe("ledger round trip", () => {
             // A file that hit both campaigns is deleted: both ledgers are
             // stale, check fails, and clear reproduces the hits.
             const victim = tree.files.find((file) => /\/(handler|service)\.ts$/.test(file));
+
             if (victim === undefined) return;
             repo.remove(victim);
             const stale = check(repo, ["src"]);
@@ -111,6 +119,7 @@ describe("ledger round trip", () => {
             expect(
               settled.json.campaigns.every((one) => one.new.length === 0 && one.stale.length === 0),
             ).toBe(true);
+
             for (const [id, objective] of CAMPAIGNS) {
               const scope = written(id, objective);
               expect(scope.holdouts).toEqual([...new Set(hitsOf(settled.json, id, objective))]);

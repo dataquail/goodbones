@@ -85,48 +85,61 @@ const MARKER_EXPORT = /export\s+const\s+sector(?:\s*:[^=]*)?\s*=\s*\{/;
 // exports no such object; a throw when it does and the object cannot be read.
 export const parseSectorMarker = (text: string): SectorMarker | null => {
   const at = MARKER_EXPORT.exec(text);
+
   if (at === null) return null;
   const start = at.index + at[0].length - 1;
   let depth = 0;
   let end = -1;
+
   for (let i = start; i < text.length; i += 1) {
     const char = text[i];
+
     if (char === "{") depth += 1;
     else if (char === "}") {
       depth -= 1;
+
       if (depth === 0) {
         end = i;
         break;
       }
     }
   }
+
   if (end === -1) throw new Error("the `sector` object's braces do not balance");
+
   const literal = text
     .slice(start, end + 1)
     .replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, (_match, inner: string) => JSON.stringify(inner))
     .replace(/([{,]\s*)([A-Za-z_$][\w$]*)\s*:/g, '$1"$2":')
     .replace(/,\s*([}\]])/g, "$1");
+
   let parsed: unknown;
+
   try {
     parsed = JSON.parse(literal);
   } catch (cause) {
     throw new Error(`the \`sector\` object is not a plain literal: ${String(cause)}`);
   }
+
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error("the `sector` export is not an object");
   }
+
   const record = parsed as Record<string, unknown>;
   const name = record.name;
   const owns = record.owns;
+
   if (name !== undefined && typeof name !== "string") {
     throw new Error("the `sector` object's `name` is not a string");
   }
+
   if (
     owns !== undefined &&
     (!Array.isArray(owns) || owns.some((one: unknown) => typeof one !== "string"))
   ) {
     throw new Error("the `sector` object's `owns` is not a list of globs");
   }
+
   return {
     ...(name === undefined ? {} : { name }),
     ...(owns === undefined ? {} : { owns: owns as ReadonlyArray<string> }),
@@ -135,6 +148,7 @@ export const parseSectorMarker = (text: string): SectorMarker | null => {
 
 const folderOf = (file: string): string => {
   const at = file.lastIndexOf("/");
+
   return at === -1 ? "" : file.slice(0, at);
 };
 
@@ -145,6 +159,7 @@ const basenameOf = (file: string): string => file.slice(file.lastIndexOf("/") + 
 export const withoutExtension = (file: string): string => {
   const base = basenameOf(file);
   const dot = base.lastIndexOf(".");
+
   return dot <= 0 ? file : file.slice(0, file.length - (base.length - dot));
 };
 
@@ -154,6 +169,7 @@ export const fixedPrefixOf = (glob: string): string => {
   const wildcard = glob.search(/[*?[{]/);
   const fixed = wildcard === -1 ? glob : glob.slice(0, wildcard);
   const cut = fixed.lastIndexOf("/");
+
   return cut === -1 ? "" : fixed.slice(0, cut);
 };
 
@@ -185,37 +201,49 @@ const indexOf = (
 ): SectorIndex => {
   const seen = new Set(files);
   const shared = new Set(sharedFiles);
+
   const legacyOf = (file: string): string | null =>
     rule.legacy === null || rule.legacy.some((pattern) => pattern.test(file))
       ? LEGACY_SECTOR
       : null;
+
   // A file the campaign never saw — outside its scope, or not a source
   // file at all — is in no sector.
   const sectorOf = (file: string): string | null => {
     if (shared.has(file)) return SHARED_SECTOR;
+
     if (!seen.has(file)) return null;
     const claimed = claims.get(file);
+
     if (claimed !== undefined && claimed.length > 0) return claimed[0]?.sector ?? null;
+
     return legacyOf(file);
   };
+
   const legacy = files.filter((file) => sectorOf(file) === LEGACY_SECTOR);
-  const drift = [...claims.entries()]
-    .filter(([, claimed]) => new Set(claimed.map((one) => one.sector)).size > 1)
-    .map(([file, claimed]) => ({
-      file,
-      sectors: [...new Set(claimed.map((one) => one.sector))].sort(),
-    }));
+
+  const drift = [...claims.entries()].flatMap(([file, claimed]) => {
+    const named = new Set(claimed.map((one) => one.sector));
+
+    return named.size > 1 ? [{ file, sectors: [...named].sort() }] : [];
+  });
+
   const sectorOfHit = (file: string, subject: string | null): string | null => {
     if (rule.perimeter?.kind !== "match" || shared.has(file)) return sectorOf(file);
     const claimed = claims.get(file) ?? [];
+
     if (subject !== null) {
       const anchor = subject.split("#")[0] ?? subject;
       const own = claimed.find((one) => sectors.get(one.sector)?.declaration?.anchor === anchor);
+
       if (own !== undefined) return own.sector;
     }
+
     if (claimed.length === 1) return claimed[0]?.sector ?? null;
+
     return legacyOf(file);
   };
+
   return { sectors, legacy, shared: sharedFiles, sectorOf, sectorOfHit, drift };
 };
 
@@ -225,13 +253,16 @@ export const discoverSectors = (rule: CompiledCampaign, input: SectorDiscovery):
   // sector's, whatever a perimeter would have made of it.
   const isShared = (file: string): boolean =>
     rule.shared?.some((pattern) => pattern.test(file)) ?? false;
+
   const sharedFiles = input.files.filter(isShared).sort();
   const files = input.files.filter((file) => !isShared(file)).sort();
   const sectors = new Map<string, Sector>();
   const claims = new Map<string, Array<Claim>>();
+
   const claim = (file: string, sector: string, root: string): void => {
     claims.set(file, [...(claims.get(file) ?? []), { sector, root }]);
   };
+
   const add = (sector: Sector): void => {
     if (rule.shared !== null && sector.name === SHARED_SECTOR) {
       throw new Error(
@@ -239,6 +270,7 @@ export const discoverSectors = (rule: CompiledCampaign, input: SectorDiscovery):
           `\`shared\` names. Give the sector another name.`,
       );
     }
+
     const known = sectors.get(sector.name);
     // A name declared by two markers is one sector with both roots.
     sectors.set(
@@ -254,10 +286,12 @@ export const discoverSectors = (rule: CompiledCampaign, input: SectorDiscovery):
               (known.holds?.(file) ?? false) || (sector.holds?.(file) ?? false),
           },
     );
+
     for (const file of sector.files) claim(file, sector.name, rootOf(sector, file));
   };
 
   const perimeter: CompiledPerimeter | null = rule.perimeter;
+
   if (perimeter === null) {
     add({
       name: IMPLICIT_SECTOR,
@@ -267,6 +301,7 @@ export const discoverSectors = (rule: CompiledCampaign, input: SectorDiscovery):
       declaration: null,
       holds: () => true,
     });
+
     return indexOf(rule, files, sharedFiles, sectors, claims);
   }
 
@@ -282,19 +317,24 @@ export const discoverSectors = (rule: CompiledCampaign, input: SectorDiscovery):
           holds: (other) => other === file,
         });
       }
+
       break;
     }
+
     case "glob": {
       const byName = new Map<string, Array<string>>();
+
       for (const file of files) {
         for (const pattern of perimeter.glob) {
           const found = pattern.exec(file);
+
           if (found === null) continue;
           const name = found[0].replace(/\/$/, "");
           byName.set(name, [...(byName.get(name) ?? []), file]);
           break;
         }
       }
+
       for (const [name, own] of byName) {
         add({
           name,
@@ -306,39 +346,52 @@ export const discoverSectors = (rule: CompiledCampaign, input: SectorDiscovery):
             perimeter.glob.some((pattern) => pattern.exec(file)?.[0].replace(/\/$/, "") === name),
         });
       }
+
       break;
     }
+
     case "marker": {
       const markers = files.filter((file) => perimeter.marker.some((one) => one.test(file)));
+
       for (const marker of markers) {
         const text = input.readText(marker) ?? "";
         let read: SectorMarker | null;
+
         try {
           read = parseSectorMarker(text);
         } catch (cause) {
           throw new Error(`the sector marker ${marker} does not read: ${String(cause)}`);
         }
+
         const folder = folderOf(marker);
         const name = read?.name ?? basenameOf(folder === "" ? "." : folder);
         const owns = read?.owns ?? [];
         const patterns = owns.map((glob) => input.globToRegExp(glob));
+
         const roots = [folder, ...owns.map(fixedPrefixOf)].filter(
           (root, at, all) => all.indexOf(root) === at,
         );
+
         const holds = (file: string): boolean =>
           (owns.length === 0 && under(folder, file)) ||
           patterns.some((pattern) => pattern.test(file)) ||
           file === marker;
+
         const own = files.filter(holds);
+
         const unmatchedOwns = owns.filter(
           (_glob, at) => !files.some((file) => patterns[at]?.test(file) ?? false),
         );
+
         add({ name, roots, files: own, marker, declaration: null, unmatchedOwns, holds });
       }
+
       break;
     }
+
     case "match": {
       const matches = input.perimeterMatches ?? (() => []);
+
       for (const file of files) {
         for (const anchor of matches(file)) {
           add({
@@ -350,11 +403,14 @@ export const discoverSectors = (rule: CompiledCampaign, input: SectorDiscovery):
           });
         }
       }
+
       break;
     }
+
     case "nx": {
       for (const project of input.projects ?? []) {
         const own = files.filter((file) => under(project.root, file));
+
         if (own.length === 0) continue;
         add({
           name: project.name,
@@ -365,9 +421,11 @@ export const discoverSectors = (rule: CompiledCampaign, input: SectorDiscovery):
           holds: (file) => under(project.root, file),
         });
       }
+
       break;
     }
   }
+
   return indexOf(rule, files, sharedFiles, sectors, claims);
 };
 
@@ -385,18 +443,25 @@ export const sectorOfDeleted = (
   file: string,
 ): string | null => {
   if (!rule.scope.some((pattern) => pattern.test(file))) return null;
+
   if (rule.shared?.some((pattern) => pattern.test(file)) === true) return SHARED_SECTOR;
+
   if (rule.perimeter?.kind === "match") return null;
   let best: { name: string; depth: number } | null = null;
+
   for (const sector of index.sectors.values()) {
     if (sector.holds !== undefined && !sector.holds(file)) continue;
+
     for (const root of sector.roots) {
       if (!under(root, file)) continue;
+
       if (best === null || root.length > best.depth)
         best = { name: sector.name, depth: root.length };
     }
   }
+
   if (best !== null) return best.name;
+
   return rule.legacy === null || rule.legacy.some((pattern) => pattern.test(file))
     ? LEGACY_SECTOR
     : null;
@@ -416,6 +481,7 @@ export const SECTOR_HOLDOUT = "~";
 export const entryOf = (violation: Violation, root: string): string => {
   const stripped = root === "" ? violation.file : violation.file.slice(root.length + 1);
   const relative = stripped === "" ? violation.file : stripped;
+
   return violation.subject === null ? relative : `${relative}#${violation.subject}`;
 };
 
@@ -443,48 +509,66 @@ export const membershipOf = (
   anchors: ReadonlyArray<string>,
 ): ((subject: string | null) => Placement | null) => {
   const inScope = rule.scope.some((pattern) => pattern.test(file));
+
   if (!inScope) return () => null;
+
   if (rule.shared?.some((pattern) => pattern.test(file)) === true) {
     return () => ({ sector: SHARED_SECTOR, root: "" });
   }
+
   const legacy = (): Placement | null =>
     rule.legacy === null || rule.legacy.some((pattern) => pattern.test(file))
       ? { sector: LEGACY_SECTOR, root: "" }
       : null;
+
   const perimeter = rule.perimeter;
+
   if (perimeter === null) return () => ({ sector: IMPLICIT_SECTOR, root: "" });
+
   switch (perimeter.kind) {
     case "file": {
       const placement = { sector: withoutExtension(file), root: folderOf(file) };
+
       return () => placement;
     }
+
     case "glob": {
       for (const pattern of perimeter.glob) {
         const found = pattern.exec(file);
+
         if (found === null) continue;
         const name = found[0].replace(/\/$/, "");
+
         return () => ({ sector: name, root: name });
       }
+
       return legacy;
     }
+
     case "match": {
       const own = anchors.map((anchor) => ({ sector: `${file}#${anchor}`, root: folderOf(file) }));
+
       return (subject) => {
         if (subject !== null) {
           const anchor = subject.split("#")[0] ?? subject;
           const found = own.find((one) => one.sector === `${file}#${anchor}`);
+
           if (found !== undefined) return found;
         }
+
         return own.length === 1 ? (own[0] ?? null) : legacy();
       };
     }
+
     case "marker":
     case "nx": {
       if (index === null) return legacy;
       const name = index.sectorOf(file);
+
       if (name === null) return () => null;
       const sector = sectorNamed(index, name);
       const placement = { sector: name, root: sector === null ? "" : rootOf(sector, file) };
+
       return () => placement;
     }
   }

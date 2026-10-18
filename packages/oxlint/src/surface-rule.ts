@@ -33,8 +33,10 @@ export const makeSurfaceRule = (policy: LoadedPolicy): OxlintRule => ({
     return {
       before() {
         file = toRepoRelative(policy.repoRoot, context.filename);
+
         if (file.startsWith("..")) return false;
         selected = surfaceRulesSelecting(policy.surfaceRules, file);
+
         return selected.length > 0;
       },
 
@@ -45,12 +47,15 @@ export const makeSurfaceRule = (policy: LoadedPolicy): OxlintRule => ({
         // A per-site violation lands on the site's own node; a `count` one, on
         // the program — it is about the file.
         const used = new Set<ReadExportSite>();
+
         for (const violation of violations) {
           if (policy.baseline.isBaselined(violation)) continue;
+
           const site =
             violation.subject === null
               ? undefined
               : sites.find((one) => one.name === violation.subject && !used.has(one));
+
           if (site !== undefined) used.add(site);
           context.report({
             node: site === undefined ? node : at(site.node),

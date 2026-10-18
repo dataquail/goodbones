@@ -13,6 +13,7 @@ import {
 
 const CQRS_BARREL =
   "node_modules/.pnpm/@effect-server-utils+cqrs/node_modules/@effect-server-utils/cqrs/dist/esm/index.js";
+
 const EFFECT_BARREL = "node_modules/.pnpm/effect@4.0.0-beta.94/node_modules/effect/dist/index.js";
 const EFFECT_MODULE = "node_modules/.pnpm/effect@4.0.0-beta.94/node_modules/effect/dist/Effect.js";
 
@@ -24,7 +25,9 @@ const resolver = makeModuleResolverFake({
 
 const compile = (rules: ReadonlyArray<ExportRule>) => {
   const compiled = compileExportRules(rules);
+
   if (Result.isFailure(compiled)) throw compiled.failure;
+
   return compiled.success;
 };
 
@@ -38,7 +41,9 @@ const violationsOf = (
   bindings: ReadonlyArray<Binding>,
 ) => {
   const outcome = evaluateBindingEdge(compile(rules), resolver, { importer, specifier, bindings });
+
   if (Result.isFailure(outcome)) throw outcome.failure;
+
   return outcome.success.map(({ violation }) => violation.ruleName);
 };
 
@@ -136,6 +141,7 @@ describe("evaluateBindingEdge", () => {
       specifier: "@org/nowhere",
       bindings: named("makeCommandBus"),
     });
+
     expect(Result.isFailure(outcome)).toBe(true);
   });
 });
@@ -173,6 +179,7 @@ describe("exportRulesFailingTheirProbe", () => {
   describe("with a source", () => {
     const NAMED = 'import { makeCommandBus } from "@effect-server-utils/cqrs";';
     const DEFAULT = 'import makeCommandBus from "@effect-server-utils/cqrs";';
+
     const parser = makeFactExtractorFake({
       [NAMED]: {
         specifiers: ["@effect-server-utils/cqrs"],
@@ -187,6 +194,7 @@ describe("exportRulesFailingTheirProbe", () => {
         memberSites: [],
       },
     });
+
     const sourced = (source: string, symbol = "makeCommandBus"): ExportRule => ({
       ...busFactories,
       probe: { ...busFactories.probe, symbol, source },

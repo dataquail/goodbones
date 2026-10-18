@@ -65,6 +65,7 @@ export type ReadEdge = {
 };
 
 export type ReadMemberSite = MemberSite & { readonly node: SyntaxNode };
+
 export type ReadExportSite = ExportSite & { readonly node: SyntaxNode };
 
 export type ReadFacts = {
@@ -87,18 +88,24 @@ const wholeModule = (node: SyntaxNode, local: string): ReadonlyArray<ReadBinding
 // about.
 const nameOf = (node: PropertyKey | ModuleExportName | BindingIdentifier | null): string | null => {
   if (node === null) return null;
+
   if (node.type === "Identifier") return node.name;
+
   if (node.type === "Literal" && typeof node.value === "string") return node.value;
+
   return null;
 };
 
 const bindingOf = (specifier: ImportDeclarationSpecifier): ReadBinding | null => {
   const local = specifier.local.name;
+
   switch (specifier.type) {
     case "ImportSpecifier": {
       const symbol = nameOf(specifier.imported);
+
       return symbol === null ? null : { symbol, kind: "named", node: specifier, local };
     }
+
     case "ImportDefaultSpecifier":
       return { symbol: "default", kind: "default", node: specifier, local };
     case "ImportNamespaceSpecifier":
@@ -110,10 +117,13 @@ const bindingOf = (specifier: ImportDeclarationSpecifier): ReadBinding | null =>
 // it is the one the policy is about.
 const reexportedBindings = (node: ExportNamedDeclaration): ReadonlyArray<ReadBinding> => {
   const found: Array<ReadBinding> = [];
+
   for (const specifier of node.specifiers) {
     const symbol = nameOf(specifier.local);
+
     if (symbol !== null) found.push({ symbol, kind: "named", node: specifier, local: symbol });
   }
+
   return found;
 };
 
@@ -163,13 +173,16 @@ const keyOf = (member: TSSignature | ClassElement): PropertyKey | null => {
 // speak about — and neither is a private `x.#f()`.
 const calleeNameOf = (callee: Expression): string | null => {
   if (callee.type === "Identifier") return callee.name;
+
   if (callee.type === "MemberExpression" && !callee.computed) return nameOf(callee.property);
+
   return null;
 };
 
 const requireSpecifierOf = (node: CallExpression): string | null => {
   if (node.callee.type !== "Identifier" || node.callee.name !== "require") return null;
   const [first] = node.arguments;
+
   return first?.type === "Literal" && typeof first.value === "string" ? first.value : null;
 };
 
@@ -195,9 +208,12 @@ const patternNames = (pattern: BindingPattern | BindingRestElement): ReadonlyArr
 // module's surface can carry.
 const moduleNameOf = (node: TSModuleDeclaration): string | null => {
   const id = node.id;
+
   if (id.type !== "TSQualifiedName") return nameOf(id);
   let left = id.left;
+
   while (left.type === "TSQualifiedName") left = left.left;
+
   return left.type === "Identifier" ? left.name : null;
 };
 
@@ -211,6 +227,7 @@ const declaredNamesOf = (
     name: string | null,
     declares: DeclarationKind,
   ): ReadonlyArray<readonly [string, DeclarationKind]> => (name === null ? [] : [[name, declares]]);
+
   switch (declaration.type) {
     case "VariableDeclaration":
       return declaration.declarations.flatMap((one) =>
@@ -238,6 +255,7 @@ const declaredNamesOf = (
 // class or interface, named or not — rather than an expression.
 const defaultDeclaration = (node: ExportDefaultDeclaration): Declaration | null => {
   const declaration = node.declaration;
+
   switch (declaration.type) {
     case "FunctionDeclaration":
     case "TSDeclareFunction":
@@ -257,6 +275,7 @@ const defaultDeclares = (
   locals: ReadonlyMap<string, DeclarationKind>,
 ): DeclarationKind => {
   const declaration = node.declaration;
+
   switch (declaration.type) {
     case "FunctionDeclaration":
     case "TSDeclareFunction":
@@ -272,6 +291,19 @@ const defaultDeclares = (
   }
 };
 
+// What a top-level statement declares into the module's scope: an export's
+// declaration, or the statement itself.
+const topLevelDeclarationOf = (statement: Directive | Statement): Directive | Statement | null => {
+  switch (statement.type) {
+    case "ExportNamedDeclaration":
+      return statement.declaration;
+    case "ExportDefaultDeclaration":
+      return defaultDeclaration(statement);
+    default:
+      return statement;
+  }
+};
+
 // A file's surface: what its top-level statements export, in source order,
 // read off the program body rather than by visiting export nodes — an `export`
 // inside a namespace body is that namespace's, not the module's, and reading
@@ -282,18 +314,17 @@ const exportSitesOf = (
   body: ReadonlyArray<Directive | Statement>,
 ): ReadonlyArray<ReadExportSite> => {
   const locals = new Map<string, DeclarationKind>();
+
   for (const statement of body) {
-    const declaration =
-      statement.type === "ExportNamedDeclaration"
-        ? statement.declaration
-        : statement.type === "ExportDefaultDeclaration"
-          ? defaultDeclaration(statement)
-          : statement;
+    const declaration = topLevelDeclarationOf(statement);
+
     if (declaration === null) continue;
+
     for (const [name, declares] of declaredNamesOf(declaration)) locals.set(name, declares);
   }
 
   const sites: Array<ReadExportSite> = [];
+
   const site = (
     node: SyntaxNode,
     name: string,
@@ -308,22 +339,29 @@ const exportSitesOf = (
     switch (statement.type) {
       case "ExportNamedDeclaration": {
         const declaration = statement.declaration;
+
         if (declaration !== null) {
           for (const [name, declares] of declaredNamesOf(declaration)) {
             site(declaration, name, "named", declares, false);
           }
+
           break;
         }
+
         const reexport = statement.source !== null;
+
         for (const specifier of statement.specifiers) {
           const name = nameOf(specifier.exported);
+
           if (name === null) continue;
           const local = nameOf(specifier.local) ?? name;
           const declares = reexport ? "other" : (locals.get(local) ?? "other");
           site(specifier, name, name === "default" ? "default" : "named", declares, reexport);
         }
+
         break;
       }
+
       case "ExportDefaultDeclaration":
         site(statement, "default", "default", defaultDeclares(statement, locals), false);
         break;
@@ -334,6 +372,7 @@ const exportSitesOf = (
         break;
     }
   }
+
   return sites;
 };
 
@@ -354,7 +393,7 @@ type Reading = {
 };
 
 const IDLE: Reading = { file: "", edges: [], memberSites: [] };
-let reading: Reading = IDLE;
+const slot: { current: Reading } = { current: IDLE };
 
 const edge = (
   node: SyntaxNode,
@@ -362,7 +401,7 @@ const edge = (
   form: EdgeForm,
   bindings: ReadonlyArray<ReadBinding>,
 ): void => {
-  reading.edges.push({ specifier, form, node, bindings });
+  slot.current.edges.push({ specifier, form, node, bindings });
 };
 
 // The members written in a declaration, under that declaration's name and
@@ -374,11 +413,13 @@ const declared = (
 ): void => {
   for (const member of members) {
     const key = keyOf(member);
+
     if (key === null) continue;
     const name = nameOf(key);
+
     if (name !== null) {
-      reading.memberSites.push({
-        file: reading.file,
+      slot.current.memberSites.push({
+        file: slot.current.file,
         subject: "members",
         name,
         in: declaration,
@@ -398,8 +439,10 @@ const walker = new Visitor({
     // `import "server-only"` form a regex cannot see.
     const bindings = node.specifiers.flatMap((specifier) => {
       const found = bindingOf(specifier);
+
       return found === null ? [] : [found];
     });
+
     edge(node, node.source.value, "import", bindings);
   },
   ExportNamedDeclaration(node) {
@@ -410,6 +453,7 @@ const walker = new Visitor({
   },
   TSImportEqualsDeclaration(node) {
     const reference = node.moduleReference;
+
     if (reference.type === "TSExternalModuleReference") {
       edge(node, reference.expression.value, "import-equals", wholeModule(node, node.id.name));
     }
@@ -421,11 +465,18 @@ const walker = new Visitor({
   },
   CallExpression(node) {
     const required = requireSpecifierOf(node);
+
     if (required !== null) edge(node, required, "require", wholeModule(node, ""));
 
     const callee = calleeNameOf(node.callee);
+
     if (callee !== null) {
-      reading.memberSites.push({ file: reading.file, subject: "calls", name: callee, node });
+      slot.current.memberSites.push({
+        file: slot.current.file,
+        subject: "calls",
+        name: callee,
+        node,
+      });
     }
   },
   TSTypeAliasDeclaration(node) {
@@ -451,7 +502,7 @@ const walker = new Visitor({
 // `factsOfText` on the one oxc-parser did.
 export const readProgram = (file: string, program: ProgramBody): ReadFacts => {
   const read: Reading = { file, edges: [], memberSites: [] };
-  reading = read;
+  slot.current = read;
   // The walk starts at a root of this shape and reads only its `body`.
   walker.visit({
     type: "Program",
@@ -461,7 +512,8 @@ export const readProgram = (file: string, program: ProgramBody): ReadFacts => {
     start: 0,
     end: 0,
   });
-  reading = IDLE;
+  slot.current = IDLE;
+
   return {
     edges: read.edges,
     memberSites: read.memberSites,
@@ -487,6 +539,7 @@ const RAW_TRANSFER: ParserOptions & { readonly experimentalRawTransfer: boolean 
 
 const stripNode = <T extends { readonly node: SyntaxNode }>(carrying: T): Omit<T, "node"> => {
   const { node: _node, ...fact } = carrying;
+
   return fact;
 };
 
@@ -495,13 +548,16 @@ const stripNode = <T extends { readonly node: SyntaxNode }>(carrying: T): Omit<T
 export const sourceFactsOf = (read: ReadFacts): SourceFacts => {
   const specifiers: Array<string> = [];
   const bindings = new Map<string, Array<Binding>>();
+
   for (const edge of read.edges) {
     let found = bindings.get(edge.specifier);
+
     if (found === undefined) {
       found = [];
       bindings.set(edge.specifier, found);
       specifiers.push(edge.specifier);
     }
+
     // The local name goes with the binding: it is how a campaign's `syntax`
     // term traces an identifier back to its import. A form that binds no name
     // (`import("m")`, `require("m")`) carries none.
@@ -509,6 +565,7 @@ export const sourceFactsOf = (read: ReadFacts): SourceFacts => {
       found.push(local === "" ? { symbol, kind } : { symbol, kind, local });
     }
   }
+
   return {
     specifiers,
     bindings,
@@ -527,6 +584,7 @@ export const sourceFactsOf = (read: ReadFacts): SourceFacts => {
 export const factsOfText = (file: string, text: string): SourceFacts => {
   const source = isSvelteComponent(file) ? scriptOfSvelteComponent(text) : text;
   const { program } = parseSync(file, source, { ...RAW_TRANSFER, lang: langOf(file) });
+
   return sourceFactsOf(readProgram(file, program));
 };
 

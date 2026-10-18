@@ -41,7 +41,9 @@ const campaign = (overrides: Partial<CampaignRule> = {}): CompiledCampaign => {
     onComplete: "keep",
     ...overrides,
   });
+
   if (Result.isFailure(compiled)) throw compiled.failure;
+
   return compiled.success;
 };
 
@@ -74,6 +76,7 @@ describe("the marker", () => {
 
   it("names the sector, owns its folder by default and the globs it lists otherwise", () => {
     const rule = campaign({ perimeter: { kind: "marker", marker: "^.*/context\\.ts$" } });
+
     const files = [
       "src/billing/context.ts",
       "src/billing/domain/invoice.ts",
@@ -82,6 +85,7 @@ describe("the marker", () => {
       "src/orders/order.ts",
       "src/services/legacy.ts",
     ];
+
     const index = discoverSectors(
       rule,
       discovery(files, {
@@ -91,6 +95,7 @@ describe("the marker", () => {
             : "",
       }),
     );
+
     expect([...index.sectors.keys()]).toEqual(["billing", "orders"]);
     const billing = index.sectors.get("billing");
     expect(billing?.roots).toEqual(["src/billing", "src/controllers"]);
@@ -113,6 +118,7 @@ describe("the marker", () => {
 
   it("names the globs a marker owns that no file matches", () => {
     const rule = campaign({ perimeter: { kind: "marker", marker: "^.*/context\\.ts$" } });
+
     const index = discoverSectors(
       rule,
       discovery(["src/billing/context.ts", "src/controllers/billingController.ts"], {
@@ -120,6 +126,7 @@ describe("the marker", () => {
           'export const sector = { name: "billing", owns: ["src/controllers/billing*", "src/nest/billing/**"] };',
       }),
     );
+
     // A folder not written yet, or a typo: either way the sector's `has`
     // objectives wait on files it will never see, and nothing else says so.
     expect(index.sectors.get("billing")?.unmatchedOwns).toEqual(["src/nest/billing/**"]);
@@ -130,6 +137,7 @@ describe("the marker", () => {
       perimeter: { kind: "marker", marker: "^.*/context\\.ts$" },
       shared: ["^src/platform/", "^src/.*/proxy\\.ts$"],
     });
+
     const files = [
       "src/billing/context.ts",
       "src/billing/invoice.ts",
@@ -137,6 +145,7 @@ describe("the marker", () => {
       "src/platform/guard.ts",
       "src/stray.ts",
     ];
+
     const index = discoverSectors(rule, discovery(files, { readText: () => "" }));
     // `proxy.ts` sits under the marker's folder and is the shared files' all
     // the same: what every sector shares is never one sector's, nor legacy.
@@ -195,6 +204,7 @@ describe("the other perimeters", () => {
 
   it("glob: one sector per match, named by the match", () => {
     const rule = campaign({ perimeter: { kind: "glob", glob: "^src/components/[^/]*/" } });
+
     const index = discoverSectors(
       rule,
       discovery([
@@ -204,6 +214,7 @@ describe("the other perimeters", () => {
         "src/lib.ts",
       ]),
     );
+
     expect([...index.sectors.keys()]).toEqual(["src/components/Bar", "src/components/Foo"]);
     expect(index.sectors.get("src/components/Foo")?.files).toEqual([
       "src/components/Foo/Foo.tsx",
@@ -221,12 +232,14 @@ describe("the other perimeters", () => {
         probes: { fires: [], ignores: [] },
       },
     });
+
     const index = discoverSectors(
       rule,
       discovery(["src/pages.tsx", "src/util.ts"], {
         perimeterMatches: (file) => (file === "src/pages.tsx" ? ["Home", "About"] : []),
       }),
     );
+
     expect([...index.sectors.keys()].sort()).toEqual(["src/pages.tsx#About", "src/pages.tsx#Home"]);
     expect(index.sectorOfHit("src/pages.tsx", "Home")).toBe("src/pages.tsx#Home");
     expect(index.sectorOfHit("src/pages.tsx", "Home#abcd1234")).toBe("src/pages.tsx#Home");
@@ -237,6 +250,7 @@ describe("the other perimeters", () => {
 
   it("nx: the workspace's projects", () => {
     const rule = campaign({ perimeter: { kind: "nx" } });
+
     const index = discoverSectors(
       rule,
       discovery(["src/apps/web/main.ts", "src/libs/ui/index.ts", "src/stray.ts"], {
@@ -247,6 +261,7 @@ describe("the other perimeters", () => {
         ],
       }),
     );
+
     expect([...index.sectors.keys()]).toEqual(["web", "ui"]);
     expect(index.legacy).toEqual(["src/stray.ts"]);
   });
@@ -263,20 +278,24 @@ describe("the other perimeters", () => {
       perimeter: { kind: "glob", glob: "^src/ctx/[^/]*/" },
       legacy: "^src/services/",
     });
+
     const index = discoverSectors(
       rule,
       discovery(["src/ctx/a/x.ts", "src/services/y.ts", "src/other/z.ts"]),
     );
+
     expect(index.legacy).toEqual(["src/services/y.ts"]);
     expect(index.sectorOf("src/other/z.ts")).toBeNull();
   });
 
   it("reports a file two sectors claim", () => {
     const rule = campaign({ perimeter: { kind: "marker", marker: "^.*/context\\.ts$" } });
+
     const index = discoverSectors(
       rule,
       discovery(["src/a/context.ts", "src/a/b/context.ts", "src/a/b/x.ts"]),
     );
+
     expect(index.drift).toEqual([
       { file: "src/a/b/context.ts", sectors: ["a", "b"] },
       { file: "src/a/b/x.ts", sectors: ["a", "b"] },
@@ -287,6 +306,7 @@ describe("the other perimeters", () => {
 describe("a file the diff deleted", () => {
   it("is the sector its perimeter still claims, not merely the one whose folder holds it", () => {
     const rule = campaign({ perimeter: { kind: "marker", marker: "^.*/context\\.ts$" } });
+
     const index = discoverSectors(
       rule,
       discovery(
@@ -304,6 +324,7 @@ describe("a file the diff deleted", () => {
         },
       ),
     );
+
     // Gone from the tree, so no walk saw them; the perimeter still says.
     expect(sectorOfDeleted(rule, index, "src/controllers/billingRoutes.ts")).toBe("billing");
     expect(sectorOfDeleted(rule, index, "src/orders/model.ts")).toBe("orders");
@@ -332,6 +353,7 @@ describe("entries relative to the root", () => {
       marker: null,
       declaration: null,
     };
+
     const hit = { kind: "campaign" as const, ruleName: "r", message: "m", file: "", subject: null };
     expect(rootOf(sector, "hapi/src/billing/a.ts")).toBe("hapi/src/billing");
     expect(

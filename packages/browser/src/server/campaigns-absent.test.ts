@@ -53,6 +53,7 @@ describe("the browser without @goodbones/campaigns", () => {
       nudge: false,
       campaigns: campaignsNotInstalled,
     });
+
     expect(collected.atlas.files.map((file) => file.path).sort()).toEqual(["src/a.ts", "src/b.ts"]);
     expect(collected.campaigns.installed).toBe(false);
     expect(collected.campaigns.campaigns).toEqual([]);

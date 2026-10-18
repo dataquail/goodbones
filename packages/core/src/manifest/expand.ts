@@ -56,12 +56,14 @@ export const expandManifest = (input: unknown): Result.Result<ExpandedManifest, 
   // Two keys the file may carry that the schema does not: the fragments, and
   // the `$schema` a JSON author writes for editor validation.
   const { $schema: _schema, defs, ...rest } = input;
+
   if (defs !== undefined && !isRecord(defs)) {
     return Result.fail({
       path: ["defs"],
       detail: "`defs` must be a map of named fragments.",
     });
   }
+
   const fragments: Record<string, unknown> = defs ?? {};
   const defined = Object.keys(fragments);
   const substitutions: Array<Substitution> = [];
@@ -77,6 +79,7 @@ export const expandManifest = (input: unknown): Result.Result<ExpandedManifest, 
   ): Result.Result<unknown, ExpandIssue> => {
     if (isReference(value)) {
       const { use: name, ...overrides } = value;
+
       if (!(name in fragments)) {
         return Result.fail({
           path: origin,
@@ -87,16 +90,20 @@ export const expandManifest = (input: unknown): Result.Result<ExpandedManifest, 
               : ` (defined: ${defined.join(", ")}).`),
         });
       }
+
       if (stack.includes(name)) {
         return Result.fail({
           path: origin,
           detail: `\`defs\` contains a cycle: ${[...stack, name].join(" → ")}.`,
         });
       }
+
       substitutions.push({ at, ref: origin, name, overrides: new Set(Object.keys(overrides)) });
 
       const fragment = walk(fragments[name], at, ["defs", name], [...stack, name]);
+
       if (Result.isFailure(fragment)) return fragment;
+
       if (Object.keys(overrides).length === 0) return fragment;
 
       if (!isRecord(fragment.success)) {
@@ -108,32 +115,42 @@ export const expandManifest = (input: unknown): Result.Result<ExpandedManifest, 
             `so there is nothing to override.`,
         });
       }
+
       const merged: Record<string, unknown> = { ...fragment.success };
+
       for (const [key, override] of Object.entries(overrides)) {
         const expanded = walk(override, [...at, key], [...origin, key], stack);
+
         if (Result.isFailure(expanded)) return expanded;
         merged[key] = expanded.success;
       }
+
       return Result.succeed(merged);
     }
 
     if (Array.isArray(value)) {
       const items: Array<unknown> = [];
+
       for (const [index, item] of value.entries()) {
         const expanded = walk(item, [...at, index], [...origin, index], stack);
+
         if (Result.isFailure(expanded)) return expanded;
         items.push(expanded.success);
       }
+
       return Result.succeed(items);
     }
 
     if (isRecord(value)) {
       const entries: Record<string, unknown> = {};
+
       for (const [key, item] of Object.entries(value)) {
         const expanded = walk(item, [...at, key], [...origin, key], stack);
+
         if (Result.isFailure(expanded)) return expanded;
         entries[key] = expanded.success;
       }
+
       return Result.succeed(entries);
     }
 
@@ -141,7 +158,9 @@ export const expandManifest = (input: unknown): Result.Result<ExpandedManifest, 
   };
 
   const expanded = walk(rest, [], [], []);
+
   if (Result.isFailure(expanded)) return Result.fail(expanded.failure);
+
   return Result.succeed({ value: expanded.success, substitutions });
 };
 
@@ -156,7 +175,9 @@ export const originOf = (
   const crossed = substitutions
     .filter((one) => isPrefix(one.at, path))
     .sort((a, b) => a.at.length - b.at.length);
+
   const innermost = crossed.at(-1);
+
   if (innermost === undefined) return { path, via: [] };
 
   const outer = crossed.slice(0, -1).map((one) => ({ at: one.ref, name: one.name }));
@@ -167,6 +188,7 @@ export const originOf = (
   if (typeof first === "string" && innermost.overrides.has(first)) {
     return { path: [...innermost.ref, ...rest], via: outer };
   }
+
   return {
     path: ["defs", innermost.name, ...rest],
     via: [...outer, { at: innermost.ref, name: innermost.name }],

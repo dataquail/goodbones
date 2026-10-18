@@ -11,6 +11,21 @@ import type { Pick } from "./pick.js";
 // an objective or a sector and the rest of the ladder says how they relate;
 // the pane beside it says what `campaigns` and `check` would.
 
+const pickOf = (kind: string, id: string): Pick | null => {
+  switch (kind) {
+    case "campaign":
+      return { kind: "campaign" };
+    case "phase":
+      return { kind: "phase", id };
+    case "objective":
+      return { kind: "objective", id };
+    case "sector":
+      return { kind: "sector", name: id };
+    default:
+      return null;
+  }
+};
+
 // The selection in the hash: `<campaign>` alone, or `<campaign>/<kind>:<id>`.
 const parseSelection = (
   view: CampaignView,
@@ -19,23 +34,16 @@ const parseSelection = (
   if (text === null) return { campaign: null, pick: null };
   const at = text.indexOf("/");
   const campaign = at === -1 ? text : text.slice(0, at);
+
   if (!view.campaigns.some((one) => one.id === campaign)) return { campaign: null, pick: null };
+
   if (at === -1) return { campaign, pick: null };
   const rest = text.slice(at + 1);
   const colon = rest.indexOf(":");
   const kind = colon === -1 ? rest : rest.slice(0, colon);
   const id = colon === -1 ? "" : rest.slice(colon + 1);
-  const pick: Pick | null =
-    kind === "campaign"
-      ? { kind: "campaign" }
-      : kind === "phase"
-        ? { kind: "phase", id }
-        : kind === "objective"
-          ? { kind: "objective", id }
-          : kind === "sector"
-            ? { kind: "sector", name: id }
-            : null;
-  return { campaign, pick };
+
+  return { campaign, pick: pickOf(kind, id) };
 };
 
 export const selectionText = (campaign: string, pick: Pick | null): string =>
@@ -51,8 +59,10 @@ type Props = {
 
 export const CampaignBrowser = ({ onSelect, selection, view }: Props): React.JSX.Element => {
   const parsed = useMemo(() => parseSelection(view, selection), [view, selection]);
+
   const campaign: CampaignCard | undefined =
     view.campaigns.find((one) => one.id === parsed.campaign) ?? view.campaigns[0];
+
   const [hover, setHover] = useState<Pick | null>(null);
 
   if (!view.installed) {
@@ -62,13 +72,17 @@ export const CampaignBrowser = ({ onSelect, selection, view }: Props): React.JSX
       </div>
     );
   }
+
   if (campaign === undefined) {
     return <div className="placeholder">This policy declares no campaigns.</div>;
   }
+
   const selected = parsed.campaign === campaign.id ? parsed.pick : null;
+
   const pick = (next: Pick | null): void => {
     onSelect(selectionText(campaign.id, next));
   };
+
   const nudged = view.nudge?.sectors.filter((one) => one.campaign === campaign.id) ?? [];
 
   return (

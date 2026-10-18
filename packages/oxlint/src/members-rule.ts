@@ -34,8 +34,10 @@ export const makeMembersRule = (policy: LoadedPolicy): OxlintRule => ({
     return {
       before() {
         file = toRepoRelative(policy.repoRoot, context.filename);
+
         if (file.startsWith("..")) return false;
         selected = memberRulesSelecting(policy.memberRules, file);
+
         return selected.length > 0;
       },
       Program(node: Program) {

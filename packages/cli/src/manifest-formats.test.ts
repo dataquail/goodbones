@@ -33,15 +33,19 @@ const captureRun = async (
   const original = process.stdout.write.bind(process.stdout);
   process.stdout.write = (chunk: string | Uint8Array) => {
     chunks.push(String(chunk));
+
     return true;
   };
+
   try {
     const exit = await Effect.runPromiseExit(run(root, argv, configFilename));
     const failure: unknown = Exit.isFailure(exit) ? Cause.squash(exit.cause) : null;
+
     const error =
       typeof failure === "object" && failure !== null && "message" in failure
         ? String(failure.message)
         : String(failure ?? "");
+
     return { ok: Exit.isSuccess(exit), output: chunks.join(""), error };
   } finally {
     process.stdout.write = original;
@@ -196,11 +200,15 @@ describe.sequential("architecture migrate", () => {
 
     const module = await readManifestFile(path.join(root, "architecture.config.mjs"));
     const yaml = await readManifestFile(path.join(root, "architecture.yaml"));
+
     const decoded = (read: typeof module) => {
       const result = decodeManifest(read.configPath, read.manifest);
+
       if (Result.isFailure(result)) throw result.failure;
+
       return result.success.manifest;
     };
+
     expect(decoded(yaml)).toEqual(decoded(module));
   });
 

@@ -150,8 +150,10 @@ const routesOf = (
   languages: ReadonlyArray<Language>,
 ): Result.Result<ReadonlyArray<Route>, ConfigInvalid> => {
   const routes: Array<Route> = [];
+
   for (const scope of scopes) {
     const language = languages.find((one) => one.id === scope.language);
+
     if (language === undefined) {
       return Result.fail(
         new ConfigInvalid({
@@ -163,8 +165,10 @@ const routesOf = (
         }),
       );
     }
+
     routes.push({ scope, matches: new RegExp(scope.files), language });
   }
+
   return Result.succeed(routes);
 };
 
@@ -179,16 +183,21 @@ const makeRouter = (
   routes: ReadonlyArray<Route>,
 ): Result.Result<ModuleResolver, ConfigInvalid> => {
   const resolvers: Array<readonly [Route, ModuleResolver]> = [];
+
   for (const route of routes) {
     const resolver = route.language.makeResolver(repoRoot, route.scope);
+
     if (Result.isFailure(resolver)) {
       return Result.fail(new ConfigInvalid({ configPath, detail: resolver.failure.message }));
     }
+
     resolvers.push([route, resolver.success]);
   }
+
   return Result.succeed({
     resolve: (fromFile, specifier) => {
       const found = resolvers.find(([route]) => route.matches.test(fromFile));
+
       if (found === undefined) {
         return Result.fail(
           new ImportUnresolved({
@@ -198,6 +207,7 @@ const makeRouter = (
           }),
         );
       }
+
       return found[1].resolve(fromFile, specifier);
     },
   });
@@ -225,7 +235,9 @@ const makeRoutingMatcher = (routes: ReadonlyArray<Route>): SyntaxMatcher => ({
 const readBaseline = (fileSystem: FileSystem, at: string | undefined): Baseline => {
   if (at === undefined) return EMPTY_BASELINE;
   const text = fileSystem.readText(at);
+
   if (text === null) return EMPTY_BASELINE;
+
   try {
     return decodeBaseline(JSON.parse(text) as unknown);
   } catch {
@@ -247,16 +259,19 @@ export const loadPolicy = (
     extensions,
     uninstalled: input.uninstalled,
   });
+
   if (Result.isFailure(decoded)) return Result.fail(decoded.failure);
   const config = decoded.success.manifest;
 
   const routes = routesOf(configPath, config.resolve.scopes, languages);
+
   if (Result.isFailure(routes)) return Result.fail(routes.failure);
 
   // The manifest is the authoring surface; these flat rules are the machine's.
   // The languages tell lowering what a source file in each scope is called, so
   // a synthetic probe is a file of the scope's language.
   const rules = lowerManifest(config, languages, { substitutions: decoded.success.substitutions });
+
   if (rules.refusals.length > 0) {
     return Result.fail(new ConfigInvalid({ configPath, detail: rules.refusals.join("\n") }));
   }
@@ -269,6 +284,7 @@ export const loadPolicy = (
     ["unrestricted", rules.adoption.unrestricted, config.limits?.unrestricted],
     ["partial", rules.adoption.partial, config.limits?.partial],
   ] as const;
+
   const exceeded = ceilings.flatMap(([label, nodes, ceiling]) =>
     ceiling !== undefined && nodes.length > ceiling
       ? [
@@ -276,6 +292,7 @@ export const loadPolicy = (
         ]
       : [],
   );
+
   if (exceeded.length > 0) {
     return Result.fail(
       new ConfigInvalid({
@@ -288,17 +305,21 @@ export const loadPolicy = (
   }
 
   const importRules = compileImportRules(rules.imports);
+
   if (Result.isFailure(importRules)) return Result.fail(importRules.failure);
 
   const exportRules = compileExportRules(rules.exports);
+
   if (Result.isFailure(exportRules)) return Result.fail(exportRules.failure);
 
   // A fix is a rewrite in one language's module syntax. A rule naming one that
   // no loaded language implements would report as fixable and never fix.
   const unfixable = exportRules.success.filter((rule) => {
     const fix = rule.fix;
+
     return fix !== null && !languages.some((one) => one.fixes.includes(fix));
   });
+
   if (unfixable.length > 0) {
     return Result.fail(
       new ConfigInvalid({
@@ -312,15 +333,19 @@ export const loadPolicy = (
   }
 
   const memberRules = compileMemberRules(rules.members);
+
   if (Result.isFailure(memberRules)) return Result.fail(memberRules.failure);
 
   const surfaceRules = compileSurfaceRules(rules.surface);
+
   if (Result.isFailure(surfaceRules)) return Result.fail(surfaceRules.failure);
 
   const graph = compileGraphRules(rules.graph);
+
   if (Result.isFailure(graph)) return Result.fail(graph.failure);
 
   const structure = compileStructure(rules.structure);
+
   if (Result.isFailure(structure)) return Result.fail(structure.failure);
 
   // A probe carrying a source snippet is parsed by the extractor of the
@@ -329,10 +354,13 @@ export const loadPolicy = (
   // and the parity suite is what holds that tree to this one.
   const extractor = makeRoutingExtractor(routes.success);
   const syntax = makeRoutingMatcher(routes.success);
+
   const routeOf = (file: string): ExtensionRoute | undefined => {
     const found = routeFor(routes.success, file);
+
     return found === undefined ? undefined : { language: found.language, scope: found.scope };
   };
+
   const now = input.now ?? Date.now();
 
   // Each family the core does not own compiles and probes its own rules, with
@@ -341,6 +369,7 @@ export const loadPolicy = (
   // rule are reported in the same sentence.
   const loadedExtensions = new Map<string, unknown>();
   const extensionVacuous: Array<string> = [];
+
   for (const extension of extensions) {
     const loaded = extension.load({
       spec: decoded.success.extensions.get(extension.id),
@@ -354,13 +383,16 @@ export const loadPolicy = (
       routeFor: routeOf,
       now,
     });
+
     if (Result.isFailure(loaded)) return Result.fail(loaded.failure);
     loadedExtensions.set(extension.id, loaded.success.value);
+
     for (const name of loaded.success.vacuous ?? []) extensionVacuous.push(name);
   }
 
   const parsedBy = (rule: { readonly probe: { readonly from: string } }): string => {
     const route = routeFor(routes.success, rule.probe.from);
+
     return route === undefined
       ? ` — no resolve scope covers its probe ${JSON.stringify(rule.probe.from)}, so no language parsed it`
       : ` — probe parsed by ${route.language.id}, selected by the scope ${JSON.stringify(route.scope.files)}`;
@@ -381,6 +413,7 @@ export const loadPolicy = (
     ...graphRulesFailingTheirProbe(graph.success),
     ...extensionVacuous,
   ];
+
   if (vacuous.length > 0) {
     return Result.fail(
       new ConfigInvalid({
@@ -399,6 +432,7 @@ export const loadPolicy = (
   // understand — is a policy whose rules would be evaluated against the wrong
   // files, and is refused.
   const resolver = makeRouter(configPath, repoRoot, routes.success);
+
   if (Result.isFailure(resolver)) return Result.fail(resolver.failure);
 
   return Result.succeed({

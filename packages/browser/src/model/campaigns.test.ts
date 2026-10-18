@@ -66,13 +66,16 @@ const viewOf = (overrides: Record<string, unknown> = {}, nudge: Nudge | null = n
     ".architecture-campaigns/js-to-go/sectors/scope.json": JSON.stringify(record),
     [STRAGGLER]: "module.exports = 1;",
   });
+
   const input = manifest({ campaigns: { "js-to-go": campaign(overrides) } });
   const policy = loadFixture(input, { files, extensions: [campaignsExtension({})] });
   const walked = [...FILES, STRAGGLER];
+
   const evaluations = evaluateCampaigns(policy, ["svc"], walked, {
     textOf: (file) => files.readText(file) ?? "",
     factsOf,
   });
+
   return campaignViewOf({
     policy,
     name: "repo",
@@ -175,6 +178,7 @@ describe("campaignViewOf", () => {
         { id: "then", intent: "something after" },
       ],
     }).campaigns;
+
     expect(card?.phases).toEqual([
       {
         id: "port",
@@ -231,6 +235,7 @@ describe("campaignViewOf", () => {
         lines: { measure: { lines: true }, direction: "down" },
       },
     }).campaigns;
+
     expect(card?.phases[0]).toMatchObject({ onTouch: "advise", grows: ["lines"] });
     expect(card?.objectives.find((one) => one.id === "has-pg")).toMatchObject({
       prerequisite: true,
@@ -265,6 +270,7 @@ describe("campaignViewOf", () => {
         },
       },
     }).campaigns;
+
     expect(card?.phases.map((phase) => phase.id)).toEqual(["fenced", "port"]);
     expect(card?.objectives[0]).toMatchObject({ id: "port-it", phase: "port" });
   });
@@ -280,6 +286,7 @@ describe("campaignViewOf", () => {
       testsChecked: "unknown",
       ok: true,
     };
+
     expect(viewOf({}, nudge).nudge).toBe(nudge);
     expect(viewOf().nudge).toBeNull();
   });

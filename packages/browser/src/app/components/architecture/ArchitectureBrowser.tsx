@@ -15,9 +15,13 @@ import { Tree } from "./Tree.js";
 
 const selectionOf = (atlas: Atlas, text: string | null): Selection | null => {
   if (text === null) return null;
+
   if (text.startsWith("node:")) return { kind: "node", id: text.slice(5) };
+
   if (atlas.files.some((file) => file.path === text)) return { kind: "file", path: text };
+
   if (atlas.folders.some((folder) => folder.path === text)) return { kind: "folder", path: text };
+
   return null;
 };
 
@@ -34,6 +38,7 @@ export const ArchitectureBrowser = ({ atlas, onSelect, selection }: Props): Reac
   // A link to a folder opens the tree down to it, and the folder itself.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => {
     const linked = selectionOf(atlas, selection);
+
     return new Set([
       ...initiallyExpanded(atlas),
       ...(linked === null || linked.kind === "node"
@@ -41,6 +46,7 @@ export const ArchitectureBrowser = ({ atlas, onSelect, selection }: Props): Reac
         : foldersRevealing(atlas, linked.path, true)),
     ]);
   });
+
   const [filter, setFilter] = useState("");
   const [hoverRow, setHoverRow] = useState<string | null>(null);
   const [hoverNode, setHoverNode] = useState<string | null>(null);
@@ -50,8 +56,11 @@ export const ArchitectureBrowser = ({ atlas, onSelect, selection }: Props): Reac
     setExpanded((previous) => {
       const next = new Set(previous);
       const known = new Set(atlas.folders.map((folder) => folder.path));
+
       for (const folder of initiallyExpanded(atlas)) if (!previous.has(folder)) next.add(folder);
+
       for (const folder of previous) if (!known.has(folder)) next.delete(folder);
+
       return next;
     });
   }, [atlas]);
@@ -68,14 +77,17 @@ export const ArchitectureBrowser = ({ atlas, onSelect, selection }: Props): Reac
       reveal.every((folder) => previous.has(folder)) ? previous : new Set([...previous, ...reveal]),
     );
   }, [atlas, selectedPath]);
+
   const nodes = useMemo(
     () => new Map(atlas.manifest.nodes.map((node) => [node.id, node] as const)),
     [atlas],
   );
+
   const files = useMemo(
     () => new Map(atlas.files.map((file) => [file.path, file] as const)),
     [atlas],
   );
+
   const folders = useMemo(
     () => new Map(atlas.folders.map((folder) => [folder.path, folder] as const)),
     [atlas],
@@ -85,15 +97,18 @@ export const ArchitectureBrowser = ({ atlas, onSelect, selection }: Props): Reac
     if (filter.trim() === "") return null;
     const needle = filter.trim().toLowerCase();
     const keep = new Set<string>();
+
     for (const file of atlas.files) {
       if (!file.path.toLowerCase().includes(needle)) continue;
       keep.add(file.path);
       let folder = file.folder;
+
       while (folder !== "") {
         keep.add(folder);
         folder = folder.slice(0, Math.max(0, folder.lastIndexOf("/")));
       }
     }
+
     return keep;
   }, [atlas, filter]);
 
@@ -102,10 +117,13 @@ export const ArchitectureBrowser = ({ atlas, onSelect, selection }: Props): Reac
       filtered === null ? expanded : new Set([...filtered].filter((path) => folders.has(path))),
     [expanded, filtered, folders],
   );
+
   const rows = useMemo(() => {
     const all = rowsOf(atlas, effectiveExpanded);
+
     return filtered === null ? all : all.filter((row) => filtered.has(row.path));
   }, [atlas, effectiveExpanded, filtered]);
+
   const arcs = useMemo(
     () => arcsOf(atlas, rows, effectiveExpanded),
     [atlas, rows, effectiveExpanded],
@@ -114,11 +132,14 @@ export const ArchitectureBrowser = ({ atlas, onSelect, selection }: Props): Reac
   // The focus: what the pointer is over, else what was clicked.
   const focusRow =
     hoverRow ?? (selected !== null && selected.kind !== "node" ? selected.path : null);
+
   const focusIsFolder = focusRow !== null && folders.has(focusRow);
+
   const relations = useMemo(
     () => relationsOf(atlas, focusRow, focusIsFolder),
     [atlas, focusRow, focusIsFolder],
   );
+
   const focusNode: AtlasNode | null = (() => {
     const id =
       hoverNode ??
@@ -127,14 +148,17 @@ export const ArchitectureBrowser = ({ atlas, onSelect, selection }: Props): Reac
         : focusRow === null
           ? null
           : (files.get(focusRow)?.node ?? folders.get(focusRow)?.node ?? null));
+
     return id === null ? null : (nodes.get(id) ?? null);
   })();
+
   const chain: ReadonlyArray<string> =
     focusRow === null
       ? focusNode === null
         ? []
         : chainOfNode(nodes, focusNode)
       : (files.get(focusRow)?.chain ?? (focusNode === null ? [] : chainOfNode(nodes, focusNode)));
+
   const governedBy: string | null = hoverNode ?? (selected?.kind === "node" ? selected.id : null);
 
   // A node hovered in the manifest is already on screen. Scrolling to its
@@ -146,11 +170,14 @@ export const ArchitectureBrowser = ({ atlas, onSelect, selection }: Props): Reac
   const select = (next: Selection | null): void => {
     onSelect(textOf(next));
   };
+
   const toggle = (folder: string): void => {
     setExpanded((previous) => {
       const next = new Set(previous);
+
       if (next.has(folder)) next.delete(folder);
       else next.add(folder);
+
       return next;
     });
   };
@@ -248,10 +275,12 @@ const chainOfNode = (
 ): ReadonlyArray<string> => {
   const chain: Array<string> = [];
   let cursor: AtlasNode | undefined = node;
+
   while (cursor !== undefined) {
     chain.unshift(cursor.id);
     cursor = cursor.parent === null ? undefined : nodes.get(cursor.parent);
   }
+
   return chain;
 };
 

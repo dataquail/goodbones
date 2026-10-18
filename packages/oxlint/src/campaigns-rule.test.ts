@@ -32,6 +32,7 @@ import { makeCampaignsRule } from "./campaigns/rule.js";
 // file, and the count is read after the last — so this file opts out of the
 // shared config's concurrent sequence.
 RuleTester.describe = describe.sequential;
+
 RuleTester.it = it.sequential;
 
 // A `report` term whose source cannot be read is one fact about the lint
@@ -77,11 +78,13 @@ const rules: ReadonlyArray<CampaignRule> = [
 ];
 
 const compiled = compileCampaignRules(rules);
+
 if (Result.isFailure(compiled)) throw compiled.failure;
 
 // The live source's answer once a spawn was refused: the kept failure, on
 // every ask. Counted, to show the rule asks no more than the source needs.
 let asked = 0;
+
 const refused: ReportSource = {
   diagnosticsOf: () => {
     asked += 1;

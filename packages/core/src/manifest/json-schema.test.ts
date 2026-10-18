@@ -20,11 +20,13 @@ const committedSnapshot = path.join(root, "packages/core/schema/conformance.sche
 
 const validator = () => {
   const ajv = new Ajv2020({ allErrors: true, strict: false });
+
   return ajv.compile(manifestJsonSchema());
 };
 
 const nodeValidator = () => {
   const ajv = new Ajv2020({ allErrors: true, strict: false });
+
   return ajv.compile(manifestNodeJsonSchema());
 };
 
@@ -137,6 +139,7 @@ describe("the node JSON Schema", () => {
   it("validates each file this repository's manifest includes", () => {
     expect(includedNodes.length).toBeGreaterThan(0);
     const validate = nodeValidator();
+
     for (const file of includedNodes) {
       const node: unknown = parse(readFileSync(file, "utf8"));
       expect(validate(node), `${file}\n${JSON.stringify(validate.errors, null, 2)}`).toBe(true);

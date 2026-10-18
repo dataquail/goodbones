@@ -56,8 +56,10 @@ const lines = (count: number, prefix = "a"): string =>
 
 let repo: Repo;
 const at = (now: string) => ({ env: { ARCHITECTURE_NOW: now } });
+
 const ledger = (): MeasureLedger =>
   JSON.parse(repo.read(".architecture-campaigns/shrink/lines.json")) as MeasureLedger;
+
 const campaignDiagnostics = () =>
   oxlint(repo, ["src"]).diagnostics.filter((one) => one.rule === "architecture/campaigns");
 
@@ -166,11 +168,22 @@ describe.sequential("a scalar objective", () => {
       verdict: "back",
       measures: [{ objective: "lines", before: 9, after: 11, target: 3, back: true }],
     });
+
     const conceded = cli(
       repo,
-      ["objectives", "concede", "shrink/lines", "--reason", "a use case landed first", "--by", "me", "src"],
+      [
+        "objectives",
+        "concede",
+        "shrink/lines",
+        "--reason",
+        "a use case landed first",
+        "--by",
+        "me",
+        "src",
+      ],
       at("2026-10-02T00:00:00Z"),
     );
+
     expect(conceded.code, conceded.stderr).toBe(0);
     expect(ledger().concessions).toEqual([
       expect.objectContaining({ sector: "billing", from: 9, to: 11, by: "me" }),

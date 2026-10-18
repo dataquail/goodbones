@@ -21,6 +21,7 @@ const config: ResolveConfig = {
 
 const unwrap = <A, E>(result: Result.Result<A, E>): A => {
   if (Result.isFailure(result)) throw result.failure;
+
   return result.success;
 };
 
@@ -122,6 +123,7 @@ describe("scope options", () => {
     const outcome = makeModuleResolverLive(repoRoot, {
       scopes: [{ files: "", language: "go", options: {} }],
     });
+
     expect(Result.isFailure(outcome) && outcome.failure.message).toMatch(/"go" scope/);
   });
 });

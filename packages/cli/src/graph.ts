@@ -12,16 +12,22 @@ export const buildGraph = (
 ): Graph => {
   const known = new Set(files);
   const edges = new Map<string, ReadonlyArray<string>>();
+
   for (const file of files) {
     const targets = new Set<string>();
+
     for (const specifier of factsOf(file).specifiers) {
       const resolved = resolver.resolve(file, specifier);
+
       if (Result.isFailure(resolved)) continue;
+
       if (resolved.success.kind === "local" && known.has(resolved.success.path)) {
         targets.add(resolved.success.path);
       }
     }
+
     edges.set(file, [...targets]);
   }
+
   return { files, edges };
 };

@@ -76,6 +76,7 @@ describe("a Svelte component", () => {
     const expected = json.violations
       .map((one) => `${RULE_OF[one.kind] ?? one.kind} ${one.file} [${one.ruleName}]`)
       .sort();
+
     const reported = linted.diagnostics
       .map((one) => `${one.rule} ${one.file} ${one.message.split("]")[0] ?? ""}]`)
       .sort();

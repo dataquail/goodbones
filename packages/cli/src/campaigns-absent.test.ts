@@ -67,10 +67,13 @@ const capture = async (effect: Effect.Effect<void, CliFailure>) => {
   const original = process.stdout.write.bind(process.stdout);
   process.stdout.write = (chunk: string) => {
     lines.push(String(chunk));
+
     return true;
   };
+
   try {
     const exit = await Effect.runPromiseExit(effect);
+
     return { exit, output: lines.join("") };
   } finally {
     process.stdout.write = original;
@@ -79,6 +82,7 @@ const capture = async (effect: Effect.Effect<void, CliFailure>) => {
 
 const failureOf = (exit: Exit.Exit<void, CliFailure>): string => {
   if (!Exit.isFailure(exit)) throw new Error("expected a failure");
+
   return Cause.pretty(exit.cause);
 };
 
@@ -89,6 +93,7 @@ describe.sequential("the CLI without @goodbones/campaigns", () => {
     const { exit, output } = await capture(
       check(await load(), ["src"], { format: "json", manifestPath: manifestPath() }),
     );
+
     expect(Exit.isSuccess(exit)).toBe(true);
     const report = JSON.parse(output) as CheckReport;
     expect(report.ok).toBe(true);
@@ -100,8 +105,10 @@ describe.sequential("the CLI without @goodbones/campaigns", () => {
     const { exit, output } = await capture(
       conformance(await load(), ["src"], { format: "json", manifestPath: manifestPath() }),
     );
+
     expect(Exit.isSuccess(exit)).toBe(true);
     const snapshot = decodeSnapshot(JSON.parse(output) as unknown);
+
     if (Result.isFailure(snapshot)) throw new Error(String(snapshot.failure));
     expect(snapshot.success.campaigns).toEqual([]);
   });

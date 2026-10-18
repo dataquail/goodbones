@@ -34,11 +34,14 @@ describe("typescriptLanguage", () => {
       language: "typescript",
       options: { tsconfig: "tsconfig.resolve.json" },
     });
+
     if (Result.isFailure(resolver)) throw resolver.failure;
+
     const resolved = resolver.success.resolve(
       "packages/oxlint/src/plugin.ts",
       "./config-loader.js",
     );
+
     expect(Result.isSuccess(resolved) && resolved.success.path).toBe(
       "packages/oxlint/src/config-loader.ts",
     );
@@ -52,6 +55,7 @@ describe("typescriptLanguage", () => {
       language: "typescript",
       options: { tsconfig: "tsconfig.resolve.json", conditionNmaes: ["import"] },
     });
+
     expect(Result.isFailure(resolver) && resolver.failure.message).toMatch(/conditionNmaes/);
   });
 });

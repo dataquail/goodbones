@@ -13,24 +13,32 @@ import * as Result from "effect/Result";
 import type { CampaignsFamily, LoadedPolicy } from "./campaigns/host.js";
 import { campaignsNotInstalled } from "./campaigns/none.js";
 
+// The two optional peers, loaded only through `importOptional`: the glue that
+// names `@goodbones/campaigns`, and the syntax matcher.
+const loadCampaignsLive = () => import("./campaigns/live.js");
+const loadAstGrep = () => import("@goodbones/ast-grep");
+
 export type { LoadedPolicy } from "./campaigns/host.js";
 
 // The campaigns family, when `@goodbones/campaigns` is installed beside the
 // plugin, and `none` when it is not. Everything that names the package is
 // under `campaigns/`, reached through this one import.
 const hostCampaigns = async (): Promise<CampaignsFamily> =>
-  (await importOptional(() => import("./campaigns/live.js"), "@goodbones/campaigns"))
-    ?.liveCampaigns ?? campaignsNotInstalled;
+  (await importOptional(loadCampaignsLive, "@goodbones/campaigns"))?.liveCampaigns ??
+  campaignsNotInstalled;
 
 // The clock the campaigns are judged by; `ARCHITECTURE_NOW` pins it, as it
 // does for the CLI.
 const hostNow = (): number => {
   const pinned = process.env.ARCHITECTURE_NOW;
+
   if (pinned === undefined || pinned === "") return Date.now();
   const parsed = /^\d+$/.test(pinned) ? Number(pinned) : Date.parse(pinned);
+
   if (Number.isNaN(parsed)) {
     throw new Error(`ARCHITECTURE_NOW is ${JSON.stringify(pinned)}, which is not a date.`);
   }
+
   return parsed;
 };
 
@@ -53,6 +61,7 @@ export const loadPolicyFromFile = async (
     configFilename === undefined
       ? findManifestFile(repoRoot)
       : path.resolve(repoRoot, configFilename);
+
   const read = await readManifestFile(configPath);
   const campaigns = given ?? (await hostCampaigns());
   const composed = await campaigns.compose(repoRoot, configPath, read.manifest);
@@ -60,7 +69,8 @@ export const loadPolicyFromFile = async (
   // optional peer with a native binary: composed into the pack when it is
   // installed, and the plugin parses with it for that family only. A
   // campaign that needs it without it is refused at load, naming it.
-  const astGrep = await importOptional(() => import("@goodbones/ast-grep"), "@goodbones/ast-grep");
+  const astGrep = await importOptional(loadAstGrep, "@goodbones/ast-grep");
+
   const loaded = loadPolicy({
     repoRoot,
     configPath,
@@ -72,7 +82,9 @@ export const loadPolicyFromFile = async (
     uninstalled: composed.uninstalled,
     now: hostNow(),
   });
+
   if (Result.isFailure(loaded)) throw loaded.failure;
   await campaigns.prepare(loaded.success);
+
   return { ...loaded.success, campaigns: campaigns.host };
 };

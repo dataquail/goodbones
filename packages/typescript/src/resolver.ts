@@ -36,6 +36,7 @@ const toPosix = (value: string): string => value.replaceAll(path.sep, "/");
 const toResolvedTarget = (repoRoot: string, absolutePath: string): ResolvedTarget => {
   const relative = toPosix(path.relative(repoRoot, absolutePath));
   const pkg = npmPackageOf(relative);
+
   return pkg === undefined
     ? { path: relative, kind: "local" }
     : { path: relative, kind: "external", package: pkg };
@@ -68,6 +69,7 @@ const scopeOf = (repoRoot: string, scope: ResolveScope): Result.Result<Scope, Sc
       }),
     );
   }
+
   return Result.map(decodeTypescriptScopeOptions(scope), (options) => ({
     matches: new RegExp(scope.files),
     factory: factoryOf(repoRoot, options),
@@ -79,8 +81,10 @@ export const makeModuleResolverLive = (
   config: ResolveConfig,
 ): Result.Result<ModuleResolver, ScopeInvalid> => {
   const scopes: Array<Scope> = [];
+
   for (const entry of config.scopes) {
     const scope = scopeOf(repoRoot, entry);
+
     if (Result.isFailure(scope)) return Result.fail(scope.failure);
     scopes.push(scope.success);
   }
@@ -96,11 +100,13 @@ export const makeModuleResolverLive = (
     const resolved = scope.factory.sync(fromDirectory, specifier);
 
     const builtin = resolved.builtin;
+
     if (builtin !== undefined) {
       return Result.succeed({ path: builtin.resolved, kind: "builtin" });
     }
 
     const resolvedPath = resolved.path;
+
     if (resolvedPath === undefined) {
       return Result.fail(
         new ImportUnresolved({
@@ -117,6 +123,7 @@ export const makeModuleResolverLive = (
   return Result.succeed({
     resolve: (fromFile, specifier) => {
       const scope = scopes.find((candidate) => candidate.matches.test(fromFile));
+
       if (scope === undefined) {
         return Result.fail(
           new ImportUnresolved({
@@ -130,10 +137,12 @@ export const makeModuleResolverLive = (
       const fromDirectory = path.resolve(repoRoot, path.dirname(fromFile));
       const key = `${scope.matches.source} ${fromDirectory} ${specifier}`;
       const cached = cache.get(key);
+
       if (cached !== undefined) return cached;
 
       const outcome = resolveUncached(scope, fromDirectory, fromFile, specifier);
       cache.set(key, outcome);
+
       return outcome;
     },
   });

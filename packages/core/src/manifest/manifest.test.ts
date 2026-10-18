@@ -6,6 +6,7 @@ import { decodeManifest } from "./manifest.js";
 
 const failure = <A, E>(result: Result.Result<A, E>): E => {
   if (Result.isSuccess(result)) throw new Error("expected a failure");
+
   return result.failure;
 };
 
@@ -32,6 +33,7 @@ describe("decodeManifest", () => {
         },
       }),
     ).detail;
+
     expect(detail).toMatch(/tree\["src\/"\]\.members\[0\]\.matchNott: Unexpected key/);
   });
 
@@ -46,6 +48,7 @@ describe("decodeManifest", () => {
         },
       ),
     ).detail;
+
     expect(detail).toContain(
       "architecture.yaml:1:1  campaigns: belongs to a family that is not installed. Install `@goodbones/campaigns`",
     );
@@ -68,6 +71,7 @@ describe("decodeManifest", () => {
         uninstalled: [{ manifestKeys: ["campaigns"], install: "@goodbones/campaigns" }],
       },
     );
+
     expect(Result.isSuccess(decoded)).toBe(true);
   });
 
@@ -75,6 +79,7 @@ describe("decodeManifest", () => {
     const decoded = decodeManifest("architecture.yaml", VALID, {
       uninstalled: [{ manifestKeys: ["campaigns"], install: "@goodbones/campaigns" }],
     });
+
     expect(Result.isSuccess(decoded)).toBe(true);
   });
 
@@ -91,6 +96,7 @@ describe("decodeManifest", () => {
         },
       }),
     ).detail;
+
     expect(detail).toMatch(/members\[0\]\.subject: Expected "members" \| "calls"/);
     expect(detail).toMatch(/imports\.allow: Expected string \| array/);
   });
@@ -103,6 +109,7 @@ describe("decodeManifest", () => {
         { locate },
       ),
     );
+
     expect(error.detail).toContain('  architecture.yaml:3:1  tree["src/"].layout: Expected "open"');
     expect(error.message).toMatch(/^\/repo\/architecture\.yaml: the manifest does not decode:/);
   });
@@ -112,6 +119,7 @@ describe("decodeManifest", () => {
       path[1] === "src/"
         ? { line: path.length, column: 1, file: "packages/src/architecture.yaml" }
         : { line: path.length, column: 1 };
+
     const detail = failure(
       decodeManifest(
         "/repo/architecture.yaml",
@@ -119,6 +127,7 @@ describe("decodeManifest", () => {
         { locate: acrossFiles },
       ),
     ).detail;
+
     expect(detail).toContain(
       '  packages/src/architecture.yaml:3:1  tree["src/"].layout: Expected "open"',
     );
@@ -136,6 +145,7 @@ describe("decodeManifest", () => {
         { locate },
       ),
     ).detail;
+
     expect(detail).toContain(
       'architecture.yaml:3:1  defs.rule.subject: Expected "members" | "calls", got "call" (via `use: "rule"` at architecture.yaml:4:1)',
     );
@@ -149,6 +159,7 @@ describe("decodeManifest", () => {
         tree: { "src/": { children: {}, members: [{ use: "rule", subject: "call" }] } },
       }),
     ).detail;
+
     expect(detail).toMatch(/tree\["src\/"\]\.members\[0\]\.subject: Expected/);
     expect(detail).not.toMatch(/via/);
   });
@@ -161,6 +172,7 @@ describe("decodeManifest", () => {
         { locate },
       ),
     );
+
     expect(error.detail).toMatch(
       /does not expand:\n {2}architecture\.yaml:2:1 {2}tree\["src\/"\]: `use: "nope"`/,
     );
@@ -173,6 +185,7 @@ describe("decodeManifest", () => {
       ...VALID,
       tree: { "src/": { children: {}, members: [{ use: "rule" }] } },
     });
+
     expect(Result.isSuccess(decoded)).toBe(true);
   });
 });

@@ -13,6 +13,7 @@ const repoRoot = path.resolve(here, "../../..");
 // Inside the package rather than the OS temp dir, for the same reason the config
 // loader's fixtures are: Vitest resolves through its own module graph.
 const scratch = path.resolve(here, "../.tmp-facts-tests");
+
 mkdirSync(scratch, { recursive: true });
 
 afterAll(() => {
@@ -20,10 +21,12 @@ afterAll(() => {
 });
 
 let counter = 0;
+
 const factsFor = (source: string, extension = "ts") => {
   counter += 1;
   const file = `packages/cli/.tmp-facts-tests/fixture-${String(counter)}.${extension}`;
   writeFileSync(path.join(repoRoot, file), source);
+
   return sourceFactsOf(repoRoot, file, makeFactExtractorLive());
 };
 
@@ -45,6 +48,7 @@ describe("specifiers", () => {
       import f = require("m7");
       const g = require("m8");
     `);
+
     expect([...facts.specifiers]).toEqual(["m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8"]);
   });
 
@@ -175,6 +179,7 @@ describe("member sites", () => {
     const names = factsFor(`type X = { a: () => void; b(): void };`).memberSites.map(
       (site) => site.name,
     );
+
     expect(names).toEqual(["a", "b"]);
   });
 
@@ -187,6 +192,7 @@ describe("member sites", () => {
     const names = factsFor(`useState(0); React.useEffect(fn);`).memberSites.map(
       (site) => site.name,
     );
+
     expect(names).toEqual(expect.arrayContaining(["useState", "useEffect"]));
   });
 
@@ -195,6 +201,7 @@ describe("member sites", () => {
       `export const V = () => <div>{useState(0)}</div>;`,
       "tsx",
     ).memberSites.map((site) => site.name);
+
     expect(names).toContain("useState");
   });
 });

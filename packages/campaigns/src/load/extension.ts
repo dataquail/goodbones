@@ -111,6 +111,7 @@ const NOTHING: CampaignPolicy = {
 // check` on a manifest with no campaigns is not an error.
 export const campaignsOf = (policy: LoadedPolicy): CampaignPolicy => {
   const found = policy.extensions.get(CAMPAIGNS_EXTENSION_ID);
+
   return found === undefined ? NOTHING : (found as CampaignPolicy);
 };
 
@@ -142,6 +143,7 @@ const referencedFunctions = (detect: CompiledDetector): ReadonlyArray<string> =>
 const detectorsOf = (rule: CompiledCampaign): ReadonlyArray<CompiledDetector> => [
   ...rule.objectives.flatMap((objective) => {
     const detect = detectorOf(objective);
+
     return [...(detect === null ? [] : [detect]), ...measureDetectorsOf(objective)];
   }),
   ...(rule.perimeter?.kind === "match" ? [rule.perimeter.detect] : []),
@@ -161,7 +163,9 @@ const readJson = (
   at: string,
 ): Result.Result<unknown | null, ConfigInvalid> => {
   const text = fileSystem.readText(at);
+
   if (text === null) return Result.succeed(null);
+
   try {
     return Result.succeed(JSON.parse(text) as unknown);
   } catch (cause) {
@@ -188,16 +192,21 @@ const readLedgers = (
   const legacy = new Map<string, string>();
   const sectorRecords = new Map<string, SectorRecord>();
   const plans = new Map<string, PlanRecord>();
+
   for (const campaign of campaigns) {
     for (const objective of campaign.objectives) {
       const at = ledgerPathOf(ledgerDir, campaign.id, objective.id);
       let raw = readJson(configPath, fileSystem, at);
+
       if (Result.isFailure(raw)) return Result.fail(raw.failure);
       let from = at;
+
       if (raw.success === null && campaign.objectives.length === 1) {
         from = legacyLedgerPathOf(ledgerDir, campaign.id);
         raw = readJson(configPath, fileSystem, from);
+
         if (Result.isFailure(raw)) return Result.fail(raw.failure);
+
         if (raw.success !== null && !isLegacyLedger(raw.success)) {
           return Result.fail(
             new ConfigInvalid({
@@ -208,9 +217,12 @@ const readLedgers = (
             }),
           );
         }
+
         if (raw.success !== null) legacy.set(campaign.id, from);
       }
+
       if (raw.success === null) continue;
+
       // A scalar objective's ledger is the second schema. Either kind in the
       // other's place is refused by name: read as the wrong one it would be
       // a decode error that says nothing about why.
@@ -225,8 +237,10 @@ const readLedgers = (
           }),
         );
       }
+
       if (objective.measure !== null) {
         const measured = decodeMeasureLedger(raw.success);
+
         if (Result.isFailure(measured)) {
           return Result.fail(
             new ConfigInvalid({
@@ -235,6 +249,7 @@ const readLedgers = (
             }),
           );
         }
+
         if (
           measured.success.campaign !== campaign.id ||
           measured.success.objective !== objective.id
@@ -248,6 +263,7 @@ const readLedgers = (
             }),
           );
         }
+
         if (measured.success.direction !== objective.direction) {
           return Result.fail(
             new ConfigInvalid({
@@ -259,10 +275,13 @@ const readLedgers = (
             }),
           );
         }
+
         measureLedgers.set(ledgerKeyOf(campaign.id, objective.id), measured.success);
         continue;
       }
+
       const decoded = decodeLedger(raw.success);
+
       if (Result.isFailure(decoded)) {
         return Result.fail(
           new ConfigInvalid({
@@ -271,8 +290,10 @@ const readLedgers = (
           }),
         );
       }
+
       const ledger = decoded.success;
       const expected = from === at ? objective.id : campaign.id;
+
       if (ledger.campaign !== campaign.id || ledger.objective !== expected) {
         return Result.fail(
           new ConfigInvalid({
@@ -283,19 +304,25 @@ const readLedgers = (
           }),
         );
       }
+
       ledgers.set(ledgerKeyOf(campaign.id, objective.id), {
         ...ledger,
         objective: objective.id,
       });
     }
+
     const sectorsDir = `${ledgerDir}/${campaign.id}/sectors`;
+
     for (const name of fileSystem.list(sectorsDir)) {
       if (!name.endsWith(".json")) continue;
       const at = `${sectorsDir}/${name}`;
       const raw = readJson(configPath, fileSystem, at);
+
       if (Result.isFailure(raw)) return Result.fail(raw.failure);
+
       if (raw.success === null) continue;
       const decoded = decodeSectorRecord(raw.success);
+
       if (Result.isFailure(decoded)) {
         return Result.fail(
           new ConfigInvalid({
@@ -304,6 +331,7 @@ const readLedgers = (
           }),
         );
       }
+
       if (decoded.success.campaign !== campaign.id) {
         return Result.fail(
           new ConfigInvalid({
@@ -312,13 +340,18 @@ const readLedgers = (
           }),
         );
       }
+
       sectorRecords.set(ledgerKeyOf(campaign.id, decoded.success.sector), decoded.success);
     }
+
     const planAt = planPathOf(ledgerDir, campaign.id);
     const rawPlan = readJson(configPath, fileSystem, planAt);
+
     if (Result.isFailure(rawPlan)) return Result.fail(rawPlan.failure);
+
     if (rawPlan.success !== null) {
       const decoded = decodePlanRecord(rawPlan.success);
+
       if (Result.isFailure(decoded)) {
         return Result.fail(
           new ConfigInvalid({
@@ -327,9 +360,11 @@ const readLedgers = (
           }),
         );
       }
+
       plans.set(campaign.id, decoded.success);
     }
   }
+
   return Result.succeed({ ledgers, measureLedgers, legacy, sectorRecords, plans });
 };
 
@@ -347,16 +382,19 @@ const load = (
   const lowered = lowerCampaigns(spec, config, languages);
 
   const campaignRules = compileCampaignRules(lowered);
+
   if (Result.isFailure(campaignRules)) return Result.fail(campaignRules.failure);
 
   // A `fn` term names a function the host was to import. One it did not is a
   // term that would answer false for every file, and is refused.
   const functions = options.functions ?? new Map<string, CampaignPredicate>();
+
   const missing = campaignRules.success.flatMap((rule) =>
     detectorsOf(rule).flatMap((detect) =>
       referencedFunctions(detect).filter((name) => !functions.has(name)),
     ),
   );
+
   if (missing.length > 0) {
     return Result.fail(
       new ConfigInvalid({
@@ -374,6 +412,7 @@ const load = (
   const reporting = campaignRules.success.filter((rule) =>
     detectorsOf(rule).some((detect) => leafTermsOf(detect).includes("report")),
   );
+
   if (options.reports === undefined && reporting.length > 0) {
     return Result.fail(
       new ConfigInvalid({
@@ -405,16 +444,20 @@ const load = (
           ]
         : []),
     ];
+
     return proven.flatMap(({ detect, name, probes }) => {
       if (detect === null || !leafTermsOf(detect).includes("syntax")) return [];
+
       return [...probes.fires, ...probes.ignores].flatMap((probe) => {
         const route = routeFor(probe.path);
+
         return route === undefined || route.language.syntax !== undefined
           ? []
           : [`${name} (${probe.path}: ${route.language.id} carries no syntax matcher)`];
       });
     });
   });
+
   if (syntaxless.length > 0) {
     return Result.fail(
       new ConfigInvalid({
@@ -433,10 +476,12 @@ const load = (
   // sector exists to lower it for: a sector-relative tree whose rules cannot
   // fire is refused like any other.
   const endStateFailures: Array<string> = [];
+
   for (const rule of campaignRules.success) {
     for (const phase of rule.phases) {
       if (phase.endState === undefined) continue;
       let loweredEnd: LoweredRules;
+
       try {
         loweredEnd = lowerEndState(
           phase.endState as Readonly<Record<string, unknown>>,
@@ -453,17 +498,24 @@ const load = (
           }),
         );
       }
+
       const endImports = compileImportRules(loweredEnd.imports);
+
       if (Result.isFailure(endImports)) return Result.fail(endImports.failure);
       const endExports = compileExportRules(loweredEnd.exports);
+
       if (Result.isFailure(endExports)) return Result.fail(endExports.failure);
       const endMembers = compileMemberRules(loweredEnd.members);
+
       if (Result.isFailure(endMembers)) return Result.fail(endMembers.failure);
       const endSurface = compileSurfaceRules(loweredEnd.surface);
+
       if (Result.isFailure(endSurface)) return Result.fail(endSurface.failure);
       const endStructure = compileStructure(loweredEnd.structure);
+
       if (Result.isFailure(endStructure)) return Result.fail(endStructure.failure);
       const label = (name: string): string => `${rule.name}/${phase.id}/endState ${name}`;
+
       for (const name of [
         ...rulesFailingTheirProbe(endImports.success).map((one) => one.name),
         ...exportRulesFailingTheirProbe(endExports.success, extractor).map((one) => one.name),
@@ -501,6 +553,7 @@ const load = (
 
   const ledgerDir = spec.ledger ?? DEFAULT_LEDGER_DIR;
   const ledgers = readLedgers(configPath, fileSystem, ledgerDir, campaignRules.success);
+
   if (Result.isFailure(ledgers)) return Result.fail(ledgers.failure);
 
   return Result.succeed({

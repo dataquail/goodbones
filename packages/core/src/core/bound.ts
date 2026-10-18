@@ -24,8 +24,11 @@ export const shortfallOf = (bound: Bound, value: number): number =>
 
 export const standingOf = (bound: Bound, value: number): Standing => {
   const worse = shortfallOf(bound, value);
+
   if (worse > bound.tolerance) return "breached";
+
   if (-worse > bound.tolerance) return "surpassed";
+
   return "within";
 };
 

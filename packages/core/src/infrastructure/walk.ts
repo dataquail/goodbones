@@ -35,24 +35,30 @@ export const listSourceFiles = (
 ): ReadonlyArray<string> => {
   const extensions = new Set([...languages.flatMap((language) => language.extensions), ...widened]);
   const ignored = languages.flatMap((language) => language.ignoredFiles);
+
   const isSource = (entry: string): boolean =>
     extensions.has(path.extname(entry)) && !ignored.some((pattern) => pattern.test(entry));
 
   const found: Array<string> = [];
+
   const walk = (absolute: string): void => {
     for (const entry of readdirSync(absolute)) {
       if (SKIPPED.has(entry)) continue;
       const child = path.join(absolute, entry);
+
       if (statSync(child).isDirectory()) walk(child);
       else if (isSource(entry))
         found.push(path.relative(repoRoot, child).replaceAll(path.sep, "/"));
     }
   };
+
   for (const root of roots) {
     const absolute = path.resolve(repoRoot, root);
+
     if (statSync(absolute).isDirectory()) walk(absolute);
     else found.push(path.relative(repoRoot, absolute).replaceAll(path.sep, "/"));
   }
+
   return found.sort();
 };
 
@@ -78,6 +84,7 @@ export const listPackageRoots = (
 ): ReadonlyArray<PackageRoot> => {
   const markers = languages.flatMap((language) => language.packageMarkers);
   const sourceRoots = languages.flatMap((language) => language.sourceRoots);
+
   if (markers.length === 0) return [];
 
   const isDirectory = (absolute: string): boolean => {
@@ -87,13 +94,17 @@ export const listPackageRoots = (
       return false;
     }
   };
+
   const relative = (absolute: string): string =>
     path.relative(repoRoot, absolute).replaceAll(path.sep, "/");
 
   const found = new Map<string, PackageRoot>();
+
   const consider = (absolute: string): void => {
     const key = relative(absolute);
+
     if (found.has(key)) return;
+
     if (!markers.some((marker) => existsSync(path.join(absolute, marker)))) return;
     const source = sourceRoots.find((name) => isDirectory(path.join(absolute, name)));
     found.set(key, {
@@ -101,27 +112,35 @@ export const listPackageRoots = (
       source: source === undefined ? null : relative(path.join(absolute, source)),
     });
   };
+
   const walk = (absolute: string): void => {
     consider(absolute);
+
     for (const entry of readdirSync(absolute)) {
       if (SKIPPED.has(entry)) continue;
       const child = path.join(absolute, entry);
+
       if (isDirectory(child)) walk(child);
     }
   };
 
   const top = path.resolve(repoRoot);
+
   for (const root of roots) {
     let absolute = path.resolve(repoRoot, root);
+
     if (!isDirectory(absolute)) absolute = path.dirname(absolute);
     walk(absolute);
+
     // The ancestors, up to the repository: a package is as often above the
     // walk root as inside it.
     for (let above = absolute; above.startsWith(top); above = path.dirname(above)) {
       consider(above);
+
       if (above === top) break;
     }
   }
+
   return [...found.values()].sort((a, b) => a.root.localeCompare(b.root));
 };
 
@@ -141,18 +160,22 @@ export const listWorkspaceProjects = (
   roots: ReadonlyArray<string>,
 ): ReadonlyArray<WorkspaceProject> => {
   const found: Array<WorkspaceProject> = [];
+
   const nameIn = (absolute: string, file: string): string | null => {
     try {
       const parsed = JSON.parse(readFileSync(path.join(absolute, file), "utf8")) as unknown;
+
       const name =
         typeof parsed === "object" && parsed !== null
           ? (parsed as { readonly name?: unknown }).name
           : undefined;
+
       return typeof name === "string" && name !== "" ? name : null;
     } catch {
       return null;
     }
   };
+
   const walk = (absolute: string): void => {
     if (existsSync(path.join(absolute, "project.json"))) {
       const root = path.relative(repoRoot, absolute).replaceAll(path.sep, "/");
@@ -164,15 +187,20 @@ export const listWorkspaceProjects = (
         root,
       });
     }
+
     for (const entry of readdirSync(absolute)) {
       if (SKIPPED.has(entry)) continue;
       const child = path.join(absolute, entry);
+
       if (statSync(child).isDirectory()) walk(child);
     }
   };
+
   for (const root of roots) {
     const absolute = path.resolve(repoRoot, root);
+
     if (statSync(absolute).isDirectory()) walk(absolute);
   }
+
   return found.sort((a, b) => a.root.localeCompare(b.root));
 };

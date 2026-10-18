@@ -32,17 +32,22 @@ export const ledgerPhaseOf = (
   // The shared files stand on no phase, before a change or after it.
   if (isShared(rule, sector)) return donePhaseOf(rule);
   const state = campaignsOf(policy);
+
   const record =
     overrides.record === undefined
       ? state.sectorRecords.get(ledgerKeyOf(rule.id, sector))
       : overrides.record.at;
+
   if (sector === LEGACY_SECTOR || record === undefined) {
     return Math.min(LEGACY_PHASE, rule.phases.length);
   }
+
   const position = positionOf(rule, record);
+
   const counts = (objectiveId: string): number => {
     const key = ledgerKeyOf(rule.id, objectiveId);
     const objective = rule.objectives.find((one) => one.id === objectiveId);
+
     if (objective === undefined) return 0;
     // A prerequisite is ledgered under the shared files, and holds this sector
     // by what is recorded there.
@@ -53,22 +58,28 @@ export const ledgerPhaseOf = (
     // reading it as nought would carry the sector past phases it has
     // never stood at.
     const unentered = (): number => (windowOf(rule, objective).from > position.reached ? 1 : 0);
+
     if (objective.measure !== null) {
       const own = (
         overrides.measures?.has(objectiveId) === true
           ? overrides.measures.get(objectiveId)
           : state.measureLedgers.get(key)
       )?.sectors[at];
+
       if (own === undefined) return unentered();
+
       return own.closed !== null ? 0 : distanceToTarget(objective, own.recorded);
     }
+
     const own = (
       overrides.ledgers?.has(objectiveId) === true
         ? overrides.ledgers.get(objectiveId)
         : state.ledgers.get(key)
     )?.sectors[at];
+
     return own === undefined ? unentered() : own.holdouts.length;
   };
+
   return derivePhase(rule, counts, position);
 };
 

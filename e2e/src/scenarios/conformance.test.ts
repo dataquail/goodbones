@@ -50,6 +50,7 @@ type ConformanceJson = {
 const conformance = (repo: Repo, argv: ReadonlyArray<string>) => {
   const result = cli(repo, ["conformance", "--json", ...argv]);
   let json: ConformanceJson;
+
   try {
     json = JSON.parse(result.stdout) as ConformanceJson;
   } catch (cause) {
@@ -58,6 +59,7 @@ const conformance = (repo: Repo, argv: ReadonlyArray<string>) => {
         `stdout:\n${result.stdout}\nstderr:\n${result.stderr}\n${String(cause)}`,
     );
   }
+
   return { ...result, json };
 };
 
@@ -158,6 +160,7 @@ describe.sequential("conformance", () => {
       ...policy(repo, ["src/**", "node:**", "vendor/**"]),
       limits: { conformance: { slack: 0, residue: 0 } },
     };
+
     repo.writeManifest(capped);
 
     const measured = conformance(repo, ["src"]);

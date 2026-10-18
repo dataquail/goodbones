@@ -17,7 +17,9 @@ export const makeFactExtractorFake = (
 ): FactExtractor => ({
   factsOf: (file, text) => {
     const found = facts[text];
+
     if (found === undefined) return NOTHING;
+
     return {
       ...NOTHING,
       ...found,

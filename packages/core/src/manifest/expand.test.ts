@@ -5,11 +5,13 @@ import { expandManifest, originOf } from "./expand.js";
 
 const unwrap = <A, E>(result: Result.Result<A, E>): A => {
   if (Result.isFailure(result)) throw new Error(JSON.stringify(result.failure));
+
   return result.success;
 };
 
 const failure = <A, E>(result: Result.Result<A, E>): E => {
   if (Result.isSuccess(result)) throw new Error("expected a failure");
+
   return result.failure;
 };
 
@@ -27,6 +29,7 @@ describe("expandManifest", () => {
     const expanded = unwrap(
       expandManifest({ $schema: "https://…", defs: { rule: RULE }, tree: {} }),
     );
+
     expect(expanded.value).toEqual({ tree: {} });
   });
 
@@ -63,6 +66,7 @@ describe("expandManifest", () => {
   ])("replaces a reference standing as %s", (_, document, at) => {
     const expanded = unwrap(expandManifest({ defs: { rule: RULE }, ...document }));
     let cursor: unknown = expanded.value;
+
     for (const segment of at) cursor = (cursor as Record<PropertyKey, unknown>)[segment];
     expect(cursor).toEqual(RULE);
     expect(expanded.substitutions).toEqual([{ at, ref: at, name: "rule", overrides: new Set() }]);
@@ -72,6 +76,7 @@ describe("expandManifest", () => {
     const expanded = unwrap(
       expandManifest({ defs: { rule: RULE }, tree: { a: { use: "rule" }, b: { use: "rule" } } }),
     );
+
     const { tree } = expanded.value as { tree: { a: object; b: object } };
     expect(tree.a).toEqual(tree.b);
     expect(tree.a).not.toBe(tree.b);
@@ -85,6 +90,7 @@ describe("expandManifest", () => {
         tree: { "src/": { members: [{ use: "rule", message: "louder", except: ["x"] }] } },
       }),
     );
+
     expect(
       (expanded.value as { tree: { "src/": { members: Array<unknown> } } }).tree["src/"].members,
     ).toEqual([{ ...RULE, message: "louder", except: ["x"] }]);
@@ -95,6 +101,7 @@ describe("expandManifest", () => {
     const expanded = unwrap(
       expandManifest({ defs: { rule: RULE }, tree: { x: { use: "rule", match: ["readFile"] } } }),
     );
+
     expect((expanded.value as { tree: { x: { match: unknown } } }).tree.x.match).toEqual([
       "readFile",
     ]);
@@ -111,6 +118,7 @@ describe("expandManifest", () => {
         tree: { "src/": { use: "node" }, "lib/": { use: "node" } },
       }),
     ).value as { tree: Record<string, unknown> };
+
     expect(expanded.tree["lib/"]).toEqual({
       imports: { message: "m", allow: ["node:**"] },
       children: {},
@@ -121,6 +129,7 @@ describe("expandManifest", () => {
     const issue = failure(
       expandManifest({ defs: { a: {}, b: {} }, tree: { "src/": { members: [{ use: "c" }] } } }),
     );
+
     expect(issue.path).toEqual(["tree", "src/", "members", 0]);
     expect(issue.detail).toMatch(/`use: "c"` names no entry in `defs` \(defined: a, b\)/);
   });
@@ -137,6 +146,7 @@ describe("expandManifest", () => {
         tree: { "src/": { use: "a" } },
       }),
     );
+
     expect(issue.detail).toMatch(/cycle: a → b → c → a/);
     expect(issue.path).toEqual(["defs", "c"]);
   });
@@ -148,6 +158,7 @@ describe("expandManifest", () => {
         tree: { "src/": { allow: { use: "globs", x: 1 } } },
       }),
     );
+
     expect(issue.detail).toMatch(/`defs.globs` is not an object/);
   });
 
@@ -168,6 +179,7 @@ describe("originOf", () => {
       "lib/": { imports: { use: "floor" } },
     },
   };
+
   const { substitutions } = unwrap(expandManifest(document));
 
   it("maps a path outside any fragment to itself", () => {

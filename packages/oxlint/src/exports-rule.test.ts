@@ -21,12 +21,14 @@ import { describe, it } from "vitest";
 import { makeExportsRule } from "./exports-rule.js";
 
 RuleTester.describe = describe;
+
 RuleTester.it = it;
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
 const CQRS_BARREL =
   "node_modules/.pnpm/@effect-server-utils+cqrs/node_modules/@effect-server-utils/cqrs/dist/esm/index.js";
+
 const EFFECT_BARREL = "node_modules/.pnpm/effect@4.0.0-beta.94/node_modules/effect/dist/index.js";
 
 const config = {
@@ -60,7 +62,9 @@ const config = {
 
 const policy = (): LoadedPolicy => {
   const exportRules = compileExportRules(config.exports);
+
   if (Result.isFailure(exportRules)) throw exportRules.failure;
+
   return {
     repoRoot,
     config: { resolve: config.resolve, tree: {} },
@@ -93,6 +97,7 @@ const HANDLER = path.join(
   repoRoot,
   "packages/server/src/modules/todos/commands/create-todo.handler.ts",
 );
+
 const COMPOSITION_ROOT = path.join(repoRoot, "packages/server/src/cqrs-runtime.ts");
 
 new RuleTester({ cwd: repoRoot }).run("exports", makeExportsRule(policy()), {
@@ -200,7 +205,9 @@ const wholeModulePolicy = (): LoadedPolicy => {
       fix: "subpath-namespace-import",
     },
   ]);
+
   if (Result.isFailure(exportRules)) throw exportRules.failure;
+
   return { ...policy(), exportRules: exportRules.success };
 };
 

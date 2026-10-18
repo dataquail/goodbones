@@ -22,6 +22,7 @@ const same = (a: Selection | null, b: Selection | null): boolean =>
 export const Detail = ({ atlas, hovered, onSelect, selected }: Props): React.JSX.Element => {
   const shown = hovered ?? selected;
   const pinned = shown !== null && same(shown, selected);
+
   return (
     <div className="detail">
       {shown === null ? (
@@ -44,13 +45,7 @@ export const Detail = ({ atlas, hovered, onSelect, selected }: Props): React.JSX
               <span className="hint">click to pin</span>
             )}
           </div>
-          {shown.kind === "file" ? (
-            <FileDetail atlas={atlas} path={shown.path} onSelect={onSelect} />
-          ) : shown.kind === "folder" ? (
-            <FolderDetail atlas={atlas} path={shown.path} onSelect={onSelect} />
-          ) : (
-            <NodeDetail atlas={atlas} id={shown.id} onSelect={onSelect} />
-          )}
+          <ShownDetail atlas={atlas} shown={shown} onSelect={onSelect} />
         </>
       )}
     </div>
@@ -65,6 +60,7 @@ const Overview = ({
   onSelect: Props["onSelect"];
 }): React.JSX.Element => {
   const refused = atlas.violations.filter((one) => !one.baselined);
+
   return (
     <>
       <div className="pane-head">
@@ -159,8 +155,32 @@ const Overview = ({
   );
 };
 
-const statusWord = (status: EdgeStatus): string =>
-  status === "allowed" ? "allowed" : status === "refused" ? "refused" : "no allowlist";
+const ShownDetail = ({
+  atlas,
+  onSelect,
+  shown,
+}: {
+  atlas: Atlas;
+  shown: Selection;
+  onSelect: Props["onSelect"];
+}): React.JSX.Element => {
+  switch (shown.kind) {
+    case "file":
+      return <FileDetail atlas={atlas} path={shown.path} onSelect={onSelect} />;
+    case "folder":
+      return <FolderDetail atlas={atlas} path={shown.path} onSelect={onSelect} />;
+    default:
+      return <NodeDetail atlas={atlas} id={shown.id} onSelect={onSelect} />;
+  }
+};
+
+const STATUS_WORDS: Readonly<Record<EdgeStatus, string>> = {
+  allowed: "allowed",
+  refused: "refused",
+  ungoverned: "no allowlist",
+};
+
+const statusWord = (status: EdgeStatus): string => STATUS_WORDS[status];
 
 const NodeCrumbs = ({
   atlas,
@@ -174,6 +194,7 @@ const NodeCrumbs = ({
   <div className="crumbs">
     {chain.map((id, index) => {
       const node = atlas.manifest.nodes.find((one) => one.id === id);
+
       return (
         <span key={id}>
           {index > 0 ? <span className="muted"> › </span> : null}
@@ -204,16 +225,19 @@ const FileDetail = ({
   onSelect: Props["onSelect"];
 }): React.JSX.Element | null => {
   const file: AtlasFile | undefined = atlas.files.find((one) => one.path === path);
+
   if (file === undefined) return null;
   const node = file.node === null ? null : atlas.manifest.nodes.find((one) => one.id === file.node);
   const out = atlas.edges.filter((edge) => edge.from === path);
   const into = atlas.edges.filter((edge) => edge.to === path);
   const violations = atlas.violations.filter((one) => one.file === path);
   const unresolved = atlas.unresolved.filter((one) => one.file === path);
+
   // The allowlist in force: every allowance down the chain, nearest last.
   const allowances = file.chain
     .map((id) => atlas.manifest.nodes.find((one) => one.id === id))
     .filter((one): one is AtlasNode => one !== undefined && one.imports !== null);
+
   return (
     <>
       <h2 className="mono path">{file.path}</h2>
@@ -402,23 +426,31 @@ const FolderDetail = ({
   onSelect: Props["onSelect"];
 }): React.JSX.Element | null => {
   const folder: AtlasFolder | undefined = atlas.folders.find((one) => one.path === path);
+
   if (folder === undefined) return null;
   const within = atlas.files.filter((file) => file.path.startsWith(`${path}/`));
+
   const chain =
     within[0]?.chain.filter((id) => {
       const node = atlas.manifest.nodes.find((one) => one.id === id);
+
       return node?.folder === true;
     }) ?? (folder.node === null ? [] : [folder.node]);
+
   const violations = atlas.violations.filter((one) => one.file.startsWith(`${path}/`));
+
   const out = atlas.edges.filter(
     (edge) => edge.from.startsWith(`${path}/`) && !edge.to.startsWith(`${path}/`),
   );
+
   const into = atlas.edges.filter(
     (edge) => edge.to.startsWith(`${path}/`) && !edge.from.startsWith(`${path}/`),
   );
+
   const declared = folder.declares
     .map((id) => atlas.manifest.nodes.find((one) => one.id === id))
     .filter((one): one is AtlasNode => one !== undefined);
+
   return (
     <>
       <h2 className="mono path">{folder.path}/</h2>
@@ -492,9 +524,11 @@ const NodeDetail = ({
   onSelect: Props["onSelect"];
 }): React.JSX.Element | null => {
   const node = atlas.manifest.nodes.find((one) => one.id === id);
+
   if (node === undefined) return null;
   const chain: Array<string> = [];
   let cursor: AtlasNode | undefined = node;
+
   while (cursor !== undefined) {
     chain.unshift(cursor.id);
     cursor =
@@ -502,8 +536,10 @@ const NodeDetail = ({
         ? undefined
         : atlas.manifest.nodes.find((one) => one.id === cursor?.parent);
   }
+
   const governed = atlas.files.filter((file) => file.chain.includes(id));
   const violations = atlas.violations.filter((one) => node.rules.includes(one.rule));
+
   return (
     <>
       <h2 className="mono path">{node.path}</h2>

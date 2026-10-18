@@ -12,10 +12,12 @@ import { afterAll, describe, expect, it } from "vitest";
 import { loadPolicyFromFile as loadPolicy } from "./config-loader.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+
 // Inside the package rather than the OS temp dir: Vitest resolves the loader's
 // dynamic import through its own module graph, which does not reach outside the
 // project root.
 const scratch = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.tmp-config-tests");
+
 mkdirSync(scratch, { recursive: true });
 
 afterAll(() => {
@@ -23,10 +25,12 @@ afterAll(() => {
 });
 
 let counter = 0;
+
 const writeConfig = (source: string, extension = "mjs"): string => {
   counter += 1;
   const name = `config-${String(counter)}.${extension}`;
   writeFileSync(path.join(scratch, name), source);
+
   return path.join(scratch, name);
 };
 
@@ -62,10 +66,12 @@ describe("loadPolicy", () => {
   // for the rest of the beta, and says once that it is on its way out.
   it("reads a scope written as { files, tsconfig } as a TypeScript scope, with a notice", async () => {
     const legacy = `resolve: { scopes: [{ files: "", tsconfig: "tsconfig.resolve.json" }], mainFields: ["main"] }`;
+
     const policy = await loadPolicy(
       repoRoot,
       writeConfig(`export default { ${legacy}, ${TREE} };`),
     );
+
     expect(policy.config.resolve.scopes).toEqual([
       {
         files: "",
@@ -123,6 +129,7 @@ describe("loadPolicy", () => {
       "packages/components/": { children: { "primitives/": { layout: "open", children: {} } } },
       "packages/components-svelte/": { children: { "primitives/": { layout: "open", children: {} } } },
     }`;
+
     const policy = await loadPolicy(
       repoRoot,
       writeConfig(`export default { ${RESOLVE}, ${roots} };`),
@@ -141,6 +148,7 @@ describe("loadPolicy", () => {
       'allow: ["packages/server/src/modules/{module}/domain/**"]',
       'allow: ["packages/**"]',
     );
+
     await expect(
       loadPolicy(repoRoot, writeConfig(`export default { ${RESOLVE}, ${drifted} };`)),
     ).rejects.toThrow(/do not report their own probe/);
@@ -171,10 +179,12 @@ describe("loadPolicy", () => {
 
   it("loads a member rule whose source probe the parser reads and the rule reports", async () => {
     const probe = `{ source: "export interface TodosRepositoryShape { findOneById(): void }", name: "findOneById" }`;
+
     const policy = await loadPolicy(
       repoRoot,
       writeConfig(`export default { ${RESOLVE}, ${membersRuleWith(probe)} };`),
     );
+
     expect(policy.memberRules).toHaveLength(1);
   });
 
@@ -193,10 +203,12 @@ describe("loadPolicy", () => {
   // and fails one about types and interfaces.
   it("judges a class-body probe by the rule's `declares`", async () => {
     const probe = `{ source: "export class TodosRepositoryShape { findOneById(): void {} }", name: "findOneById" }`;
+
     const every = await loadPolicy(
       repoRoot,
       writeConfig(`export default { ${RESOLVE}, ${membersRuleWith(probe)} };`),
     );
+
     expect(every.memberRules).toHaveLength(1);
 
     const typesOnly = `subject: "members", declares: ["type", "interface"]`;
@@ -211,12 +223,14 @@ describe("loadPolicy", () => {
   // The old spelling still loads, as the pair it always meant, and says so once.
   it('reads `subject: "type-members"` as members declared in a type or interface, with a notice', async () => {
     const probe = `{ source: "export interface TodosRepositoryShape { findOneById(): void }", name: "findOneById" }`;
+
     const policy = await loadPolicy(
       repoRoot,
       writeConfig(
         `export default { ${RESOLVE}, ${membersRuleWith(probe, `subject: "type-members"`)} };`,
       ),
     );
+
     expect(policy.memberRules[0]?.subject).toBe("members");
     expect(policy.memberRules[0]?.declares).toEqual(["type", "interface"]);
     expect(policy.notices).toEqual([expect.stringMatching(/"\*\.repository\.ts".*type-members/)]);
@@ -231,6 +245,7 @@ describe("loadPolicy", () => {
       symbols: ["makeBus"],
       probe: { source: 'import makeBus from "lib/bus";', symbol: "default" },
     }]`;
+
     await expect(
       loadPolicy(repoRoot, writeConfig(`export default { ${RESOLVE}, ${restriction}, tree: {} };`)),
     ).rejects.toThrow(/no-factories/);
@@ -246,6 +261,7 @@ describe("loadPolicy", () => {
       symbols: ["makeBus"],
       kinds: ["default"],
     }]`;
+
     await expect(
       loadPolicy(repoRoot, writeConfig(`export default { ${RESOLVE}, ${restriction}, tree: {} };`)),
     ).rejects.toThrow(/contradiction/);
@@ -259,10 +275,12 @@ describe("loadPolicy", () => {
         surface: [{ message: "No default exports.", kinds: ["default"], probe: ${probe} }],
       },
     }`;
+
     const loaded = await loadPolicy(
       repoRoot,
       writeConfig(`export default { ${RESOLVE}, ${tree('{ source: "export default 1;" }')} };`),
     );
+
     expect(loaded.surfaceRules).toHaveLength(1);
 
     await expect(
@@ -277,10 +295,12 @@ describe("loadPolicy", () => {
     const graph = (via: string) => `graph: {
       reach: [{ name: "via-ports", message: "…", from: "src/adapters/**", to: "src/infra/**", via: "${via}" }],
     }`;
+
     const loaded = await loadPolicy(
       repoRoot,
       writeConfig(`export default { ${RESOLVE}, ${graph("src/ports/**")}, tree: {} };`),
     );
+
     expect(loaded.graph.reach).toHaveLength(1);
 
     // A `via` that covers the target itself: nothing could ever be reached
@@ -298,10 +318,12 @@ describe("loadPolicy", () => {
       "packages/web/src/": { layout: "open", children: {}, imports: { message: "…", unrestricted: true } },
       "packages/api/src/": { layout: "open", children: {}, imports: { message: "…", unrestricted: true } },
     }`;
+
     const loaded = await loadPolicy(
       repoRoot,
       writeConfig(`export default { ${RESOLVE}, limits: { unrestricted: 2 }, ${tree} };`),
     );
+
     expect(loaded.adoption.unrestricted).toHaveLength(2);
 
     await expect(
@@ -321,11 +343,13 @@ describe("loadPolicy", () => {
         },
       },
     }`;
+
     // Narrower: it wins for its own files, and the policy loads.
     const loaded = await loadPolicy(
       repoRoot,
       writeConfig(`export default { ${RESOLVE}, ${tree("*.integration.test.ts")} };`),
     );
+
     expect(loaded.importRules).toHaveLength(2);
     // The same files under another key: a load error, naming both.
     await expect(
@@ -356,6 +380,7 @@ describe("loadPolicy", () => {
         },
       } }, tree: {} };`),
     );
+
     const [rule] = campaignsOf(policy).campaignRules;
     expect(rule?.objectives.find((one) => one.id === "left")?.onAhead).toBe("ignore");
   });
@@ -387,12 +412,14 @@ describe("loadPolicy reads every report at load", () => {
     const stamp = path.join(scratch, "ran-at-load");
     rmSync(stamp, { force: true });
     const command = `node -e "require('fs').appendFileSync('${stamp}', 'x')"`;
+
     const policy = await loadPolicy(
       repoRoot,
       writeConfig(
         `export default { ${RESOLVE}, ${campaign(`command: ${JSON.stringify(command)}`)}, tree: {} };`,
       ),
     );
+
     expect(readFileSync(stamp, "utf8")).toBe("x");
     // The rules ask the same source and get the cached answer, not a second run.
     campaignsOf(policy).reports.diagnosticsOf({ command, format: "tsc" }, "packages/x.ts");
@@ -402,15 +429,19 @@ describe("loadPolicy reads every report at load", () => {
   it("runs a term's several commands at load, as one report", async () => {
     const stamp = path.join(scratch, "ran-several-at-load");
     rmSync(stamp, { force: true });
+
     const mark = (name: string) =>
       `node -e "require('fs').appendFileSync('${stamp}', '${name}'); console.log('packages/x.ts(1,1): error TS1: m')"`;
+
     const command = [mark("a"), mark("b")];
+
     const policy = await loadPolicy(
       repoRoot,
       writeConfig(
         `export default { ${RESOLVE}, ${campaign(`command: ${JSON.stringify(command)}`)}, tree: {} };`,
       ),
     );
+
     expect(readFileSync(stamp, "utf8").split("").sort().join("")).toBe("ab");
     // The same diagnostic from both commands is one, and nothing runs again.
     expect(
@@ -426,6 +457,7 @@ describe("loadPolicy reads every report at load", () => {
         `export default { ${RESOLVE}, ${campaign(`file: "no-such-report.txt"`)}, tree: {} };`,
       ),
     );
+
     expect(() =>
       campaignsOf(policy).reports.diagnosticsOf(
         { file: "no-such-report.txt", format: "tsc" },
@@ -476,6 +508,7 @@ tree:
       },
       tree: { "packages/web/src/": { layout: "open", children: {} } },
     });
+
     const policy = await loadPolicy(repoRoot, writeConfig(json, "json"));
     expect(policy.structure.folders.length).toBeGreaterThan(0);
   });
@@ -504,6 +537,7 @@ describe("uncompilable patterns in the other three families", () => {
       'children: { "*.root.ts": {} },',
       `children: { "*.root.ts": { members: [{ message: "x", subject: "calls", match: "${BROKEN}" }] } },`,
     );
+
     await expect(
       loadPolicy(repoRoot, writeConfig(`export default { ${RESOLVE}, ${tree} };`)),
     ).rejects.toThrow(/uncompilable/);
@@ -522,6 +556,7 @@ describe("uncompilable patterns in the other three families", () => {
     const at =
       writeConfig(`export const resolve = { scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.resolve.json" } }] };
 export const tree = { "packages/server/src/modules/{module}/domain/": { message: "m", imports: { message: "m", allow: ["packages/server/src/modules/{module}/domain/**"] }, children: { "*.root.ts": {} } } };`);
+
     const policy = await loadPolicy(repoRoot, at);
     expect(policy.importRules.length).toBeGreaterThan(0);
   });

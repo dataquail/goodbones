@@ -24,28 +24,36 @@ export type { LoadedPolicy } from "./campaigns/host.js";
 // The matcher is an optional peer, with a native binary: composed into the
 // pack when it is installed, and a campaign that needs it without it is
 // refused at load, naming the package.
+const loadAstGrep = () => import("@goodbones/ast-grep");
+
 export const hostLanguages = async (): Promise<ReadonlyArray<Language>> => {
-  const astGrep = await importOptional(() => import("@goodbones/ast-grep"), "@goodbones/ast-grep");
+  const astGrep = await importOptional(loadAstGrep, "@goodbones/ast-grep");
+
   return [typescriptLanguage(astGrep === null ? {} : { syntax: astGrep.astGrepMatcher() })];
 };
 
 // The campaigns family, when `@goodbones/campaigns` is installed beside this
 // host, and `none` when it is not. Everything that names the package is
 // under `campaigns/`, reached through this one import.
+const loadCampaignsLive = () => import("./campaigns/live.js");
+
 export const hostCampaigns = async (): Promise<CampaignsFamily> =>
-  (await importOptional(() => import("./campaigns/live.js"), "@goodbones/campaigns"))
-    ?.liveCampaigns ?? campaignsNotInstalled;
+  (await importOptional(loadCampaignsLive, "@goodbones/campaigns"))?.liveCampaigns ??
+  campaignsNotInstalled;
 
 // The clock the campaigns are judged by. `ARCHITECTURE_NOW` (an ISO date or
 // epoch milliseconds) pins it, for a CI that replays a day or a test that
 // needs a stall to have happened.
 export const hostNow = (): number => {
   const pinned = process.env.ARCHITECTURE_NOW;
+
   if (pinned === undefined || pinned === "") return Date.now();
   const parsed = /^\d+$/.test(pinned) ? Number(pinned) : Date.parse(pinned);
+
   if (Number.isNaN(parsed)) {
     throw new Error(`ARCHITECTURE_NOW is ${JSON.stringify(pinned)}, which is not a date.`);
   }
+
   return parsed;
 };
 
@@ -71,6 +79,7 @@ export const loadPolicyFromFile = async (
   const read = await readManifestFile(configPath);
   const campaigns = given ?? (await hostCampaigns());
   const composed = await campaigns.compose(repoRoot, configPath, read.manifest);
+
   const loaded = loadPolicy({
     repoRoot,
     configPath,
@@ -82,7 +91,9 @@ export const loadPolicyFromFile = async (
     uninstalled: composed.uninstalled,
     now: hostNow(),
   });
+
   if (Result.isFailure(loaded)) throw loaded.failure;
+
   return { ...loaded.success, campaigns: campaigns.host };
 };
 
@@ -96,6 +107,7 @@ export const loadPolicyFromManifest = async (
 ): Promise<Result.Result<LoadedPolicy, ConfigInvalid | PatternInvalid>> => {
   const campaigns = await hostCampaigns();
   const composed = await campaigns.compose(repoRoot, null, manifest);
+
   const loaded = loadPolicy({
     repoRoot,
     configPath: path.resolve(repoRoot, "architecture.yaml"),
@@ -106,5 +118,6 @@ export const loadPolicyFromManifest = async (
     uninstalled: composed.uninstalled,
     now: hostNow(),
   });
+
   return Result.map(loaded, (policy) => ({ ...policy, campaigns: campaigns.host }));
 };

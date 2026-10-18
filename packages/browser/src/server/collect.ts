@@ -37,6 +37,7 @@ export const collect = async (options: CollectOptions): Promise<Collected> => {
     options.configFilename,
     options.campaigns,
   );
+
   return collectWith(loaded, options);
 };
 
@@ -57,23 +58,31 @@ export const collectWith = async (
     policy.languages,
     family.widenedExtensions(policy),
   );
+
   const known = new Set(policy.languages.flatMap((one) => one.extensions));
   const files = walked.filter((file) => known.has(path.extname(file)));
 
   const texts = new Map<string, string>();
+
   const textOf = (file: string): string => {
     const cached = texts.get(file);
+
     if (cached !== undefined) return cached;
     const text = readFileSync(path.join(options.repoRoot, file), "utf8");
     texts.set(file, text);
+
     return text;
   };
+
   const parsed = new Map<string, SourceFacts>();
+
   const factsOf = (file: string): SourceFacts => {
     const cached = parsed.get(file);
+
     if (cached !== undefined) return cached;
     const facts = policy.extractor.factsOf(file, textOf(file));
     parsed.set(file, facts);
+
     return facts;
   };
 

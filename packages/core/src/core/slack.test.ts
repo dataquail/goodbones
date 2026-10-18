@@ -7,7 +7,9 @@ import { slackOf } from "./slack.js";
 
 const compile = (rules: ReadonlyArray<ImportRule>) => {
   const compiled = compileImportRules(rules);
+
   if (Result.isFailure(compiled)) throw compiled.failure;
+
   return compiled.success;
 };
 
@@ -136,6 +138,7 @@ describe("slackOf", () => {
         ],
       },
     ]);
+
     const files = ["src/modules/a/x.ts", "src/modules/a/y.ts", "src/modules/b/y.ts"];
     expect(
       slack(
@@ -195,6 +198,7 @@ describe("slackOf through a fragment", () => {
     },
     { node, kind: "external", entry: "effect", ...(fragment === undefined ? {} : { fragment }) },
   ];
+
   const rule = (node: string, fragment: string | undefined): ImportRule => ({
     name: `${node}/imports`,
     message: "…",
@@ -204,13 +208,16 @@ describe("slackOf through a fragment", () => {
     externals: ["effect"],
     allowances: via(node, fragment),
   });
+
   const rules = compile([
     rule("src/a", "shared"),
     rule("src/b", "shared"),
     rule("src/c", "shared"),
     rule("src/own", undefined),
   ]);
+
   const files = ["src/a/x.ts", "src/b/x.ts", "src/c/x.ts", "src/own/x.ts"];
+
   const effect = {
     path: "node_modules/effect/index.js",
     kind: "external" as const,
@@ -248,6 +255,7 @@ describe("slackOf through a fragment", () => {
       ],
       files,
     );
+
     expect(report.slack.map((one) => `${one.node} ${one.entry}`)).toEqual([
       "shared lib/**",
       "src/own lib/**",
@@ -258,10 +266,12 @@ describe("slackOf through a fragment", () => {
 
   // A vacant node is neither granted nor counted: `of` is the nodes with files.
   it("leaves a vacant node out of the count", () => {
-    const report = slackOf(rules, [{ importer: "src/b/x.ts", target: effect }], [
-      "src/a/x.ts",
-      "src/b/x.ts",
-    ]);
+    const report = slackOf(
+      rules,
+      [{ importer: "src/b/x.ts", target: effect }],
+      ["src/a/x.ts", "src/b/x.ts"],
+    );
+
     expect(report.slack[0]).toEqual({
       node: "shared",
       kind: "allow",

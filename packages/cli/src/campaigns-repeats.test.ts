@@ -46,6 +46,7 @@ const write = (file: string, source: string): void => {
 
 const policyAt = (now: string) => {
   process.env.ARCHITECTURE_NOW = now;
+
   return loadPolicy(root);
 };
 
@@ -54,13 +55,17 @@ const capture = async (effect: Effect.Effect<void, CliFailure>) => {
   const original = process.stdout.write.bind(process.stdout);
   process.stdout.write = (chunk: string) => {
     lines.push(String(chunk));
+
     return true;
   };
+
   try {
     const exit = await Effect.runPromiseExit(effect);
+
     const failure = Exit.isFailure(exit)
       ? (Cause.squash(exit.cause) as { message?: string })
       : null;
+
     return { exit, output: lines.join(""), failure: failure?.message ?? "" };
   } finally {
     process.stdout.write = original;
@@ -74,6 +79,7 @@ const check = async () => {
       manifestPath: path.join(root, "architecture.json"),
     }),
   );
+
   return { ...result, report: JSON.parse(result.output) as CheckReport };
 };
 

@@ -98,6 +98,7 @@ export type Inferred = {
 
 const dirnameOf = (file: string): string => {
   const at = file.lastIndexOf("/");
+
   return at === -1 ? "" : file.slice(0, at);
 };
 
@@ -122,9 +123,11 @@ const memberOf = (p: string, generalize: ReadonlyArray<Generalization>): Members
   for (const group of generalize) {
     for (const member of group.members) {
       const folder = group.parent === "" ? member : `${group.parent}/${member}`;
+
       if (isUnder(p, folder)) return { group, member };
     }
   }
+
   return null;
 };
 
@@ -133,10 +136,12 @@ const capturedPathOf = (group: Generalization): string =>
 
 const rewrite = (p: string, generalize: ReadonlyArray<Generalization>): string => {
   const membership = memberOf(p, generalize);
+
   if (membership === null) return p;
   const { group, member } = membership;
   const folder = group.parent === "" ? member : `${group.parent}/${member}`;
   const captured = capturedPathOf(group);
+
   return p === folder ? captured : `${captured}${p.slice(folder.length)}`;
 };
 
@@ -155,21 +160,26 @@ const folderAt = (root: Folder, p: string): Folder => {
   if (p === root.path) return root;
   const rest = root.path === "" ? p : p.slice(root.path.length + 1);
   let at = root;
+
   for (const segment of rest.split("/")) {
     const existing = at.children.get(segment);
+
     if (existing !== undefined) {
       at = existing;
       continue;
     }
+
     const made: Folder = {
       path: at.path === "" ? segment : `${at.path}/${segment}`,
       name: segment,
       files: [],
       children: new Map(),
     };
+
     at.children.set(segment, made);
     at = made;
   }
+
   return at;
 };
 
@@ -182,12 +192,15 @@ const trieOf = (input: InferInput, generalize: ReadonlyArray<Generalization>): T
     files: [],
     children: new Map(),
   }));
+
   for (const file of input.files) {
     const folder = rewrite(dirnameOf(file), generalize);
     const root = roots.find((one) => isUnder(folder, one.path));
+
     if (root === undefined) continue;
     folderAt(root, folder).files.push(file);
   }
+
   return roots;
 };
 
@@ -202,19 +215,25 @@ type Bases = {
 
 const basesOf = (input: InferInput, generalize: ReadonlyArray<Generalization>): Bases => {
   const all = new Set<string>(input.roots);
+
   for (const one of input.packages) {
     all.add(rewrite(one.root, generalize));
+
     if (one.source !== null) all.add(rewrite(one.source, generalize));
   }
+
   return { all: sorted(all) };
 };
 
 const baseOf = (folder: string, bases: Bases): string => {
   let best: string | null = null;
+
   for (const base of bases.all) {
     if (!isUnder(folder, base)) continue;
+
     if (best === null || base.length > best.length) best = base;
   }
+
   return best ?? "";
 };
 
@@ -257,18 +276,22 @@ const nodeOf = (folder: Folder, input: InferInput, bases: Bases): Node => {
     external: new Set(),
     edges: 0,
   };
+
   const absorb = (from: Folder): void => {
     for (const child of from.children.values()) {
       if (isNode(child, input, bases)) {
         node.children.set(child.name, nodeOf(child, input, bases));
       } else {
         node.stray = true;
+
         for (const file of child.files) node.files.push(file);
         absorb(child);
       }
     }
   };
+
   absorb(folder);
+
   return node;
 };
 
@@ -276,19 +299,25 @@ const nodeOf = (folder: Folder, input: InferInput, bases: Bases): Node => {
 // no walk root does.
 const governorOf = (p: string, roots: ReadonlyArray<Node>): Node | null => {
   const root = roots.find((one) => isUnder(p, one.path));
+
   if (root === undefined) return null;
+
   const descend = (at: Node): Node => {
     for (const child of at.children.values()) if (isUnder(p, child.path)) return descend(child);
+
     return at;
   };
+
   return descend(root);
 };
 
 const eachNode = (roots: ReadonlyArray<Node>, visit: (node: Node) => void): void => {
   const walk = (node: Node): void => {
     visit(node);
+
     for (const child of node.children.values()) walk(child);
   };
+
   for (const root of roots) walk(root);
 };
 
@@ -308,18 +337,22 @@ const entryFor = (
 ): string => {
   const rewritten = rewrite(target, generalize);
   const node = governorOf(rewritten, roots);
+
   if (node === null) return target;
 
   const from = memberOf(importer, generalize);
   const to = memberOf(target, generalize);
+
   const sameGroup =
     from !== null &&
     to !== null &&
     from.group.parent === to.group.parent &&
     from.group.capture === to.group.capture;
+
   if (to !== null && sameGroup && to.member !== from.member) {
     const reach = to.group.crossReach;
     const folder = to.group.parent === "" ? to.member : `${to.group.parent}/${to.member}`;
+
     if (reach !== null && target === `${folder}/${reach}`) {
       return `${to.group.parent === "" ? "" : `${to.group.parent}/`}*/${reach}`;
     }
@@ -327,8 +360,10 @@ const entryFor = (
 
   const direct = dirnameOf(rewritten) === node.path && node.children.size > 0;
   const glob = `${node.path}/${direct ? "*" : "**"}`;
+
   if (to === null) return glob;
   const sameMember = sameGroup && from.member === to.member;
+
   return sameMember ? glob : glob.replace(`{${to.group.capture}}`, "*");
 };
 
@@ -341,6 +376,7 @@ const fillAllowSets = (
     for (const file of node.files) {
       for (const target of input.targetsOf(file)) {
         node.edges += 1;
+
         switch (target.kind) {
           case "local":
             node.allow.add(entryFor(file, target.path, roots, generalize));
@@ -364,21 +400,23 @@ const fillAllowSets = (
 // its own. The first segment is the name, the rest is what it is.
 const stereotypeOf = (file: string): string => {
   const parts = basenameOf(file).split(".");
+
   return parts.length >= 3 ? `*.${parts.slice(1).join(".")}` : basenameOf(file);
 };
 
 const intersect = (a: ReadonlySet<string>, b: ReadonlySet<string>): ReadonlyArray<string> =>
   sorted([...a].filter((one) => b.has(one)));
 
-const alike = (a: Shape, b: Shape): boolean => {
+const alike = (a: Profile, b: Profile): boolean => {
   if (intersect(a.folders, b.folders).length >= 2) return true;
   const union = new Set([...a.stereotypes, ...b.stereotypes]);
+
   return union.size > 0 && intersect(a.stereotypes, b.stereotypes).length / union.size >= 0.5;
 };
 
-type Shape = { readonly folders: ReadonlySet<string>; readonly stereotypes: ReadonlySet<string> };
+type Profile = { readonly folders: ReadonlySet<string>; readonly stereotypes: ReadonlySet<string> };
 
-const shapeOf = (folder: Folder): Shape => ({
+const profileOf = (folder: Folder): Profile => ({
   folders: new Set(folder.children.keys()),
   stereotypes: new Set(folder.files.map(stereotypeOf)),
 });
@@ -387,6 +425,7 @@ const shapeOf = (folder: Folder): Shape => ({
 // human would name the capture; anything unpronounceable is `name`.
 export const singularOf = (plural: string): string => {
   const word = plural.replace(/[^A-Za-z0-9]/g, "");
+
   const singular = /ies$/.test(word)
     ? word.replace(/ies$/, "y")
     : /(ses|xes|zes|shes|ches)$/.test(word)
@@ -394,31 +433,38 @@ export const singularOf = (plural: string): string => {
       : /[^s]s$/.test(word)
         ? word.slice(0, -1)
         : word;
+
   return singular === "" || /^[0-9]/.test(singular) ? "name" : singular;
 };
 
 const groupsOf = (
-  members: ReadonlyArray<[string, Shape]>,
+  members: ReadonlyArray<[string, Profile]>,
 ): ReadonlyArray<ReadonlyArray<string>> => {
   const parent = new Map<string, string>(members.map(([name]) => [name, name]));
+
   const find = (name: string): string => {
     let at = name;
+
     while ((parent.get(at) ?? at) !== at) at = parent.get(at) ?? at;
+
     return at;
   };
-  for (const [i, [a, shapeA]] of members.entries()) {
-    for (const [b, shapeB] of members.slice(i + 1)) {
-      if (alike(shapeA, shapeB)) parent.set(find(a), find(b));
+
+  for (const [i, [a, profileA]] of members.entries()) {
+    for (const [b, profileB] of members.slice(i + 1)) {
+      if (alike(profileA, profileB)) parent.set(find(a), find(b));
     }
   }
+
   const groups = new Map<string, Array<string>>();
+
   for (const [name] of members) {
     const key = find(name);
     groups.set(key, [...(groups.get(key) ?? []), name]);
   }
+
   return [...groups.values()]
-    .filter((group) => group.length >= 2)
-    .map((group) => sorted(group))
+    .flatMap((group) => (group.length >= 2 ? [sorted(group)] : []))
     .sort((a, b) => (a[0] ?? "").localeCompare(b[0] ?? ""));
 };
 
@@ -436,30 +482,42 @@ export const candidatesOf = (
 
   eachNode(roots, (node) => {
     if (node.path.includes("{") || node.children.size < 2) return;
-    const members: ReadonlyArray<[string, Shape]> = sorted(node.children.keys()).flatMap((name) => {
-      const folder = node.folder.children.get(name);
-      return folder === undefined ? [] : [[name, shapeOf(folder)] as [string, Shape]];
-    });
-    const shapes = new Map(members);
+
+    const members: ReadonlyArray<[string, Profile]> = sorted(node.children.keys()).flatMap(
+      (name) => {
+        const folder = node.folder.children.get(name);
+
+        return folder === undefined ? [] : [[name, profileOf(folder)] as [string, Profile]];
+      },
+    );
+
+    const profiles = new Map(members);
     const taken = new Set<string>();
+
     for (const group of groupsOf(members)) {
-      const shapesOfGroup = group.flatMap((name) => {
-        const shape = shapes.get(name);
-        return shape === undefined ? [] : [shape];
+      const profilesOfGroup = group.flatMap((name) => {
+        const profile = profiles.get(name);
+
+        return profile === undefined ? [] : [profile];
       });
-      const sharedOf = (pick: (shape: Shape) => ReadonlySet<string>): ReadonlyArray<string> => {
-        const [head, ...rest] = shapesOfGroup;
+
+      const sharedOf = (pick: (profile: Profile) => ReadonlySet<string>): ReadonlyArray<string> => {
+        const [head, ...rest] = profilesOfGroup;
+
         if (head === undefined) return [];
+
         return sorted(
           rest.reduce<ReadonlySet<string>>(
-            (acc, shape) => new Set(intersect(acc, pick(shape))),
+            (acc, profile) => new Set(intersect(acc, pick(profile))),
             pick(head),
           ),
         );
       };
-      const sharedFolders = sharedOf((shape) => shape.folders);
-      const sharedStereotypes = sharedOf((shape) => shape.stereotypes);
+
+      const sharedFolders = sharedOf((profile) => profile.folders);
+      const sharedStereotypes = sharedOf((profile) => profile.stereotypes);
       let capture = singularOf(node.folder.name);
+
       for (let n = 2; taken.has(capture); n += 1)
         capture = `${singularOf(node.folder.name)}${String(n)}`;
       taken.add(capture);
@@ -467,21 +525,28 @@ export const candidatesOf = (
       // Edges between members, and whether they all land on one place.
       const memberFolder = (name: string): string =>
         node.path === "" ? name : `${node.path}/${name}`;
+
       const isIn = (p: string): string | null =>
         group.find((name) => isUnder(p, memberFolder(name))) ?? null;
+
       let crossEdges = 0;
       const landings = new Set<string>();
+
       for (const file of input.files) {
         const from = isIn(file);
+
         if (from === null) continue;
+
         for (const target of input.targetsOf(file)) {
           if (target.kind !== "local") continue;
           const to = isIn(target.path);
+
           if (to === null || to === from) continue;
           crossEdges += 1;
           landings.add(target.path.slice(memberFolder(to).length + 1));
         }
       }
+
       const [landing] = sorted(landings);
       candidates.push({
         parent: node.path,
@@ -497,6 +562,7 @@ export const candidatesOf = (
 
   return candidates.sort((a, b) => {
     const byParent = a.parent.localeCompare(b.parent);
+
     return byParent !== 0 ? byParent : (a.members[0] ?? "").localeCompare(b.members[0] ?? "");
   });
 };
@@ -512,29 +578,38 @@ const sameList = (a: ReadonlyArray<string>, b: ReadonlyArray<string>): boolean =
 
 const collapse = (node: Node): void => {
   for (const child of node.children.values()) collapse(child);
+
   if (node.children.size === 0) return;
   const children = [...node.children.values()];
+
   if (children.some((child) => child.children.size > 0)) return;
 
   const [first] = children;
+
   if (first === undefined) return;
   const shared = normalized(first, node.path);
   const externals = sorted(first.external);
+
   const agree = children.every(
     (child) =>
       sameList(normalized(child, node.path), shared) && sameList(sorted(child.external), externals),
   );
+
   if (!agree) return;
   const own = normalized(node, node.path);
+
   if (!own.every((entry) => shared.includes(entry))) return;
+
   if (!sorted(node.external).every((entry) => externals.includes(entry))) return;
 
   node.allow = new Set(shared);
   node.external = new Set(externals);
+
   for (const child of children) {
     for (const file of child.files) node.files.push(file);
     node.edges += child.edges;
   }
+
   node.children = new Map();
   node.stray = true;
 };
@@ -544,11 +619,14 @@ const collapse = (node: Node): void => {
 
 const shortenWith = (aliases: Readonly<Record<string, string>>) => {
   const entries = Object.entries(aliases).sort(([, a], [, b]) => b.length - a.length);
+
   return (p: string): string => {
     for (const [alias, target] of entries) {
       if (p === target) return alias;
+
       if (p.startsWith(`${target}/`)) return `${alias}${p.slice(target.length)}`;
     }
+
     return p;
   };
 };
@@ -561,6 +639,7 @@ export const inferManifest = (input: InferInput, options: InferOptions): Inferre
   const bases = basesOf(input, generalize);
   const roots = trie.map((folder) => nodeOf(folder, input, bases));
   fillAllowSets(roots, input, generalize);
+
   if (options.collapse) for (const root of roots) collapse(root);
 
   const shorten = shortenWith(options.aliases ?? {});
@@ -570,11 +649,14 @@ export const inferManifest = (input: InferInput, options: InferOptions): Inferre
 
   const describe = (node: Node): string => {
     const membership = generalize.find((group) => capturedPathOf(group) === node.path);
+
     const across =
       membership === undefined
         ? ""
         : ` across ${String(membership.members.length)} ${basenameOf(membership.parent)} (${membership.members.join(", ")})`;
+
     const count = (n: number, noun: string): string => `${String(n)} ${noun}${n === 1 ? "" : "s"}`;
+
     return node.files.length === 0
       ? `As built on ${options.date}: no files of its own.`
       : `As built on ${options.date}${across}: ${count(node.files.length, "file")}, ${count(node.edges, "edge")}.`;
@@ -584,10 +666,13 @@ export const inferManifest = (input: InferInput, options: InferOptions): Inferre
     nodes += 1;
     files += node.files.length;
     const children: Record<string, ManifestNode> = {};
+
     for (const name of sorted(node.children.keys())) {
       const child = node.children.get(name);
+
       if (child !== undefined) children[child.key] = emit(child);
     }
+
     if (node.stray) children[CATCH_ALL] = { layout: "open", children: {} };
 
     const imports =
@@ -601,6 +686,7 @@ export const inferManifest = (input: InferInput, options: InferOptions): Inferre
               ...(node.external.size > 0 ? { external: sorted(node.external) } : {}),
             },
           };
+
     if (node.files.length > 0) unrestricted += 1;
 
     return {
@@ -612,9 +698,11 @@ export const inferManifest = (input: InferInput, options: InferOptions): Inferre
   };
 
   const tree: Record<string, ManifestNode> = {};
+
   for (const root of roots) tree[`${shorten(root.path)}/`] = emit(root);
 
   const within = input.roots.map((root) => shorten(`${root}/**`));
+
   const manifest: Manifest = {
     resolve: options.resolve,
     baseline: options.baseline,

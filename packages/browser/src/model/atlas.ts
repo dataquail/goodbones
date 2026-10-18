@@ -231,6 +231,7 @@ const escapeRegExp = (literal: string): string => literal.replace(/[.+^$()|[\]\\
 
 const dirnameOf = (file: string): string => {
   const at = file.lastIndexOf("/");
+
   return at === -1 ? "" : file.slice(0, at);
 };
 
@@ -258,14 +259,17 @@ const positionAt = (
   path: ManifestPath,
 ): AtlasPosition | null => {
   const found = locate?.(path);
+
   if (found === null || found === undefined) return null;
   const directory = dirnameOf(manifestPath);
+
   const file =
     found.file === undefined
       ? manifestPath
       : directory === ""
         ? found.file
         : `${directory}/${found.file}`;
+
   return { file, line: found.line, column: found.column };
 };
 
@@ -277,8 +281,10 @@ const walkTree = (
 ): ReadonlyArray<WalkedNode> => {
   const aliases = policy.config.aliases ?? {};
   const walked: Array<WalkedNode> = [];
+
   const allowlistOf = (id: string): CompiledImportRule | undefined =>
     policy.importRules.find((rule) => rule.name === `${id}/imports`);
+
   const ruleNames = [
     ...policy.importRules.map((rule) => rule.name),
     ...policy.memberRules.map((rule) => rule.name),
@@ -304,12 +310,15 @@ const walkTree = (
       .filter((sibling) => sibling !== key)
       .flatMap(alternativesOf)
       .filter((sibling) => !WILDCARD.test(sibling));
+
     const alternatives = alternativesOf(key).map((one) => expandAliases(one, aliases));
     const [first = ""] = alternatives;
+
     const compiledFirst = globToRegexSource(first, parent.captures, {
       declaring: true,
       nextGroup: parent.nextGroup,
     });
+
     const source =
       alternatives.length === 1
         ? compiledFirst.source
@@ -322,14 +331,18 @@ const walkTree = (
                 }).source,
             )
             .join("|")})`;
+
     const guarded =
       literalSiblings.length > 0 && WILDCARD.test(first)
         ? `(?!(?:${literalSiblings.map(escapeRegExp).join("|")})(?:/|$))${source}`
         : source;
+
     const pathSource = parent.pathSource === "" ? guarded : `${parent.pathSource}/${guarded}`;
+
     const nextGroup =
       parent.nextGroup +
       (Object.keys(compiledFirst.captures).length - Object.keys(parent.captures).length);
+
     const frame: Frame = { pathSource, captures: compiledFirst.captures, nextGroup };
     const isFolder = FOLDER_KEY.test(key) || node.children !== undefined;
     const self = new RegExp(anchored(pathSource));
@@ -340,6 +353,7 @@ const walkTree = (
 
     const allowlist = allowlistOf(id);
     const own = (allowlist?.allowances ?? []).filter((one) => one.node === id);
+
     const imports =
       node.imports === undefined
         ? null
@@ -418,6 +432,7 @@ const walkTree = (
   };
 
   const roots = Object.entries(policy.config.tree);
+
   for (const [key, node] of roots) {
     walk(
       key,
@@ -433,6 +448,7 @@ const walkTree = (
       ["tree", key],
     );
   }
+
   return walked;
 };
 
@@ -441,20 +457,26 @@ const walkTree = (
 const chainOf = (nodes: ReadonlyArray<WalkedNode>, file: string): ReadonlyArray<AtlasNode> => {
   const matching = nodes.filter((one) => one.matches(file));
   const byDepth = new Map<number, WalkedNode>();
+
   for (const one of matching) {
     const held = byDepth.get(one.node.depth);
+
     if (held === undefined || one.wildcards < held.wildcards) byDepth.set(one.node.depth, one);
   }
+
   const chain = [...byDepth.values()].sort((a, b) => a.node.depth - b.node.depth);
   // A node only governs through its ancestors: drop anything whose parent is
   // not the previous link.
   const linked: Array<AtlasNode> = [];
+
   for (const one of chain) {
     const previous = linked[linked.length - 1];
+
     if (previous === undefined ? one.node.parent === null : one.node.parent === previous.id) {
       linked.push(one.node);
     }
   }
+
   return linked;
 };
 
@@ -464,6 +486,7 @@ const admittedBy = (
   target: { readonly kind: string; readonly path: string; readonly package?: string },
 ): { node: string; entry: string; fragment: string | null } | null => {
   if (allowlist === undefined || captures === null) return null;
+
   for (const allowance of allowlist.allowances) {
     if (allowance.kind === "external") {
       if (target.kind === "external" && target.package === allowance.entry) {
@@ -473,12 +496,15 @@ const admittedBy = (
           fragment: allowance.fragment ?? null,
         };
       }
+
       continue;
     }
+
     if (allowance.pattern !== undefined && matchesAny([allowance.pattern], captures, target.path)) {
       return { node: allowance.node, entry: allowance.entry, fragment: allowance.fragment ?? null };
     }
   }
+
   return null;
 };
 
@@ -502,9 +528,11 @@ export const buildAtlas = (input: AtlasInput): Atlas => {
     const selectedExports = exportRulesSelecting(policy.exportRules, file);
     const selectedMembers = memberRulesSelecting(policy.memberRules, file);
     const selectedSurface = surfaceRulesSelecting(policy.surfaceRules, file);
+
     const allowlist = selectedImports
       .map(([rule]) => rule)
       .find((rule) => rule.to.length === 0 && rule.toNot.length > 0);
+
     const captures = allowlist === undefined ? null : firstFromMatch(allowlist, file);
     importRulesOf.set(
       file,
@@ -514,12 +542,15 @@ export const buildAtlas = (input: AtlasInput): Atlas => {
     for (const violation of evaluateStructure(policy.structure, policy.fileSystem, file)) {
       violations.push(violation);
     }
+
     for (const violation of evaluateSurface(selectedSurface, file, facts.exportSites)) {
       violations.push(violation);
     }
+
     for (const site of facts.memberSites) {
       for (const violation of evaluateMemberSite(selectedMembers, site)) violations.push(violation);
     }
+
     requiresOf.set(
       file,
       policy.structure.parity
@@ -538,8 +569,10 @@ export const buildAtlas = (input: AtlasInput): Atlas => {
     );
 
     const targets = new Set<string>();
+
     for (const specifier of facts.specifiers) {
       const resolved = policy.resolver.resolve(file, specifier);
+
       if (Result.isFailure(resolved)) {
         if (
           policy.config.resolve.unresolved !== "off" &&
@@ -547,36 +580,47 @@ export const buildAtlas = (input: AtlasInput): Atlas => {
         ) {
           unresolved.push({ file, specifier, detail: resolved.failure.detail });
         }
+
         continue;
       }
+
       const target = resolved.success;
+
       const refused =
         selectedImports.length === 0 ? [] : evaluateResolvedEdge(selectedImports, file, target);
+
       for (const violation of refused) violations.push(violation);
+
       if (selectedImports.length > 0) observed.push({ importer: file, target });
+
       const status: EdgeStatus =
         refused.length > 0 ? "refused" : allowlist === undefined ? "ungoverned" : "allowed";
 
       const bound = facts.bindings.get(specifier) ?? [];
+
       const exported = evaluateSelectedBindings(selectedExports, policy.resolver, {
         importer: file,
         specifier,
         bindings: bound,
       });
+
       if (!Result.isFailure(exported)) {
         for (const { violation } of exported.success) violations.push(violation);
       }
 
       if (target.kind === "builtin") {
         const held = builtinsOf.get(file) ?? [];
+
         if (!held.includes(target.path)) held.push(target.path);
         builtinsOf.set(file, held);
         continue;
       }
+
       if (target.kind === "external") {
         const name = target.package ?? target.path;
         const held = externalsOf.get(file) ?? [];
         const existing = held.find((one) => one.package === name);
+
         if (existing === undefined) {
           const by = admittedBy(allowlist, captures, target);
           held.push({
@@ -592,17 +636,21 @@ export const buildAtlas = (input: AtlasInput): Atlas => {
             status: existing.status === "refused" ? "refused" : status,
           });
         }
+
         externalsOf.set(file, held);
         continue;
       }
+
       if (!known.has(target.path)) outside.add(target.path);
       else targets.add(target.path);
       const key = `${file}\u0000${target.path}`;
       const held = edgeMap.get(key);
+
       const refusedBy = refused.map((violation) => ({
         rule: violation.ruleName,
         message: formatMessage(violation),
       }));
+
       if (held === undefined) {
         edgeMap.set(key, {
           from: file,
@@ -624,23 +672,29 @@ export const buildAtlas = (input: AtlasInput): Atlas => {
         });
       }
     }
+
     graphEdges.set(file, [...targets]);
   }
 
   const graph: Graph = { files: input.files, edges: graphEdges };
+
   if (hasGraphRules(policy.graph)) {
     for (const violation of evaluateGraph(policy.graph, graph)) violations.push(violation);
   }
+
   const cycles = cyclesIn(graph).length;
 
   const slack = slackOf(policy.importRules, observed, input.files);
+
   const unusedKeys = new Set(
     slack.slack.map((one) => `${one.fragment ?? one.node}\u0000${one.kind}\u0000${one.entry}`),
   );
+
   const nodes = walkTree(policy, input.locate, input.manifestPath, unusedKeys);
   const governed = new Map<string, number>();
 
   const violationsByFile = new Map<string, number>();
+
   for (const violation of violations) {
     violationsByFile.set(violation.file, (violationsByFile.get(violation.file) ?? 0) + 1);
   }
@@ -648,7 +702,9 @@ export const buildAtlas = (input: AtlasInput): Atlas => {
   const fileOf = (path: string, walked: boolean): AtlasFile => {
     const chain = walked ? chainOf(nodes, path) : [];
     const node = chain[chain.length - 1]?.id ?? null;
+
     if (node !== null) governed.set(node, (governed.get(node) ?? 0) + 1);
+
     return {
       path,
       name: basenameOf(path),
@@ -663,21 +719,26 @@ export const buildAtlas = (input: AtlasInput): Atlas => {
       violations: violationsByFile.get(path) ?? 0,
     };
   };
+
   const files = [
     ...input.files.map((path) => fileOf(path, true)),
     ...[...outside].sort().map((path) => fileOf(path, false)),
   ].sort((a, b) => a.path.localeCompare(b.path));
 
   const folderPaths = new Set<string>();
+
   for (const file of files) {
     let folder = file.folder;
+
     while (folder !== "" && !folderPaths.has(folder)) {
       folderPaths.add(folder);
       folder = dirnameOf(folder);
     }
   }
+
   const folders: ReadonlyArray<AtlasFolder> = [...folderPaths].sort().map((path) => {
     const chain = chainOf(nodes, `${path}/zzprobe`);
+
     return {
       path,
       name: basenameOf(path),
@@ -689,6 +750,7 @@ export const buildAtlas = (input: AtlasInput): Atlas => {
   });
 
   const position = (path: ManifestPath) => positionAt(input.locate, input.manifestPath, path);
+
   const rules: Array<AtlasRule> = [
     ...(policy.config.exports ?? []).map((rule, index) => ({
       family: "exports" as const,
@@ -732,6 +794,7 @@ export const buildAtlas = (input: AtlasInput): Atlas => {
     folders,
     edges: [...edgeMap.values()].sort((a, b) => {
       const byFrom = a.from.localeCompare(b.from);
+
       return byFrom !== 0 ? byFrom : a.to.localeCompare(b.to);
     }),
     violations: violations

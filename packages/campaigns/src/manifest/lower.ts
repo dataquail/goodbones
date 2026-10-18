@@ -63,7 +63,7 @@ const SYNTAX_RULE_KEYS = [
   "not",
 ] as const;
 
-const syntaxRuleOf = (term: SyntaxTermSpec): unknown =>
+const syntaxRuleOf = (term: SyntaxTermSpec): Readonly<Record<string, unknown>> =>
   Object.fromEntries(
     SYNTAX_RULE_KEYS.flatMap((key) => (term[key] === undefined ? [] : [[key, term[key]]])),
   );
@@ -75,14 +75,18 @@ const TERMS_NEEDING_SOURCE = ["content", "syntax", "exports", "members", "fn"] a
 
 const leafTermsOf = (detector: DetectorSpec): ReadonlyArray<string> => {
   if ("all" in detector) return detector.all.flatMap(leafTermsOf);
+
   if ("any" in detector) return detector.any.flatMap(leafTermsOf);
+
   if ("not" in detector) return leafTermsOf(detector.not);
+
   return Object.keys(detector);
 };
 
 // The families an `endState` tree can expand into — one synthetic objective
 // per family the lowered tree actually produces rules for.
 const END_STATE_FAMILIES = ["imports", "exports", "members", "surface", "structure"] as const;
+
 type EndStateFamily = (typeof END_STATE_FAMILIES)[number];
 
 // The id a family's synthetic objective carries, `end-state-<family>`, and
@@ -115,24 +119,30 @@ export const lowerEndState = (
       : glob.startsWith("~/")
         ? `${root}/${glob.slice(2)}`
         : glob;
+
   const walk = (value: unknown, key: string): unknown => {
     if (Array.isArray(value)) {
       return value.flatMap((item: unknown) => {
         if (key === "allow" && isRecord(item) && typeof item.via === "string") {
           const named = item.sector;
+
           // `~/ports/` names a folder: everything under it.
           const via = (item.via.startsWith("~/") ? item.via.slice(2) : String(item.via)).replace(
             /\/$/,
             "/**",
           );
-          return sectors
-            .filter((one) => named === "*" || named === undefined || one.name === named)
-            .filter((one) => one.root !== root)
-            .map((one) => `${one.root}/${via}`);
+
+          return sectors.flatMap((one) =>
+            (named === "*" || named === undefined || one.name === named) && one.root !== root
+              ? [`${one.root}/${via}`]
+              : [],
+          );
         }
+
         return [walk(item, key)];
       });
     }
+
     if (isRecord(value)) {
       return Object.fromEntries(
         Object.entries(value).map(([childKey, child]) => [
@@ -141,14 +151,19 @@ export const lowerEndState = (
         ]),
       );
     }
+
     return typeof value === "string" ? rebase(value) : value;
   };
+
   const rebaseKey = (key: string): string => (key === "~/" ? `${root}/` : key);
   const rebased = decodeManifestTree(walk(tree, ""));
+
   if (Result.isFailure(rebased)) {
     throw new Error(`the endState does not decode as a tree:\n${rebased.failure}`);
   }
+
   const manifest: Manifest = { resolve, aliases, tree: rebased.success };
+
   return lowerManifest(manifest, languages, {});
 };
 
@@ -159,11 +174,13 @@ const endStateFamiliesOf = (
   languages: ReadonlyArray<ProbeLanguage>,
 ): ReadonlyArray<EndStateFamily> => {
   const lowered = lowerEndState(tree, END_STATE_ROOT, [], resolve, languages);
+
   const structure =
     lowered.structure.roots.length +
     lowered.structure.folders.length +
     lowered.structure.parity.length +
     lowered.structure.naming.length;
+
   return END_STATE_FAMILIES.filter((family) =>
     family === "structure" ? structure > 0 : lowered[family].length > 0,
   );
@@ -188,10 +205,12 @@ const lowerCampaign = (
       globToRegexSource(expandAliases(glob, aliases), {}, { declaring: false, nextGroup: 1 })
         .source,
     );
+
   const asName = (globs: string | ReadonlyArray<string>): ReadonlyArray<string> =>
     globsOf(globs).map((one) =>
       anchored(globToRegexSource(one, {}, { declaring: false, nextGroup: 1 }).source),
     );
+
   const asWhole = (globs: string | ReadonlyArray<string>): ReadonlyArray<string> =>
     globsOf(globs).map((one) =>
       anchored(
@@ -199,31 +218,39 @@ const lowerCampaign = (
           .source,
       ),
     );
+
   const refuse = (detail: string): never => {
     throw new Error(`campaign "${id}" ${detail}`);
   };
 
   const lower = (detector: DetectorSpec, objective: string): Detector => {
     if ("all" in detector) return { all: detector.all.map((one) => lower(one, objective)) };
+
     if ("any" in detector) return { any: detector.any.map((one) => lower(one, objective)) };
+
     if ("not" in detector) return { not: lower(detector.not, objective) };
+
     if ("path" in detector) {
       const { convention, ...rest } = detector.path;
+
       const conventionSource =
         convention === undefined
           ? undefined
           : typeof convention === "string"
             ? CONVENTIONS[convention]?.source
             : convention.regex;
+
       if (convention !== undefined && conventionSource === undefined) {
         refuse(`(${objective}) names an unknown convention "${String(convention)}".`);
       }
+
       if (conventionSource !== undefined && rest.subject === undefined) {
         refuse(
           `(${objective}) states a path convention with no \`subject\`: say which ` +
             `capture group of \`file\` holds the name the convention is about.`,
         );
       }
+
       return {
         path: {
           file: globsOf(rest.file),
@@ -233,8 +260,10 @@ const lowerCampaign = (
         },
       };
     }
+
     if ("imports" in detector) {
       const { resolves, symbols } = detector.imports;
+
       return {
         imports: {
           resolves: typeof resolves === "string" ? asPath(resolves) : resolves,
@@ -242,8 +271,10 @@ const lowerCampaign = (
         },
       };
     }
+
     if ("exports" in detector) {
       const term = detector.exports;
+
       return {
         exports: {
           ...(term.name === undefined ? {} : { name: asName(term.name) }),
@@ -253,8 +284,10 @@ const lowerCampaign = (
         },
       };
     }
+
     if ("members" in detector) {
       const term = detector.members;
+
       return {
         members: {
           subject: term.subject,
@@ -264,12 +297,16 @@ const lowerCampaign = (
         },
       };
     }
+
     if ("requires" in detector) return { requires: [...detector.requires] };
+
     if ("content" in detector) return { content: { regex: detector.content.regex } };
+
     if ("report" in detector) {
       // Exactly one of `command` and `file`, and a pattern for `regex`: the
       // manifest schema refused anything else at decode.
       const term = detector.report;
+
       return {
         report: {
           ...(term.command === undefined ? {} : { command: globsOf(term.command) }),
@@ -281,8 +318,10 @@ const lowerCampaign = (
         },
       };
     }
+
     if ("syntax" in detector) {
       const { where } = detector.syntax;
+
       const narrowed =
         where === undefined
           ? {}
@@ -309,8 +348,10 @@ const lowerCampaign = (
                 ]),
               ),
             };
+
       return { syntax: { rule: syntaxRuleOf(detector.syntax), ...narrowed } };
     }
+
     return { fn: detector.fn };
   };
 
@@ -326,6 +367,7 @@ const lowerCampaign = (
     const needsSource = TERMS_NEEDING_SOURCE.filter((term) => leaves.includes(term));
     const all = [...(probes?.fires ?? []), ...(probes?.ignores ?? [])];
     const sourceless = all.find((probe) => probe.source === undefined);
+
     if (needsSource.length > 0 && sourceless !== undefined) {
       refuse(
         `(${what}) has a probe (${sourceless.path}) with no \`source\`, and its ` +
@@ -333,14 +375,17 @@ const lowerCampaign = (
           `a path alone cannot exercise. Give every probe a source.`,
       );
     }
+
     return { fires: [...(probes?.fires ?? [])], ignores: [...(probes?.ignores ?? [])] };
   };
 
   const scopeSpec = campaign.scope ?? "**";
+
   const scopeGlobs =
     typeof scopeSpec === "string" || Array.isArray(scopeSpec)
       ? globsOf(scopeSpec as string | ReadonlyArray<string>)
       : globsOf((scopeSpec as { readonly path: string | ReadonlyArray<string> }).path);
+
   const extensions =
     typeof scopeSpec === "string" || Array.isArray(scopeSpec)
       ? []
@@ -350,6 +395,7 @@ const lowerCampaign = (
     ([objectiveId, spec]) => {
       const name = `campaign/${id}/${objectiveId}`;
       const message = spec.how ?? campaign.how ?? `${objectiveId} (${id})`;
+
       const base = {
         name,
         id: objectiveId,
@@ -361,20 +407,24 @@ const lowerCampaign = (
         ...(spec.over === undefined ? {} : { over: spec.over }),
         ...(spec.onAhead === undefined ? {} : { onAhead: spec.onAhead }),
       };
+
       if (spec.over !== undefined && campaign.shared === undefined) {
         refuse(
           `(${objectiveId}) is \`over: shared\`, and the campaign declares no \`shared\`. ` +
             `Name the files every sector shares, or drop \`over\`.`,
         );
       }
+
       if (spec.over !== undefined && spec.until !== undefined) {
         refuse(
           `(${objectiveId}) is \`over: shared\` and runs \`until: ${spec.until}\`. The ` +
             `shared files stand on no phase, so they never pass one: a window there has no end to reach.`,
         );
       }
+
       if (spec.measure !== undefined) {
         const measure = spec.measure;
+
         if ("command" in measure && campaign.perimeter !== undefined) {
           refuse(
             `(${objectiveId}) measures a \`command\`, and the campaign has a perimeter. A ` +
@@ -382,12 +432,14 @@ const lowerCampaign = (
               `campaign with no perimeter, whose scope is its one sector.`,
           );
         }
+
         const source = (one: MeasureSourceSpec): MeasureSource =>
           "report" in one || "fn" in one
             ? (lower(one, objectiveId) as MeasureSource)
             : "lines" in one
               ? { lines: true }
               : { files: true };
+
         const lowered: Measure =
           "ratio" in measure
             ? {
@@ -403,8 +455,10 @@ const lowerCampaign = (
                   ...(measure.pattern === undefined ? {} : { pattern: measure.pattern }),
                 }
               : source(measure);
+
         if ("command" in measure && measure.pattern !== undefined) {
           let groups: Readonly<Record<string, unknown>> | undefined;
+
           try {
             groups = new RegExp(`${measure.pattern}|`).exec("")?.groups;
           } catch (cause) {
@@ -412,12 +466,14 @@ const lowerCampaign = (
               `(${objectiveId}) has a \`pattern\` that is not a regular expression: ${String(cause)}`,
             );
           }
+
           if (groups === undefined || !("value" in groups)) {
             refuse(
               `(${objectiveId}) has a \`pattern\` with no named group \`value\` to read the number from.`,
             );
           }
         }
+
         return {
           ...base,
           measure: lowered,
@@ -430,6 +486,7 @@ const lowerCampaign = (
           },
         };
       }
+
       if (spec.match !== undefined) {
         return {
           ...base,
@@ -437,13 +494,16 @@ const lowerCampaign = (
           probes: checkProbes(objectiveId, spec.match, spec.probes),
         };
       }
+
       const term = spec.sector ?? refuse(`(${objectiveId}) has neither \`match\` nor \`sector\`.`);
+
       const sector: SectorTerm =
         "has" in term
           ? { has: lower(term.has, objectiveId) }
           : "oneRoot" in term
             ? { oneRoot: true }
             : { oneHost: globsOf(term.oneHost).map(asPath) };
+
       return {
         ...base,
         sector,
@@ -462,6 +522,7 @@ const lowerCampaign = (
   // an objective; the loader adds the end-shape check, which needs the
   // objectives evaluated on the probe.
   const perimeterSpec = campaign.perimeter;
+
   const perimeter: PerimeterRule | undefined =
     perimeterSpec === undefined
       ? undefined
@@ -490,6 +551,7 @@ const lowerCampaign = (
                   unit: perimeterSpec.holdout ?? "declaration",
                   probes: checkProbes("perimeter", perimeterSpec.match, perimeterSpec.probes),
                 };
+
   if (perimeter?.kind === "match" && perimeter.probes.fires.length === 0) {
     refuse(
       `has a \`match\` perimeter with no \`probes.fires\`. A perimeter is the sector's identity ` +
@@ -500,13 +562,16 @@ const lowerCampaign = (
   // The phases. An `endState` written on the campaign belongs to the last
   // phase; a campaign with none and an end state gets one phase, `end`.
   const phaseSpecs: Array<PhaseSpec> = [...(campaign.phases ?? [])];
+
   if (campaign.endState !== undefined) {
     const last = phaseSpecs.at(-1);
+
     if (last === undefined) phaseSpecs.push({ id: "end", endState: campaign.endState });
     else if (last.endState !== undefined) {
       refuse(`writes an \`endState\` on the campaign and on its last phase; write one.`);
     } else phaseSpecs[phaseSpecs.length - 1] = { ...last, endState: campaign.endState };
   }
+
   const objectiveIds = new Set(objectives.map((one) => one.id));
   const namedBy = new Map<string, string>();
   const phases: Array<PhaseRule> = [];
@@ -514,13 +579,16 @@ const lowerCampaign = (
     if (phases.some((one) => one.id === phase.id)) {
       refuse(`names the phase "${phase.id}" twice.`);
     }
+
     for (const objectiveId of phase.objectives ?? []) {
       if (!objectiveIds.has(objectiveId)) {
         refuse(
           `phase "${phase.id}" names an objective "${objectiveId}" the campaign does not declare.`,
         );
       }
+
       const named = objectives.find((one) => one.id === objectiveId);
+
       if (named?.measure !== undefined && named.target === undefined) {
         refuse(
           `phase "${phase.id}" names the scalar objective "${objectiveId}", which states no ` +
@@ -529,26 +597,35 @@ const lowerCampaign = (
             `as a standing measure.`,
         );
       }
+
       const already = namedBy.get(objectiveId);
+
       if (already !== undefined) {
         refuse(
           `names the objective "${objectiveId}" in two phases ("${already}" and "${phase.id}"); ` +
             `an objective belongs to at most one.`,
         );
       }
+
       namedBy.set(objectiveId, phase.id);
     }
+
     const expanded: Array<string> = [...(phase.objectives ?? [])];
+
     if (phase.endState !== undefined) {
       const families = endStateFamiliesOf(phase.endState, resolve, languages);
+
       if (families.length === 0) {
         refuse(`phase "${phase.id}" carries an \`endState\` that lowers to no rule at all.`);
       }
+
       for (const family of families) {
         const objectiveId = endStateObjectiveId(family);
+
         if (objectiveIds.has(objectiveId)) {
           refuse(`declares an objective "${objectiveId}", which its endState needs for itself.`);
         }
+
         objectiveIds.add(objectiveId);
         namedBy.set(objectiveId, phase.id);
         expanded.push(objectiveId);
@@ -565,19 +642,23 @@ const lowerCampaign = (
         });
       }
     }
+
     const defined = expanded.length > 0 || phase.attested === true;
+
     if (!defined && phase.intent === undefined) {
       refuse(
         `phase "${phase.id}" names no objective and states no \`intent\`. An open phase is a ` +
           `stated intent; a defined one names at least one objective (or is attested).`,
       );
     }
+
     if (!defined && index !== phaseSpecs.length - 1) {
       refuse(
         `phase "${phase.id}" is open (it names no objective) and is not last. A plan that has ` +
           `not been written cannot sit in the middle of one that has.`,
       );
     }
+
     phases.push({
       id: phase.id,
       ...(phase.intent === undefined ? {} : { intent: phase.intent }),
@@ -591,6 +672,7 @@ const lowerCampaign = (
       hash: "",
     });
   });
+
   // A window: from the phase that names the objective until the phase
   // `until` names, exclusive. Refused when `until` names no phase, or one
   // at or before the naming phase — the two ways a remove or a reorder
@@ -598,12 +680,15 @@ const lowerCampaign = (
   for (const objective of objectives) {
     if (objective.until === undefined) continue;
     const to = phases.findIndex((one) => one.id === objective.until);
+
     if (to === -1) {
       refuse(
         `objective "${objective.id}" runs \`until: ${objective.until}\`, and no phase has that id.`,
       );
     }
+
     const from = phases.findIndex((one) => one.id === namedBy.get(objective.id));
+
     if (from !== -1 && to <= from) {
       refuse(
         `objective "${objective.id}" is named by phase "${phases[from]?.id ?? ""}" and runs ` +
@@ -611,6 +696,7 @@ const lowerCampaign = (
       );
     }
   }
+
   // An objective's `onAhead` is held to what it can mean: a holdout a
   // sector can pay down before it stands at the phase that names it. A
   // scalar and the shared files have no such holdout, and an objective no
@@ -618,19 +704,24 @@ const lowerCampaign = (
   for (const objective of objectives) {
     if (objective.onAhead === undefined) continue;
     const what = `objective "${objective.id}" sets \`onAhead\``;
+
     if (objective.measure !== undefined) {
       refuse(`${what} and is a scalar objective, which holds nothing out to be paid ahead.`);
     }
+
     if (objective.over !== undefined) {
       refuse(`${what} and is \`over: shared\`; the shared files stand on no phase to be ahead of.`);
     }
+
     const from = phases.findIndex((one) => one.id === namedBy.get(objective.id));
+
     if (from === -1) {
       refuse(
         `${what} and no phase names it, so it is in window everywhere and never ahead; the ` +
           `setting would never apply.`,
       );
     }
+
     if (from === 0) {
       refuse(
         `${what} and is named by the first phase, which every sector has reached; the ` +
@@ -638,34 +729,41 @@ const lowerCampaign = (
       );
     }
   }
+
   // `grows` loosens a ratchet, so it is held to what it can mean: a scalar
   // the campaign declares, in window at the phase, and a phase with an end —
   // an open phase has nothing a rise is on the way to.
   for (const [index, phase] of phases.entries()) {
     for (const objectiveId of phase.grows ?? []) {
       const objective = objectives.find((one) => one.id === objectiveId);
+
       if (objective === undefined) {
         return refuse(
           `phase "${phase.id}" grows an objective "${objectiveId}" the campaign does not declare.`,
         );
       }
+
       if (objective.measure === undefined) {
         return refuse(
           `phase "${phase.id}" grows "${objectiveId}", which is not a scalar objective. A ` +
             `holdout is conceded by name, with a reason; only a number can be expected to rise.`,
         );
       }
+
       if (phase.objectives.length === 0 && !phase.attested) {
         refuse(
           `phase "${phase.id}" is open and grows "${objectiveId}". An open phase has no end a ` +
             `rise is on the way to; define the phase, or concede the rise.`,
         );
       }
+
       const from = phases.findIndex((one) => one.id === namedBy.get(objectiveId));
+
       const to =
         objective.until === undefined
           ? Number.POSITIVE_INFINITY
           : phases.findIndex((one) => one.id === objective.until);
+
       if (index < from || index >= to) {
         refuse(
           `phase "${phase.id}" grows "${objectiveId}", which is not in window there; the ` +
@@ -674,6 +772,7 @@ const lowerCampaign = (
       }
     }
   }
+
   // What a phase asks: its objectives and their detectors, whether it is
   // attested, its end state, what it grows — never its prose, and never
   // where it sits, so a phase inserted before it changes nothing here.
@@ -687,6 +786,7 @@ const lowerCampaign = (
       ...(phase.grows === undefined ? {} : { grows: [...phase.grows].sort() }),
       objectives: phase.objectives.map((objectiveId) => {
         const objective = objectives.find((one) => one.id === objectiveId);
+
         return {
           id: objectiveId,
           holdout: objective?.holdout,
@@ -712,8 +812,10 @@ const lowerCampaign = (
         };
       }),
     };
+
     return { ...phase, definition, hash: digest(definition) };
   });
+
   // The end is the last phase, so a change to it is a change to that
   // phase's hash already; a campaign with no phases has an end that is
   // every objective, digested as a phase of its own would be.

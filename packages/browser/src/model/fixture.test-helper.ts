@@ -128,6 +128,7 @@ export const manifest = (extra: Record<string, unknown> = {}): Record<string, un
 // MANIFEST_TEXT was written on.
 export const locate: ManifestLocator = (path) => {
   const key = path.map(String).join("/");
+
   const lines: Readonly<Record<string, number>> = {
     "tree/svc/": 6,
     "tree/svc//children/main.go": 12,
@@ -137,12 +138,15 @@ export const locate: ManifestLocator = (path) => {
     "tree/svc//children/adapters//children/*.go": 27,
     "graph/cycles/0": 1,
   };
+
   const line = lines[key];
+
   return line === undefined ? null : { line, column: 1 };
 };
 
 export const unwrap = <A, E>(result: Result.Result<A, E>): A => {
   if (Result.isFailure(result)) throw result.failure;
+
   return result.success;
 };
 

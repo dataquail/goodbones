@@ -49,6 +49,7 @@ const uses = (allowance: Allowance, captures: RegExpExecArray, target: ResolvedT
   if (allowance.kind === "external") {
     return target.kind === "external" && target.package === allowance.entry;
   }
+
   return allowance.pattern !== undefined && matchesAny([allowance.pattern], captures, target.path);
 };
 
@@ -86,10 +87,12 @@ export const slackOf = (
   const vacant = vacantNodesOf(rules, files);
 
   const declared = new Map<string, Declared>();
+
   for (const rule of rules) {
     for (const allowance of rule.allowances) {
       if (vacant.has(allowance.node)) continue;
       const key = groupKeyOf(allowance);
+
       const group = declared.get(key) ?? {
         node: allowance.fragment ?? allowance.node,
         kind: allowance.kind,
@@ -97,6 +100,7 @@ export const slackOf = (
         fragment: allowance.fragment,
         at: new Set<string>(),
       };
+
       group.at.add(allowance.node);
       declared.set(key, group);
     }
@@ -104,11 +108,14 @@ export const slackOf = (
 
   // Which (node, kind, entry) some edge passes through.
   const used = new Set<string>();
+
   for (const edge of edges) {
     for (const rule of rules) {
       if (rule.allowances.length === 0) continue;
       const captures = firstFromMatch(rule, edge.importer);
+
       if (captures === null) continue;
+
       for (const allowance of rule.allowances) {
         if (uses(allowance, captures, edge.target)) used.add(keyOf(allowance));
       }
@@ -117,19 +124,24 @@ export const slackOf = (
 
   const slack: Array<Slack> = [];
   const concentration: Array<Concentration> = [];
+
   for (const group of declared.values()) {
     const { entry, kind } = group;
     const usedAt = [...group.at].filter((node) => used.has(keyOf({ node, kind, entry }))).length;
+
     if (group.fragment === undefined) {
       if (usedAt === 0) slack.push({ node: group.node, kind, entry });
       continue;
     }
+
     const of = group.at.size;
+
     if (usedAt === 0) {
       slack.push({ node: group.node, kind, entry, fragment: group.fragment, of });
     } else if (usedAt < of) {
       concentration.push({ fragment: group.fragment, kind, entry, usedAt, of });
     }
   }
+
   return { slack, concentration };
 };

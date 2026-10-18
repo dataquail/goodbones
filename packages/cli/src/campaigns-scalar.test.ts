@@ -105,6 +105,7 @@ const git = (...args: ReadonlyArray<string>): string =>
 
 const policyAt = (now = "2026-10-01T00:00:00Z") => {
   process.env.ARCHITECTURE_NOW = now;
+
   return loadPolicy(root);
 };
 
@@ -113,13 +114,17 @@ const capture = async (effect: Effect.Effect<void, CliFailure>) => {
   const original = process.stdout.write.bind(process.stdout);
   process.stdout.write = (chunk: string) => {
     lines.push(String(chunk));
+
     return true;
   };
+
   try {
     const exit = await Effect.runPromiseExit(effect);
+
     const failure = Exit.isFailure(exit)
       ? (Cause.squash(exit.cause) as { message?: string })
       : null;
+
     return { exit, output: lines.join(""), failure: failure?.message ?? "" };
   } finally {
     process.stdout.write = original;
@@ -133,6 +138,7 @@ const check = async (now?: string) => {
       manifestPath: path.join(root, "architecture.json"),
     }),
   );
+
   return { ...result, report: JSON.parse(result.output) as CheckReport };
 };
 
@@ -245,9 +251,11 @@ describe.sequential("a scalar objective", () => {
 
   it("nudges a diff that sends the number back, and fails check until the rise is conceded", async () => {
     write("src/billing/service.ts", SERVICE(8));
+
     const nudged = await capture(
       campaigns(await policyAt(), ["src"], ["status", "--changed", "--json"]),
     );
+
     expect(Exit.isFailure(nudged.exit)).toBe(true);
     const nudge = JSON.parse(nudged.output) as { sectors: Array<Record<string, unknown>> };
     expect(nudge.sectors[0]).toMatchObject({
@@ -296,6 +304,7 @@ describe.sequential("a scalar objective", () => {
         ["concede", "shrink/lines", "--reason", "x", "--by", "me", "--holdouts", "a"],
       ),
     );
+
     expect(refused.failure).toMatch(/is a scalar objective: it has no holdouts to choose among/);
 
     const conceded = await capture(
@@ -312,6 +321,7 @@ describe.sequential("a scalar objective", () => {
         ],
       ),
     );
+
     expect(Exit.isSuccess(conceded.exit), conceded.failure).toBe(true);
     expect(conceded.output).toContain("shrink/lines: a rise conceded in 1 sector, recorded by me.");
     expect(conceded.output).toContain("billing · 7 → 9");
@@ -364,9 +374,11 @@ describe.sequential("a scalar objective", () => {
         manifestPath: path.join(root, "architecture.json"),
       }),
     );
+
     const parsed = JSON.parse(snapshot.output) as {
       campaigns: Array<{ objectives: Array<Record<string, unknown>> }>;
     };
+
     expect(parsed.campaigns[0]?.objectives.find((one) => one.id === "lines")).toMatchObject({
       phase: "small",
       count: 0,
@@ -409,12 +421,15 @@ describe.sequential("a command measure", () => {
     mkdirSync(path.dirname(at), { recursive: true });
     writeFileSync(at, source);
   };
+
   const run = async (
     effect: (policy: Awaited<ReturnType<typeof loadPolicy>>) => Effect.Effect<void, CliFailure>,
   ) => {
     process.env.ARCHITECTURE_NOW = "2026-10-01T00:00:00Z";
+
     return capture(effect(await loadPolicy(commandRoot)));
   };
+
   const checkAt = async () => {
     const result = await run((policy) =>
       checkWith(policy, ["src"], {
@@ -422,6 +437,7 @@ describe.sequential("a command measure", () => {
         manifestPath: path.join(commandRoot, "architecture.json"),
       }),
     );
+
     return { ...result, report: JSON.parse(result.output) as CheckReport };
   };
 

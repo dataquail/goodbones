@@ -99,6 +99,7 @@ const git = (...args: ReadonlyArray<string>): string =>
 
 const policyAt = (now = "2026-10-01T00:00:00Z") => {
   process.env.ARCHITECTURE_NOW = now;
+
   return loadPolicy(root);
 };
 
@@ -107,13 +108,17 @@ const capture = async (effect: Effect.Effect<void, CliFailure>) => {
   const original = process.stdout.write.bind(process.stdout);
   process.stdout.write = (chunk: string) => {
     lines.push(String(chunk));
+
     return true;
   };
+
   try {
     const exit = await Effect.runPromiseExit(effect);
+
     const failure = Exit.isFailure(exit)
       ? (Cause.squash(exit.cause) as { message?: string })
       : null;
+
     return { exit, output: lines.join(""), failure: failure?.message ?? "" };
   } finally {
     process.stdout.write = original;
@@ -127,12 +132,14 @@ const check = async () => {
       manifestPath: path.join(root, "architecture.json"),
     }),
   );
+
   return { ...result, report: JSON.parse(result.output) as CheckReport };
 };
 
 const clear = async (now: string) => {
   const cleared = await capture(objectives(await policyAt(now), ["src"], ["clear"]));
   expect(Exit.isSuccess(cleared.exit), cleared.failure).toBe(true);
+
   return cleared.output;
 };
 
@@ -142,13 +149,18 @@ const nudge = async () => {
   const json = await capture(
     campaigns(await policyAt(), ["src"], ["status", "--changed", "--json"]),
   );
+
   const text = await capture(campaigns(await policyAt(), ["src"], ["status", "--changed"]));
+
   const parsed = JSON.parse(json.output) as {
     ok: boolean;
     sectors: Array<{ sector: string; verdict: string; onTouch: string; measures: Array<Measure> }>;
   };
+
   const todo = parsed.sectors.find((one) => one.sector === "todo");
+
   if (todo === undefined) throw new Error("the diff did not touch the todo sector");
+
   return { ok: parsed.ok, text: text.output, todo };
 };
 

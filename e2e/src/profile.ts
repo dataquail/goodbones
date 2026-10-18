@@ -67,12 +67,15 @@ export const declares = (...declarations: ReadonlyArray<Declaration>): FileSpec 
 
 const renderTypeScript = (spec: FileSpec): string => {
   const lines: Array<string> = [];
+
   for (const one of spec.imports) {
     if (typeof one === "string") lines.push(`import "${one}";`);
     else if ("names" in one) lines.push(`import { ${one.names.join(", ")} } from "${one.from}";`);
     else lines.push(`import * as ${one.namespace} from "${one.from}";`);
   }
+
   for (const name of spec.exports) lines.push(`export const ${name} = 1;`);
+
   for (const declaration of spec.declares) {
     if ("type" in declaration) {
       const members = declaration.members.map((member) => `${member}(): void`).join("; ");
@@ -81,7 +84,9 @@ const renderTypeScript = (spec: FileSpec): string => {
       lines.push(`${declaration.calls}();`);
     }
   }
+
   if (lines.length === 0) lines.push("export {};");
+
   return `${lines.join("\n")}\n`;
 };
 
@@ -118,6 +123,7 @@ export const typescript: Profile = {
   }),
   specifier: (from, to) => {
     const relative = path.posix.relative(path.posix.dirname(from), to);
+
     return relative.startsWith(".") ? relative : `./${relative}`;
   },
 };

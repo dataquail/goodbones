@@ -49,7 +49,9 @@ const rule = (
     probes: { fires: [], ignores: [] },
     ...overrides,
   });
+
   if (Result.isFailure(compiled)) throw compiled.failure;
+
   return compiled.success;
 };
 
@@ -69,7 +71,9 @@ const campaignOf = (
     onComplete: "keep",
     ...overrides,
   });
+
   if (Result.isFailure(compiled)) throw compiled.failure;
+
   return { ...compiled.success, objectives };
 };
 
@@ -84,6 +88,7 @@ const input = (
   } = {},
 ): CampaignInput => {
   const text = overrides.text ?? "source";
+
   return {
     file: "src/a.ts",
     text,
@@ -108,9 +113,11 @@ describe("every leaf term, true and false", () => {
     expect(fires(rule({ path: { file: "\\.ts$" } }), input())).toBe(true);
     expect(fires(rule({ path: { file: "\\.js$" } }), input())).toBe(false);
     expect(fires(rule({ path: { file: "\\.ts$", fileNot: "^src/a" } }), input())).toBe(false);
+
     const snake = rule({
       path: { file: "^src/([^/]+)\\.ts$", subject: 1, convention: "^[a-z0-9]+(?:_[a-z0-9]+)*$" },
     });
+
     expect(fires(snake, input({ file: "src/old_name.ts" }))).toBe(true);
     expect(fires(snake, input({ file: "src/newName.ts" }))).toBe(false);
   });
@@ -124,6 +131,7 @@ describe("every leaf term, true and false", () => {
         ["./x", [{ symbol: "x", kind: "named", local: "x" }]],
       ]),
     };
+
     const edges = { react: "node_modules/react/index.js", "./x": "src/x.ts" };
     expect(
       fires(rule({ imports: { resolves: { external: "react" } } }), input({ facts, edges })),
@@ -162,6 +170,7 @@ describe("every leaf term, true and false", () => {
         },
       ],
     };
+
     expect(fires(rule({ exports: { declares: ["class"] } }), input({ facts }))).toBe(true);
     expect(fires(rule({ exports: { kinds: ["namespace"] } }), input({ facts }))).toBe(false);
     expect(fires(rule({ exports: { name: "^Fo" } }), input({ facts }))).toBe(true);
@@ -176,6 +185,7 @@ describe("every leaf term, true and false", () => {
         { file: "src/a.ts", subject: "calls", name: "useState" },
       ],
     };
+
     expect(fires(rule({ members: { subject: "calls", name: "^use" } }), input({ facts }))).toBe(
       true,
     );
@@ -213,6 +223,7 @@ describe("every leaf term, true and false", () => {
       { text: "useState()", captures: { HOOK: "useState" }, anchor: "Bar" },
       { text: "usage()", captures: { HOOK: "usage" }, anchor: "Bar" },
     ];
+
     expect(fires(rule({ syntax: { rule: { pattern: "$HOOK($$$)" } } }), input({ matches }))).toBe(
       true,
     );
@@ -246,6 +257,7 @@ describe("every leaf term, true and false", () => {
       { text: "user.isSuperAdmin()", anchor: "authRoutes" },
       { text: "user.isSuperAdmin()", anchor: "orgRoutes" },
     ];
+
     const calls = rule({ syntax: { rule: { pattern: "$U.isSuperAdmin()" } } }, "match");
     const key = matchKeyOf("authRoutes", "user.isSuperAdmin()");
     expect(subjects(calls, input({ matches: twice }))).toEqual([
@@ -268,12 +280,14 @@ describe("every leaf term, true and false", () => {
       { line: 7, column: 0, code: "TS18048", message: "'y' is possibly undefined" },
       { line: 9, column: 0, code: "", message: "unnamed" },
     ];
+
     // The staged matches are what `anchorAt` answers from: line 3 sits in
     // `parse`, line 7 in `format`, line 9 at the top level.
     const matches: ReadonlyArray<StagedMatch> = [
       { text: "parse", anchor: "parse", line: 3, rule: { kind: "never" } },
       { text: "format", anchor: "format", line: 7, rule: { kind: "never" } },
     ];
+
     const tsc = (unit: ObjectiveRule["holdout"], codes?: ReadonlyArray<string>) =>
       rule(
         {
@@ -285,6 +299,7 @@ describe("every leaf term, true and false", () => {
         },
         unit,
       );
+
     expect(fires(tsc("file"), input({ diagnostics, matches }))).toBe(true);
     expect(fires(tsc("file"), input({ diagnostics: [], matches }))).toBe(false);
     expect(subjects(tsc("declaration"), input({ diagnostics, matches }))).toEqual([
@@ -321,6 +336,7 @@ describe("every leaf term, true and false", () => {
       ["./p.mjs#no", () => false],
       ["./p.mjs#lists", () => [{ subject: "Widget" }, { subject: "Panel" }]],
     ]);
+
     expect(fires(rule({ fn: "./p.mjs#yes" }), input({ functions }))).toBe(true);
     expect(fires(rule({ fn: "./p.mjs#no" }), input({ functions }))).toBe(false);
     expect(subjects(rule({ fn: "./p.mjs#lists" }, "declaration"), input({ functions }))).toEqual([
@@ -342,6 +358,7 @@ describe("the unit decides what a term from another level means", () => {
       { file: "src/a.ts", name: "Bar", kind: "named", declares: "variable", reexport: false },
     ],
   };
+
   const matches: ReadonlyArray<StagedMatch> = [
     {
       text: "class Foo extends Component {}",
@@ -352,6 +369,7 @@ describe("the unit decides what a term from another level means", () => {
     { text: "useState()", anchor: "Bar", rule: { pattern: "$HOOK($$$)" } },
     { text: "useState()", anchor: null, rule: { pattern: "$HOOK($$$)" } },
   ];
+
   const edges = { react: "node_modules/react/index.js" };
   const classes: Detector = { syntax: { rule: { pattern: "class $NAME extends $B { $$$ }" } } };
   const hooks: Detector = { syntax: { rule: { pattern: "$HOOK($$$)" } } };
@@ -429,6 +447,7 @@ describe("the unit decides what a term from another level means", () => {
         ["./base", [{ symbol: "Base", kind: "named", local: "Base" }]],
       ]),
     };
+
     const matches: ReadonlyArray<StagedMatch> = [
       { text: "class A extends C {}", captures: { NAME: "A", BASE: "C" }, anchor: "A" },
       {
@@ -439,7 +458,9 @@ describe("the unit decides what a term from another level means", () => {
       { text: "class D extends Base {}", captures: { NAME: "D", BASE: "Base" }, anchor: "D" },
       { text: "class E extends Unknown {}", captures: { NAME: "E", BASE: "Unknown" }, anchor: "E" },
     ];
+
     const edges = { react: "node_modules/react/index.js", "./base": "src/base.ts" };
+
     const react = (member?: ReadonlyArray<string>) =>
       rule(
         {
@@ -457,9 +478,11 @@ describe("the unit decides what a term from another level means", () => {
         },
         "declaration",
       );
+
     expect(subjects(react(), input({ facts, matches, edges }))).toEqual(["A", "B"]);
     expect(subjects(react(["Component"]), input({ facts, matches, edges }))).toEqual(["A"]);
     expect(subjects(react(["PureComponent"]), input({ facts, matches, edges }))).toEqual(["B"]);
+
     const local = rule(
       {
         syntax: {
@@ -469,6 +492,7 @@ describe("the unit decides what a term from another level means", () => {
       },
       "declaration",
     );
+
     expect(subjects(local, input({ facts, matches, edges }))).toEqual(["D"]);
   });
 });
@@ -476,15 +500,18 @@ describe("the unit decides what a term from another level means", () => {
 describe("evaluation order and short-circuit", () => {
   it("evaluates the cheap terms first and stops an `all` at the first file-level term that fails", () => {
     const calls: Array<string> = [];
+
     const functions = new Map<string, CampaignPredicate>([
       [
         "./p.mjs#counting",
         () => {
           calls.push("fn");
+
           return true;
         },
       ],
     ]);
+
     const never = rule({ all: [{ fn: "./p.mjs#counting" }, { path: { file: "\\.js$" } }] });
     expect(fires(never, input({ functions }))).toBe(false);
     expect(calls).toEqual([]);
@@ -496,15 +523,18 @@ describe("evaluation order and short-circuit", () => {
 
   it("stops an `any` at the first term that holds in a file campaign, and not in the others", () => {
     const calls: Array<string> = [];
+
     const functions = new Map<string, CampaignPredicate>([
       [
         "./p.mjs#counting",
         () => {
           calls.push("fn");
+
           return [{ subject: "Widget" }];
         },
       ],
     ]);
+
     expect(
       fires(
         rule({ any: [{ path: { file: "\\.ts$" } }, { fn: "./p.mjs#counting" }] }),
@@ -526,6 +556,7 @@ describe("evaluation order and short-circuit", () => {
 describe("fingerprints anchor on declarations, never on positions", () => {
   const hooks = rule({ syntax: { rule: { pattern: "$HOOK($$$)" } } }, "match");
   const at = (matches: ReadonlyArray<StagedMatch>) => input({ matches });
+
   const fingerprints = (matches: ReadonlyArray<StagedMatch>) =>
     evaluateObjective(hooks, at(matches)).map((hit) => fingerprintOf(hit.violation));
 
@@ -572,6 +603,7 @@ describe("selection, probes and the truth table", () => {
         ]),
       },
     });
+
     const matcher = makeSyntaxMatcherFake({
       "class Foo extends Component {}": [
         { text: "class Foo extends Component {}", captures: { BASE: "Component" }, anchor: "Foo" },
@@ -580,6 +612,7 @@ describe("selection, probes and the truth table", () => {
         { text: "class Foo extends Base {}", captures: { BASE: "Base" }, anchor: "Foo" },
       ],
     });
+
     const react = rule(
       {
         any: [
@@ -606,12 +639,14 @@ describe("selection, probes and the truth table", () => {
         },
       },
     );
+
     const failed = campaignsFailingTheirProbe(
       [campaignOf([react])],
       extractor,
       () => matcher,
       new Map(),
     );
+
     expect(failed).toEqual([
       expect.objectContaining({
         name: "campaign/x/o",
@@ -623,6 +658,7 @@ describe("selection, probes and the truth table", () => {
     const outside = rule({ path: { file: "." } }, "file", {
       probes: { fires: [{ path: "lib/a.ts" }], ignores: [] },
     });
+
     expect(
       campaignsFailingTheirProbe([campaignOf([outside])], extractor, () => null, new Map()),
     ).toEqual([
@@ -632,6 +668,7 @@ describe("selection, probes and the truth table", () => {
     const silent = rule({ path: { file: "\\.js$" } }, "file", {
       probes: { fires: [{ path: "src/a.ts" }], ignores: [] },
     });
+
     expect(
       campaignsFailingTheirProbe([campaignOf([silent])], extractor, () => null, new Map()),
     ).toEqual([expect.objectContaining({ name: "campaign/x/o", expected: "fires" })]);
@@ -646,6 +683,7 @@ describe("selection, probes and the truth table", () => {
         ignores: [{ path: "src/b.ts", source: "x", report: [{ line: 1, code: "TS7006" }] }],
       },
     });
+
     expect(
       campaignsFailingTheirProbe(
         [campaignOf([tsc])],
@@ -654,9 +692,11 @@ describe("selection, probes and the truth table", () => {
         new Map(),
       ),
     ).toEqual([]);
+
     const silent = rule({ report: { file: ["tsc.txt"], format: "tsc" } }, "match", {
       probes: { fires: [{ path: "src/a.ts", source: "x" }], ignores: [] },
     });
+
     expect(
       campaignsFailingTheirProbe(
         [campaignOf([silent])],
@@ -681,6 +721,7 @@ describe("selection, probes and the truth table", () => {
       ),
       input({ text: "x marks" }),
     );
+
     expect(table).toEqual([
       { term: "path /\\.js$/", answer: false },
       { term: "not content /x/", answer: true },
@@ -698,6 +739,7 @@ describe("selection, probes and the truth table", () => {
       match: { content: { regex: "(" } },
       probes: { fires: [], ignores: [] },
     });
+
     expect(Result.isFailure(failed) && failed.failure.field).toBe("content.regex");
   });
 
@@ -714,6 +756,7 @@ describe("selection, probes and the truth table", () => {
       match: { content: "TODO" as never },
       probes: { fires: [], ignores: [] },
     });
+
     expect(Result.isFailure(failed) && failed.failure.field).toBe("content.regex");
     expect(Result.isFailure(failed) && failed.failure.detail).toContain("{ regex: <string> }");
   });
@@ -729,9 +772,11 @@ describe("selection, probes and the truth table", () => {
         { text: "export function Page() {}", captures: {}, anchor: "Page" },
       ],
     });
-    const oldShape = rule({ syntax: { rule: { pattern: "class $N {}" } } }, "declaration");
+
+    const classPattern = rule({ syntax: { rule: { pattern: "class $N {}" } } }, "declaration");
+
     const perimeter = (fires: ReadonlyArray<{ path: string; source: string }>) =>
-      campaignOf([oldShape], {
+      campaignOf([classPattern], {
         perimeter: {
           kind: "match",
           match: { exports: {} },
@@ -739,6 +784,7 @@ describe("selection, probes and the truth table", () => {
           probes: { fires, ignores: [] },
         },
       });
+
     const extractor = makeFactExtractorFake({
       "export class Page {}": {
         exportSites: [
@@ -751,10 +797,12 @@ describe("selection, probes and the truth table", () => {
         ],
       },
     });
+
     const classMatcher = makeSyntaxMatcherFake({
       "export class Page {}": [{ text: "class Page {}", captures: {}, anchor: "Page" }],
       "export function Page() {}": [],
     });
+
     void matcher;
     expect(
       campaignsFailingTheirProbe(

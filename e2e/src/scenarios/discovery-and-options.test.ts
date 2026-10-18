@@ -78,12 +78,14 @@ describe.sequential("discovery and options", () => {
     const printed = cli(repo, ["coverage", "src", "lib"]);
     expect(printed.code, printed.stderr).toBe(0);
     expect(printed.stdout).toContain(`${String(json.files)} files under src, lib`);
+
     for (const family of ["imports", "structure", "members", "surface", "graph"] as const) {
       const { covered, total } = json.coverage[family];
       expect(printed.stdout).toMatch(
         new RegExp(`${family}\\s+${String(covered)}/${String(total)}\\s`),
       );
     }
+
     expect(printed.stdout).toContain("unrestricted tiers: (none)");
   });
 

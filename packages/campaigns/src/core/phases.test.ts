@@ -71,13 +71,17 @@ const billing = (): CompiledCampaign => {
     ],
     onComplete: "keep",
   });
+
   if (Result.isFailure(compiled)) throw compiled.failure;
+
   return compiled.success;
 };
 
 const find = (rule: CompiledCampaign, id: string) => {
   const found = rule.objectives.find((one) => one.id === id);
+
   if (found === undefined) throw new Error(id);
+
   return found;
 };
 
@@ -143,7 +147,9 @@ describe("the shared files' window", () => {
       ],
       onComplete: "keep",
     });
+
     if (Result.isFailure(compiled)) throw compiled.failure;
+
     return compiled.success;
   };
 
@@ -174,8 +180,10 @@ describe("the shared files' window", () => {
 describe("the derived phase", () => {
   it("is the first phase with residue: a holdout, an unattested step, or the open phase", () => {
     const rule = billing();
+
     const at = (counts: Readonly<Record<string, number>>, attested: ReadonlyArray<string> = []) =>
       derivePhase(rule, (id) => counts[id] ?? 0, { reached: -1, attested: new Set(attested) });
+
     expect(at({ "no-io": 3, "no-raw-queries": 7 })).toBe(0);
     expect(at({ "no-raw-queries": 7 })).toBe(1);
     expect(at({ "has-flag": 1 })).toBe(2);
@@ -207,6 +215,7 @@ describe("the derived phase", () => {
       objectives: [objective("x")],
       onComplete: "keep",
     });
+
     if (Result.isFailure(compiled)) throw compiled.failure;
     expect(derivePhase(compiled.success, () => 0, UNPLACED)).toBe(donePhaseOf(compiled.success));
     expect(derivePhase(compiled.success, () => 0, UNPLACED)).toBe(1);
@@ -219,10 +228,12 @@ describe("onTouch", () => {
     expect(onTouchOf(rule, 0)).toBe("ratchet");
     expect(onTouchOf(rule, 5)).toBe("advise");
     expect(onTouchOf({ ...rule, onTouch: "paydown" }, 5)).toBe("paydown");
+
     const overridden: CompiledCampaign = {
       ...rule,
       phases: rule.phases.map((one, i) => (i === 0 ? { ...one, onTouch: "advise" } : one)),
     };
+
     expect(onTouchOf(overridden, 0)).toBe("advise");
     expect(onTouchOf(rule, 6)).toBe("ratchet");
   });
@@ -248,12 +259,14 @@ describe("behind a window, and ahead of the plan", () => {
     expect(onAheadOf(rule, 0)).toBe("advise");
     const strict = { ...rule, onAhead: "ratchet" as const };
     expect(onAheadOf(strict, 0)).toBe("ratchet");
+
     const relaxed = {
       ...strict,
       phases: strict.phases.map((one, at) =>
         at === 3 ? { ...one, onAhead: "advise" as const } : one,
       ),
     };
+
     expect(onAheadOf(relaxed, 3)).toBe("advise");
     expect(onAheadOf(relaxed, 2)).toBe("ratchet");
     // The paid objective's own word beats the phase's and the campaign's;
@@ -270,8 +283,10 @@ describe("a sector's position on the ladder", () => {
     const rule = billing();
     // Five defined phases; the open one is where the plan runs out.
     expect(stepsOf(rule)).toBe(5);
+
     const at = (phase: number, shares: Readonly<Record<string, number>> = {}) =>
       ladderPositionOf(rule, phase, (id) => shares[id] ?? 0);
+
     // Entering a phase: exactly its index, whatever the phase holds.
     expect(at(1)).toBe(1);
     // Paying it down: toward the next index.

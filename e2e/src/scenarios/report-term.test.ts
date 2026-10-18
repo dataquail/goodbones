@@ -109,6 +109,7 @@ describe("a report term", () => {
         ].join("\n"),
       },
     });
+
     several.writeManifest({
       ...manifest(several),
       campaigns: {
@@ -129,6 +130,7 @@ describe("a report term", () => {
         },
       },
     });
+
     try {
       const result = check(several, ["src"]);
       expect(result.code).toBe(1);
@@ -175,6 +177,7 @@ describe("a report term", () => {
         },
       },
     });
+
     try {
       const result = cli(broken, ["check", "--json", "src"]);
       expect(result.code).toBe(1);

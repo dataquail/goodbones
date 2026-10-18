@@ -15,8 +15,10 @@ const MAX_BUFFER = 64 * 1024 * 1024;
 
 export const commandValues = (repoRoot: string): ((measure: CompiledMeasure) => number) => {
   const outputs = new Map<string, string | null>();
+
   const outputOf = (command: string): string | null => {
     if (outputs.has(command)) return outputs.get(command) ?? null;
+
     const run = spawnSync(command, {
       cwd: repoRoot,
       shell: true,
@@ -24,13 +26,17 @@ export const commandValues = (repoRoot: string): ((measure: CompiledMeasure) => 
       maxBuffer: MAX_BUFFER,
       stdio: ["ignore", "pipe", "pipe"],
     });
+
     const output = run.error === undefined ? run.stdout : null;
     outputs.set(command, output);
+
     return output;
   };
+
   return (measure) => {
     if (measure.kind !== "command") return Number.NaN;
     const output = outputOf(measure.command);
+
     return output === null ? Number.NaN : numberFromOutput(measure, output);
   };
 };

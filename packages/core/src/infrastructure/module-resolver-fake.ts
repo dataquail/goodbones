@@ -16,11 +16,13 @@ export const makeModuleResolverFake = (
 ): ModuleResolver => ({
   resolve: (fromFile, specifier) => {
     const staged = targets[specifier];
+
     if (staged === undefined) {
       return Result.fail(
         new ImportUnresolved({ fromFile, specifier, detail: "not staged in the fake" }),
       );
     }
+
     return Result.succeed(typeof staged === "string" ? targetOfPath(staged) : staged);
   },
 });
@@ -34,6 +36,8 @@ const LAST_NODE_MODULES = /(?:^|\/)node_modules\/((?:@[^/]+\/)?[^/]+)/g;
 const targetOfPath = (path: string): ResolvedTarget => {
   if (path.startsWith("node:")) return { path, kind: "builtin" };
   let pkg: string | undefined;
+
   for (const match of path.matchAll(LAST_NODE_MODULES)) pkg = match[1];
+
   return pkg === undefined ? { path, kind: "local" } : { path, kind: "external", package: pkg };
 };

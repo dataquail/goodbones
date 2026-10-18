@@ -63,7 +63,9 @@ export const EMPTY_STRUCTURE: CompiledStructure = {
 
 const compileRoot = (rule: StructureRoot): Result.Result<CompiledStructureRoot, PatternInvalid> => {
   const path = compilePatterns(rule.name, "path", rule.path);
+
   if (Result.isFailure(path)) return Result.fail(path.failure);
+
   return Result.succeed({
     name: rule.name,
     message: rule.message,
@@ -76,9 +78,12 @@ const compileFolder = (
   rule: StructureFolder,
 ): Result.Result<CompiledStructureFolder, PatternInvalid> => {
   const folder = compilePatterns(rule.name, "folder", rule.folder);
+
   if (Result.isFailure(folder)) return Result.fail(folder.failure);
   const files = compilePatterns(rule.name, "files", rule.files);
+
   if (Result.isFailure(files)) return Result.fail(files.failure);
+
   return Result.succeed({
     name: rule.name,
     message: rule.message,
@@ -92,9 +97,12 @@ const compileParity = (
   rule: StructureParity,
 ): Result.Result<CompiledStructureParity, PatternInvalid> => {
   const file = compilePatterns(rule.name, "file", rule.file);
+
   if (Result.isFailure(file)) return Result.fail(file.failure);
   const fileNot = compilePatterns(rule.name, "fileNot", rule.fileNot);
+
   if (Result.isFailure(fileNot)) return Result.fail(fileNot.failure);
+
   return Result.succeed({
     name: rule.name,
     message: rule.message,
@@ -109,11 +117,15 @@ const compileNaming = (
   rule: StructureNaming,
 ): Result.Result<CompiledStructureNaming, PatternInvalid> => {
   const file = compilePatterns(rule.name, "file", rule.file);
+
   if (Result.isFailure(file)) return Result.fail(file.failure);
   const fileNot = compilePatterns(rule.name, "fileNot", rule.fileNot);
+
   if (Result.isFailure(fileNot)) return Result.fail(fileNot.failure);
   const convention = compilePatterns(rule.name, "convention", rule.convention);
+
   if (Result.isFailure(convention)) return Result.fail(convention.failure);
+
   return Result.succeed({
     name: rule.name,
     message: rule.message,
@@ -131,11 +143,14 @@ const compileAll = <A, B>(
   compile: (item: A) => Result.Result<B, PatternInvalid>,
 ): Result.Result<ReadonlyArray<B>, PatternInvalid> => {
   const compiled: Array<B> = [];
+
   for (const item of items) {
     const one = compile(item);
+
     if (Result.isFailure(one)) return Result.fail(one.failure);
     compiled.push(one.success);
   }
+
   return Result.succeed(compiled);
 };
 
@@ -145,12 +160,16 @@ export const compileStructure = (
   if (config === undefined) return Result.succeed(EMPTY_STRUCTURE);
 
   const roots = compileAll(config.roots ?? [], compileRoot);
+
   if (Result.isFailure(roots)) return Result.fail(roots.failure);
   const folders = compileAll(config.folders ?? [], compileFolder);
+
   if (Result.isFailure(folders)) return Result.fail(folders.failure);
   const parity = compileAll(config.parity ?? [], compileParity);
+
   if (Result.isFailure(parity)) return Result.fail(parity.failure);
   const naming = compileAll(config.naming ?? [], compileNaming);
+
   if (Result.isFailure(naming)) return Result.fail(naming.failure);
 
   return Result.succeed({
@@ -166,6 +185,7 @@ const anyMatches = (patterns: ReadonlyArray<RegExp>, value: string): boolean =>
 
 const dirnameOf = (file: string): string => {
   const cut = file.lastIndexOf("/");
+
   return cut === -1 ? "" : file.slice(0, cut);
 };
 
@@ -177,6 +197,7 @@ const basenameOf = (file: string): string => file.slice(file.lastIndexOf("/") + 
 // part of the base on purpose.
 const baseOf = (basename: string): string => {
   const cut = basename.lastIndexOf(".");
+
   return cut <= 0 ? basename : basename.slice(0, cut);
 };
 
@@ -184,10 +205,12 @@ const baseOf = (basename: string): string => {
 // how a port three folders from its adapters names them.
 const resolveSibling = (folder: string, relative: string): string => {
   const segments = folder === "" ? [] : folder.split("/");
+
   for (const segment of relative.split("/")) {
     if (segment === "..") segments.pop();
     else if (segment !== "." && segment !== "") segments.push(segment);
   }
+
   return segments.join("/");
 };
 
@@ -199,6 +222,7 @@ export const siblingsOf = (
 ): ReadonlyArray<string> => {
   const base = baseOf(basenameOf(file));
   const folder = dirnameOf(file);
+
   return templates.map((template) => resolveSibling(folder, template.replaceAll("{base}", base)));
 };
 
@@ -221,15 +245,19 @@ type NamingMatch = {
 const firstNamingMatch = (rule: CompiledStructureNaming, file: string): NamingMatch | null => {
   for (const pattern of rule.file) {
     const found = pattern.exec(file);
+
     if (found === null) continue;
     const subject = found[rule.subject];
+
     if (subject === undefined) continue;
+
     return {
       subject,
       expected: rule.sameAs === null ? null : (found[rule.sameAs] ?? null),
       comparing: rule.sameAs !== null,
     };
   }
+
   return null;
 };
 
@@ -249,6 +277,7 @@ export const evaluateStructure = (
 
   for (const rule of structure.parity) {
     if (!anyMatches(rule.file, file) || anyMatches(rule.fileNot, file)) continue;
+
     for (const sibling of requiredSiblingsOf(rule, file)) {
       if (fileSystem.exists(sibling)) continue;
       violations.push({
@@ -264,6 +293,7 @@ export const evaluateStructure = (
   for (const rule of structure.naming) {
     if (anyMatches(rule.fileNot, file)) continue;
     const named = firstNamingMatch(rule, file);
+
     if (named === null || namingSatisfied(rule, named)) continue;
     violations.push({
       kind: "structure",
@@ -279,6 +309,7 @@ export const evaluateStructure = (
   if (governing.length > 0) {
     if (!governing.some((rule) => anyMatches(rule.files, basename))) {
       const rule = governing[0];
+
       if (rule !== undefined) {
         violations.push({
           kind: "structure",
@@ -289,6 +320,7 @@ export const evaluateStructure = (
         });
       }
     }
+
     return violations;
   }
 
@@ -296,6 +328,7 @@ export const evaluateStructure = (
   // the folder itself is not part of the taxonomy — the stray-folder case a
   // per-file check would otherwise miss entirely.
   const root = structure.roots.find((candidate) => anyMatches(candidate.path, file));
+
   if (root !== undefined) {
     violations.push({
       kind: "structure",
@@ -320,6 +353,7 @@ export const structureRulesFailingTheirProbe = (
 
   for (const rule of structure.naming) {
     const named = firstNamingMatch(rule, rule.probe);
+
     if (named === null || namingSatisfied(rule, named) || anyMatches(rule.fileNot, rule.probe)) {
       failing.push(rule.name);
     }
@@ -328,10 +362,12 @@ export const structureRulesFailingTheirProbe = (
   for (const rule of structure.parity) {
     const selects = anyMatches(rule.file, rule.probe) && !anyMatches(rule.fileNot, rule.probe);
     const demands = requiredSiblingsOf(rule, rule.probe).some((sibling) => sibling.length > 0);
+
     if (!selects || !demands) failing.push(rule.name);
   }
 
   const layoutOnly = { ...structure, parity: [] };
+
   const reported = (file: string): ReadonlyArray<string> =>
     evaluateStructure(
       layoutOnly,
@@ -346,8 +382,10 @@ export const structureRulesFailingTheirProbe = (
     // The rule must govern its probe's folder AND the folder's admitted set —
     // the union of every governing rule — must still reject the basename.
     const governs = anyMatches(rule.folder, dirnameOf(rule.probe));
+
     if (!governs || reported(rule.probe).length === 0) failing.push(rule.name);
   }
+
   for (const rule of structure.roots) {
     if (!reported(rule.probe).includes(rule.name)) failing.push(rule.name);
   }

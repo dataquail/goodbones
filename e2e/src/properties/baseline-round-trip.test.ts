@@ -23,6 +23,7 @@ describe("baseline round trip", () => {
         fc.asyncProperty(arbTree(typescript), async (tree) => {
           await tick();
           const repo = repoOf(tree);
+
           try {
             repo.writeManifest({
               ...tightManifest(repo.profile),
@@ -33,9 +34,11 @@ describe("baseline round trip", () => {
 
             const wrote = cli(repo, ["baseline", "src"]);
             expect(wrote.code, wrote.stderr).toBe(0);
+
             const written = JSON.parse(repo.read(".architecture-baseline.json")) as {
               readonly entries: ReadonlyArray<string>;
             };
+
             expect([...written.entries].sort()).toEqual([...new Set(fingerprintsOf(before.json))]);
 
             const after = check(repo, ["src"]);

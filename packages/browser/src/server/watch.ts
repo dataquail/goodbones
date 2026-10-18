@@ -29,9 +29,13 @@ export const isRelevant = (
   ledgerDir: string,
 ): boolean => {
   const segments = file.split("/");
+
   if (segments.some((segment) => IGNORED.includes(segment))) return false;
+
   if (MANIFEST.test(file)) return true;
+
   if (ledgerDir !== "" && (file === ledgerDir || file.startsWith(`${ledgerDir}/`))) return true;
+
   return extensions.includes(path.extname(file));
 };
 
@@ -39,18 +43,24 @@ export const watchRepository = (options: WatchOptions): (() => void) => {
   const delay = options.debounceMs ?? 150;
   let pending = new Set<string>();
   let timer: NodeJS.Timeout | null = null;
+
   const flush = (): void => {
     timer = null;
     const files = [...pending].sort();
     pending = new Set();
+
     if (files.length > 0) options.onChange(files);
   };
+
   const changed = (file: string): void => {
     pending.add(file);
+
     if (timer !== null) clearTimeout(timer);
     timer = setTimeout(flush, delay);
   };
+
   const watchers: Array<FSWatcher> = [];
+
   const quietly = (start: () => FSWatcher): void => {
     try {
       const watcher = start();
@@ -63,10 +73,12 @@ export const watchRepository = (options: WatchOptions): (() => void) => {
       // Not watchable here: the same.
     }
   };
+
   quietly(() =>
     watch(options.repoRoot, { recursive: true }, (_event, filename) => {
       if (filename === null) return;
       const file = String(filename).split(path.sep).join("/");
+
       if (isRelevant(file, options.extensions, options.ledgerDir)) changed(file);
     }),
   );
@@ -74,10 +86,12 @@ export const watchRepository = (options: WatchOptions): (() => void) => {
   // by renaming a lock file over them, and a watch on the file itself would
   // be left holding the one that was replaced.
   const folders = new Map<string, Set<string>>();
+
   for (const file of options.also ?? []) {
     const folder = path.dirname(file);
     folders.set(folder, new Set([...(folders.get(folder) ?? []), path.basename(file)]));
   }
+
   for (const [folder, names] of folders) {
     quietly(() =>
       watch(folder, (_event, filename) => {
@@ -87,8 +101,10 @@ export const watchRepository = (options: WatchOptions): (() => void) => {
       }),
     );
   }
+
   return () => {
     if (timer !== null) clearTimeout(timer);
+
     for (const watcher of watchers) watcher.close();
   };
 };

@@ -310,14 +310,16 @@ from the repository root.
 `import { x } from "./thing.js"` referring to `thing.ts` is correct, not a mistake to "fix".
 
 **`oxlint` and `@effect/tsgo` move together.** The `prepare` step runs `effect-tsgo patch --oxlint`,
-and that patch targets one exact oxlint version, so a bump is the pair (`1.81.0` with `@effect/tsgo`
-`^0.40.0`). Do not go below 1.78.0: 1.77.0's language server panics building the "disable this rule"
+and that patch targets one exact oxlint version, so a bump is the set (`1.88.0` and `oxlint-tsgolint`
+`7.0.2004` with `@effect/tsgo` `^0.53.4`, the versions `oxlint-plugin-effect` `0.29.0` is tested
+with; `@oxlint/plugins`, which the vendored anti-slop plugins import, is pinned to `oxlint`'s exact
+version). Do not go below 1.78.0: 1.77.0's language server panics building the "disable this rule"
 quick-fix for any JS-plugin diagnostic (oxc #25278), so the architecture rules ran in CI and never
 surfaced in the editor. `.vscode/` points the editor at `oxc.oxc-vscode` for the same reason.
 
 **`oxlint` and `oxc-parser` move together.** The pack parses with `oxc-parser`, pinned exactly to
-the version released with the pinned `oxlint` (`1.81.0` with `oxc-parser` `0.148.0`; both carry
-`@oxc-project/types@0.148.0`), because the plugin reads oxlint's tree through the pack's reader
+the version released with the pinned `oxlint` (`1.88.0` with `oxc-parser` `0.154.0`, released together;
+the pack reads `@oxc-project/types@0.154.0`), because the plugin reads oxlint's tree through the pack's reader
 and the reader is written against one ESTree. `packages/oxlint/src/parity.test.ts` is what fails
 when either is bumped alone — a node renamed or a field moved in one parser and not the other —
 so a bump of either runs it. `oxc-parser` ships prebuilt platform binaries as optional dependencies
@@ -347,8 +349,16 @@ TS2451, and the compiler owns it.
 - **Prettier**: double quotes, `printWidth: 100`, semicolons. (Note this differs from most dataquail
   repos — it matches the upstream these packages were extracted from.)
 - **oxlint**, not ESLint. Local rules live in `scripts/lint-rules/` and are loaded as an oxlint JS
-  plugin under the `local/` prefix. The config extends `@effect/tsgo`'s recommended preset, which is
-  where the `effecttsgo/*` rules come from.
+  plugin under the `local/` prefix. The config extends `@effect/tsgo`'s recommended preset (the
+  `effecttsgo/*` rules) and `oxlint-plugin-effect`'s (the `effect/*` rules), and loads the
+  anti-slop plugins vendored under `tools/oxlint/anti-slop/` (`anti-slop/*`, `anti-slop-effect/*`;
+  provenance and local deviations in its `UPSTREAM.md`). Those are TypeScript, so every oxlint run
+  needs `NODE_OPTIONS='--experimental-strip-types --no-warnings'` — the `lint` scripts and each
+  project's Nx `lint` target set it; a bare `pnpm exec oxlint` fails to load them. The rules turned
+  off in `.oxlintrc.json` are adoption debt, each with its reason, not a judgement on the rule.
+- **`@effect/language-service` is a tsconfig entry, not a dependency.** `pnpm check:effect` runs
+  `effect-tsgo diagnostics`, which reads its options from the `@effect/language-service` plugin
+  entry in `tsconfig.base.json`; the package itself is no longer installed.
 - **Conventional commits** are enforced by commitlint and drive `nx release` version bumps.
 - **Nx targets** are declared in each `project.json` and delegate to the package's own npm scripts, so
   `pnpm --filter … run build` and `nx build …` do the same thing. Each `package.json` sets

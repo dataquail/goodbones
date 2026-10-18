@@ -1,6 +1,9 @@
 {
   "$schema": "./node_modules/@effect/tsgo/oxlint-schema.json",
-  "extends": ["./node_modules/@effect/tsgo/oxlint-presets/recommended.json"],
+  "extends": [
+    "./node_modules/@effect/tsgo/oxlint-presets/recommended.json",
+    "./node_modules/oxlint-plugin-effect/presets/recommended.json"
+  ],
   "plugins": ["typescript", "import"],
   "jsPlugins": [
     {
@@ -14,6 +17,16 @@
       // lint target depends on build.
       "name": "architecture",
       "specifier": "./packages/oxlint/build/esm/plugin.js"
+    },
+    {
+      // Vendored from dmmulroy/anti-slop (tools/oxlint/anti-slop/UPSTREAM.md).
+      // TypeScript source, so oxlint's Node needs --experimental-strip-types.
+      "name": "anti-slop",
+      "specifier": "./tools/oxlint/anti-slop/index.ts"
+    },
+    {
+      "name": "anti-slop-effect",
+      "specifier": "./tools/oxlint/anti-slop/effect/index.ts"
     },
     "eslint-plugin-codegen",
     "eslint-plugin-simple-import-sort",
@@ -42,7 +55,8 @@
     "website/**",
     "scripts/**",
     "**/*.astro",
-    "**/astro.config.ts"
+    "**/astro.config.ts",
+    "tools/oxlint/**"
   ],
   "rules": {
     "constructor-super": "error",
@@ -235,7 +249,77 @@
     "local/prefer-named-exports": "error",
     "local/no-array-push-spread": "error",
     "no-use-before-define": "warn",
-    "effecttsgo/prefer-schema-over-json": "off"
+    "oxc/no-accumulating-spread": "error",
+    "anti-slop/no-array-filter-map": "error",
+    "anti-slop/no-reduce-accumulator-copy": "error",
+    "anti-slop/no-chained-type-assertions": "error",
+    "anti-slop/no-conditional-empty-object-spread": "error",
+    "anti-slop/no-known-value-widening": "error",
+    "anti-slop/no-module-mocking": "error",
+    "anti-slop/no-object-parameters": "error",
+    "anti-slop/no-reflect-apply": "error",
+    "anti-slop/no-reflect-get": "error",
+    "anti-slop/no-runtime-typeof": "error",
+    "anti-slop/no-shape-in-symbol-names": "error",
+    "anti-slop/no-unknown-parameters": "error",
+    "anti-slop/no-unknown-returns": "error",
+    "anti-slop/no-unknown-type-aliases": "error",
+    "anti-slop/no-unsafe-dictionary-type": "error",
+    "anti-slop/no-widen-then-assert": "error",
+    "anti-slop/require-readable-spacing": "error",
+    "anti-slop/require-safety-comment-for-type-assertion": "error",
+    "anti-slop-effect/no-manual-effect-error-tag": "error",
+    "anti-slop-effect/no-manual-tag-comparison": "error",
+    "anti-slop-effect/no-manual-tagged-construction": "error",
+    "anti-slop-effect/no-service-constructor-imports": "error",
+    "anti-slop-effect/prefer-effect-match": "error",
+    "effecttsgo/prefer-schema-over-json": "off",
+    // Turned off on adoption (#101): each of these finds more sites than this change
+    // could rewrite without burying it, and each is a follow-up of its own. Most ask
+    // for the Effect-first style the hosts and evaluators were not written in —
+    // Option over null, Match over ternaries, Effect over async/throw/try and
+    // Promise, services over globals and `node:` imports — or for a rewrite of the
+    // functions the complexity ceilings measure.
+    "effect/noNullish": "off",
+    "effect/noTernary": "off",
+    "effect/noAsyncFunction": "off",
+    "effect/noGlobals": "off",
+    "effect/noAs": "off",
+    "anti-slop/require-safety-comment-for-type-assertion": "off",
+    "effect/noThrowStatement": "off",
+    "effect/noNodeBuiltinImport": "off",
+    "effect/noConditionalEmptyObjectSpread": "off",
+    "anti-slop/no-conditional-empty-object-spread": "off",
+    "effect/noUnsafeDictionaryType": "off",
+    "anti-slop/no-unsafe-dictionary-type": "off",
+    "effect/noNewError": "off",
+    "effect/noTestLifecycleHooks": "off",
+    "effect/noTryCatch": "off",
+    "effect/noRuntimeTypeof": "off",
+    "anti-slop/no-runtime-typeof": "off",
+    "effect/noKnownValueWidening": "off",
+    "anti-slop/no-known-value-widening": "off",
+    "effect/noUnknownParameters": "off",
+    "anti-slop/no-unknown-parameters": "off",
+    "effect/maxCognitiveComplexity": "off",
+    "complexity": "off",
+    // The hosts' seams to oxlint, Node's http server and child processes, and the
+    // campaigns glue (`campaigns/host.ts`) are Promise interfaces by design.
+    "effect/noNewPromise": "off",
+    // `ARCHITECTURE_NOW` is the documented way to pin the clock the stall check
+    // reads, and the CLI's tests set it the way a user does.
+    "effect/noTestGlobals": "off",
+    // Reads every `make*` factory as an Effect service constructor. Here they are
+    // plain adapter factories, constructed only at the composition roots — which
+    // the architecture policy's `exports` family already enforces.
+    "anti-slop-effect/no-service-constructor-imports": "off",
+    // Changes the order the walk, `infer`, the nudge and the ledgers are written in,
+    // which is published output: a fix of its own, not part of adopting the rule.
+    "effect/noLocaleCompare": "off",
+    // The CLI's tests run its program by hand; moving them to `@effect/vitest`
+    // needs `@effect/vitest` in the cli node's import allowlist, an architecture
+    // policy change that is not part of adopting the rule.
+    "effect/noEffectRunInTests": "off"
   },
   "overrides": [
     {
@@ -244,6 +328,28 @@
       "files": ["packages/oxlint/src/plugin.ts"],
       "rules": {
         "local/prefer-named-exports": "off"
+      }
+    },
+    {
+      // `CONVENTIONS[…].shape` is public API of @goodbones/core; renaming the
+      // property is a breaking change, so it waits for a major.
+      "files": ["packages/core/src/manifest/compile.ts"],
+      "rules": {
+        "effect/noShapeInSymbolNames": "off",
+        "anti-slop/no-shape-in-symbol-names": "off"
+      }
+    },
+    {
+      // Each walks a manifest before it is decoded — possibly an `.mjs` module
+      // holding functions — and hands back the same undecoded tree with some
+      // leaves replaced; the decoder after it is where the value is parsed.
+      "files": [
+        "packages/campaigns/src/infrastructure/campaign-functions.ts",
+        "packages/campaigns/src/manifest/lower.ts"
+      ],
+      "rules": {
+        "effect/noUnknownReturns": "off",
+        "anti-slop/no-unknown-returns": "off"
       }
     }
   ]

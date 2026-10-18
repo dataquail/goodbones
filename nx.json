@@ -15,7 +15,8 @@
       "{workspaceRoot}/tsconfig.resolve.json",
       "{workspaceRoot}/.oxlintrc.json",
       "{workspaceRoot}/architecture.yaml",
-      "{workspaceRoot}/scripts/lint-rules/**/*"
+      "{workspaceRoot}/scripts/lint-rules/**/*",
+      "{workspaceRoot}/tools/oxlint/**/*"
     ]
   },
   "targetDefaults": {

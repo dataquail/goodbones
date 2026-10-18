@@ -3,5 +3,8 @@
   "devDependencies": {
     "@chernabog/sdk": "0.1.0",
     "effect": "4.0.5"
+  },
+  "engines": {
+    "chernabog": ">=0.3.0"
   }
 }

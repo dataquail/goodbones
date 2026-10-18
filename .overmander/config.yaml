@@ -41,6 +41,14 @@ notes:
 #   review:
 #     agent: codex
 
+# Where interactive agent sessions run: orca, tmux, headless (claude -p) or a
+# launcher a person defines in their machine config. Each person can choose
+# their own in machine config or local.yaml; launcher here is only the default,
+# and allowedLaunchers limits what they may choose. Unset: any launcher, with
+# headless as the default.
+# launcher: orca
+# allowedLaunchers: [orca, tmux, headless]
+
 limits:
   localGateRounds: 2
   ciRounds: 3

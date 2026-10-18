@@ -14,6 +14,13 @@
     "agent": {
       "type": "string"
     },
+    "launcher": {
+      "type": "string"
+    },
+    "launchers": {
+      "not": {},
+      "description": "launcher commands can only be defined in machine config (~/.config/overmander/config.yaml)"
+    },
     "flows": {
       "type": "object",
       "additionalProperties": {

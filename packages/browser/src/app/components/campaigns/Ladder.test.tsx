@@ -138,7 +138,7 @@ const campaign = (): CampaignCard => ({
   plan: { refined: [], changed: [], unreceipted: [] },
 });
 
-describe.sequential("Ladder", () => {
+describe("Ladder", { concurrent: false }, () => {
   it("lays the columns out: the phases, then the end, with no standing column when every objective is phased", () => {
     const columns = columnsOf(campaign());
     expect(columns.map((one) => one.kind)).toEqual(["phase", "phase", "phase", "end"]);

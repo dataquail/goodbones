@@ -36,7 +36,7 @@ afterAll(() => {
   repo.dispose();
 });
 
-describe.sequential("discovery and options", () => {
+describe("discovery and options", { concurrent: false }, () => {
   it("points at init when there is no manifest", () => {
     const missing = cli(repo, ["check", "--json", "src"]);
     expect(missing.code).toBe(1);

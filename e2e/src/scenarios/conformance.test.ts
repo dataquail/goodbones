@@ -98,7 +98,7 @@ afterAll(() => {
   repo.dispose();
 });
 
-describe.sequential("conformance", () => {
+describe("conformance", { concurrent: false }, () => {
   it("never fails, and says what check would have done", () => {
     const measured = conformance(repo, ["src", "lib", "scripts"]);
     expect(measured.code, measured.stderr).toBe(0);

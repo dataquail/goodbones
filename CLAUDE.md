@@ -221,7 +221,7 @@ new folder under a `src/` that no node governs trips the taxonomy-root catch-all
 quietly unpoliced; a new package under `packages/` is a new `~/<name>/` node with its own import
 allowlist (written in `packages/<name>/architecture.yaml` and included from the root, like the
 six that exist), plus a `paths` pair in `tsconfig.base.json` and `tsconfig.resolve.json`, an entry in
-`vitest.workspace.ts`, an alias in `vitest.shared.ts`, a reference in the root `tsconfig.json` and
+`test.projects` in the root `vitest.config.ts`, an alias in `vitest.shared.ts`, a reference in the root `tsconfig.json` and
 `tsconfig.build.json`, a `references` entry in each dependent's `tsconfig.src.json` _and_
 `tsconfig.build.json`, an alias in the root manifest, an entry in the `no-dead-modules` graph rule
 for each of its barrels, and — if a host installs it — `PACKAGES` in `e2e/src/install.ts` _and_ a
@@ -338,8 +338,13 @@ merging — `export const X = Schema.Struct(…)` beside `export type X = …`, 
 `src/domain/` is written. Upstream closed it as not planned (oxc #25936). A real redeclaration is
 TS2451, and the compiler owns it.
 
-**`effect` is an exact dependency** (`4.0.0-beta.94`), pinned again in the root `pnpm.overrides`. Effect
-4 betas are mutually incompatible; bumping it is a coordinated breaking change.
+**`effect` is an exact dependency** (`4.0.5`), pinned again in the root `pnpm.overrides` with
+`@effect/vitest` beside it. Every package moves in one change. `@effect/vitest` 4.0.5 needs vitest 5,
+which dropped `describe.sequential`/`it.sequential` (pass `{ concurrent: false }`) and workspace files
+(the root `vitest.config.ts` lists `test.projects`). Effect 4.0.5 also changed two defaults that the
+code now states outright: a decode reports the rejected value only with `reportInput: true`, and
+`toJsonSchemaDocument` closes objects only with `onExcessProperty: "error"`. An `isPattern` regex
+reaches the JSON Schema only if it carries the `u` flag.
 
 **`references` is not inherited through `extends`**, so `tsconfig.build.json` and the root
 `tsconfig.build.json` repeat what the plain `tsconfig.json` already lists.

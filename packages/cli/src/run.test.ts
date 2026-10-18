@@ -191,7 +191,7 @@ const captureReport = async (effect: Effect.Effect<void, CliFailure>) => {
   }
 };
 
-describe.sequential("check", () => {
+describe("check", { concurrent: false }, () => {
   it("names each violation and counts the files it walked", async () => {
     const { exit, output } = await captureReport(check(await loadPolicy(repoRoot), ["src", "lib"]));
 
@@ -324,7 +324,7 @@ describe.sequential("check", () => {
   });
 });
 
-describe.sequential("explain", () => {
+describe("explain", { concurrent: false }, () => {
   it("prints the allowlist, the prohibitions, the folder rule, and the siblings owed", async () => {
     const { output } = await captureReport(
       explain(await loadPolicy(repoRoot), "src/thing.repository.ts"),
@@ -362,7 +362,7 @@ describe.sequential("explain", () => {
   });
 });
 
-describe.sequential("coverage", () => {
+describe("coverage", { concurrent: false }, () => {
   it("reports each family's reach and the adoption backlog", async () => {
     const { output } = await captureReport(coverage(await loadPolicy(repoRoot), ["src", "lib"]));
 
@@ -473,7 +473,7 @@ describe.sequential("coverage", () => {
   });
 });
 
-describe.sequential("facts", () => {
+describe("facts", { concurrent: false }, () => {
   it("prints every edge with its bindings, and every declared and called name", async () => {
     const { output } = await captureReport(
       facts(await loadPolicy(repoRoot), "src/thing.repository.ts"),
@@ -518,7 +518,7 @@ describe.sequential("facts", () => {
 // is what these assert. The reporting each command does is covered above —
 // Vitest re-patches `process.stdout.write` across an await, so output written
 // after `run`'s own async config load lands in its capture rather than ours.
-describe.sequential("run", () => {
+describe("run", { concurrent: false }, () => {
   it("defaults to check", async () => {
     const { exit } = await captureReport(run(repoRoot, ["check", "src", "lib"]));
 
@@ -608,7 +608,7 @@ const conformance = (
     manifestPath: path.join(policy.repoRoot, "architecture.config.mjs"),
   });
 
-describe.sequential("conformance", () => {
+describe("conformance", { concurrent: false }, () => {
   it("emits the snapshot with --json, and the core's codec accepts it", async () => {
     const { exit, output } = await captureReport(conformance(await loadPolicy(repoRoot), "json"));
     const decoded = decodeSnapshot(JSON.parse(output));
@@ -807,7 +807,7 @@ afterAll(() => {
   rmSync(baselineRoot, { force: true, recursive: true });
 });
 
-describe.sequential("baseline", () => {
+describe("baseline", { concurrent: false }, () => {
   it("records every violation as a fingerprint", async () => {
     const { exit } = await captureReport(
       writeBaseline(await loadPolicy(baselineRoot), ["src", "lib"]),
@@ -876,7 +876,7 @@ describe.sequential("baseline", () => {
   });
 });
 
-describe.sequential("resolution and a damaged baseline", () => {
+describe("resolution and a damaged baseline", { concurrent: false }, () => {
   it("reports an unresolvable specifier when the policy asks it to", async () => {
     const root = path.resolve(here, "../../../.tmp-cli-unresolved");
     writeIn(
@@ -1016,7 +1016,7 @@ afterAll(() => {
   rmSync(campaignRoot, { force: true, recursive: true });
 });
 
-describe.sequential("campaigns", () => {
+describe("campaigns", { concurrent: false }, () => {
   it("fails check on a campaign with hits and no ledger, and says how to clear it", async () => {
     const { exit, output } = await checkCampaigns();
     expect(Exit.isFailure(exit)).toBe(true);
@@ -1429,7 +1429,7 @@ afterAll(() => {
   rmSync(reportRoot, { force: true, recursive: true });
 });
 
-describe.sequential("a report term", () => {
+describe("a report term", { concurrent: false }, () => {
   it("runs the command once, reads the file, and anchors each diagnostic on its declaration", async () => {
     const { exit, output } = await captureReport(
       check(await loadPolicy(reportRoot), ["src"], "json"),

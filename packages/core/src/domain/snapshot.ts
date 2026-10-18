@@ -461,6 +461,7 @@ export type SnapshotSector = typeof SnapshotSector.Type;
 export const decodeSnapshot = Schema.decodeUnknownResult(Snapshot, {
   errors: "all",
   onExcessProperty: "error",
+  reportInput: true,
 });
 
 type JsonValue = string | number | boolean | null | JsonObject | ReadonlyArray<JsonValue>;
@@ -476,7 +477,7 @@ const jsonObjectOf = (value: unknown): JsonObject => Result.getOrThrow(decodeJso
 // The document's shape as a JSON Schema, generated from the same codec, so
 // the two cannot disagree. Published beside the manifest's.
 export const snapshotJsonSchema = (): JsonObject => {
-  const document = Schema.toJsonSchemaDocument(Snapshot);
+  const document = Schema.toJsonSchemaDocument(Snapshot, { onExcessProperty: "error" });
 
   const generated = {
     schema: jsonObjectOf(document.schema),

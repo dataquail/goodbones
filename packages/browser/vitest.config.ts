@@ -6,7 +6,7 @@ import shared from "../../vitest.shared.js";
 // `@vitest-environment jsdom` directive, so the model and server tests keep
 // running in Node.
 const config: UserConfigExport = {
-  esbuild: { jsx: "automatic" },
+  oxc: { jsx: { runtime: "automatic" } },
   test: {
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
   },

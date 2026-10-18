@@ -159,7 +159,7 @@ export const manifestJsonSchema = (options: ManifestJsonSchemaOptions = {}): Jso
       ? Manifest
       : Schema.Struct(Object.assign({}, Manifest.fields, ...options.extensions));
 
-  const document = Schema.toJsonSchemaDocument(whole);
+  const document = Schema.toJsonSchemaDocument(whole, { onExcessProperty: "error" });
 
   const generated = {
     schema: jsonObjectOf(document.schema),

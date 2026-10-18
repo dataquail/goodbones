@@ -1,6 +1,6 @@
 {
   "name": "@goodbones/oxlint",
-  "version": "0.1.0-beta.20",
+  "version": "0.1.0-beta.21",
   "type": "module",
   "license": "MIT",
   "description": "The oxlint plugin for @goodbones/core: the imports, exports, members, structure, surface and campaigns families as six oxlint rules, evaluated in the editor and in CI from the same manifest the CLI reads.",
@@ -52,7 +52,7 @@
   "dependencies": {
     "@goodbones/core": "workspace:*",
     "@goodbones/typescript": "workspace:*",
-    "effect": "4.0.0-beta.94"
+    "effect": "4.0.5"
   },
   "peerDependencies": {
     "@goodbones/ast-grep": "workspace:^",

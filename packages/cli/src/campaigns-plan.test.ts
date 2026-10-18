@@ -185,7 +185,7 @@ afterAll(() => {
   rmSync(root, { force: true, recursive: true });
 });
 
-describe.sequential("a phase's identity", () => {
+describe("a phase's identity", { concurrent: false }, () => {
   it("is written by clear as version 2, and a version 1 plan reads as unchanged", async () => {
     expect(plan().version).toBe(2);
     writeFileSync(planPath, JSON.stringify(VERSION_1, null, 2));
@@ -251,7 +251,7 @@ describe.sequential("a phase's identity", () => {
   });
 });
 
-describe.sequential("what clear says of a sector it moves", () => {
+describe("what clear says of a sector it moves", { concurrent: false }, () => {
   it("names the window a sector entered, and the phases it passed without standing in them", async () => {
     // The read goes: billing leaves `domain`, has nothing for `quiet` or
     // `repository`, and lands in the open phase.

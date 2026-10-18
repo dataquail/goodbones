@@ -88,7 +88,7 @@ afterAll(async () => {
   });
 });
 
-describe.sequential("the handler", () => {
+describe("the handler", { concurrent: false }, () => {
   it("serves both models and the status, computing once", async () => {
     const atlas = await (await fetch(`${base}/__goodbones/atlas.json`)).json();
     const campaigns = await (await fetch(`${base}/__goodbones/campaigns.json`)).json();

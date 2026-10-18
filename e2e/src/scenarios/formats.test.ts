@@ -65,7 +65,7 @@ const withOnly = (format: ManifestFormat): void => {
   repo.writeManifest(policy(repo), format);
 };
 
-describe.sequential("manifest formats", () => {
+describe("manifest formats", { concurrent: false }, () => {
   it("reports the same thing as yaml, json and a module", () => {
     const reports = (["yaml", "json", "mjs"] as const).map((format) => {
       withOnly(format);

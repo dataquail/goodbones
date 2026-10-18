@@ -31,9 +31,13 @@ import { makeCampaignsRule } from "./campaigns/rule.js";
 // The cases are one lint run in order — the notice lands on the first
 // file, and the count is read after the last — so this file opts out of the
 // shared config's concurrent sequence.
-RuleTester.describe = describe.sequential;
+RuleTester.describe = (text, fn) => {
+  describe(text, { concurrent: false }, fn);
+};
 
-RuleTester.it = it.sequential;
+RuleTester.it = (text, fn) => {
+  it(text, { concurrent: false }, fn);
+};
 
 // A `report` term whose source cannot be read is one fact about the lint
 // run. The rule says it once, on the first file a campaign naming that
@@ -170,8 +174,8 @@ new RuleTester({ cwd: repoRoot }).run("campaigns: the same failure, on the next 
   ],
 });
 
-describe.sequential("what the rule asked of the source", () => {
-  it.sequential("asked once per selected file, and said the failure once", () => {
+describe("what the rule asked of the source", { concurrent: false }, () => {
+  it("asked once per selected file, and said the failure once", { concurrent: false }, () => {
     expect(asked).toBe(3);
   });
 });

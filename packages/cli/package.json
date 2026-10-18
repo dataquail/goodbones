@@ -1,6 +1,6 @@
 {
   "name": "@goodbones/cli",
-  "version": "0.1.0-beta.20",
+  "version": "0.1.0-beta.21",
   "type": "module",
   "license": "MIT",
   "description": "The architecture CLI for @goodbones/core: check, conformance, baseline, campaigns, objectives, coverage, explain, facts, init, infer and migrate over a whole repository with no linter in the loop, including the graph family (cycles, orphans, transitive reach) that only an adapter seeing every file at once can evaluate.",
@@ -46,7 +46,7 @@
   "dependencies": {
     "@goodbones/core": "workspace:*",
     "@goodbones/typescript": "workspace:*",
-    "effect": "4.0.0-beta.94"
+    "effect": "4.0.5"
   },
   "peerDependencies": {
     "@goodbones/ast-grep": "workspace:^",

@@ -1,6 +1,6 @@
 {
   "name": "@goodbones/campaigns",
-  "version": "0.1.1-beta.8",
+  "version": "0.1.1-beta.9",
   "type": "module",
   "license": "MIT",
   "description": "The campaigns family for @goodbones/core: a refactor tracked as objectives over sectors through phases — each objective a detector with a ledger that only shrinks on its own, or a number held to a target — with a diff-scoped nudge for whoever touches a sector.",
@@ -52,7 +52,7 @@
   },
   "dependencies": {
     "@goodbones/core": "workspace:*",
-    "effect": "4.0.0-beta.94"
+    "effect": "4.0.5"
   },
   "devDependencies": {
     "@types/node": "^25.9.4",

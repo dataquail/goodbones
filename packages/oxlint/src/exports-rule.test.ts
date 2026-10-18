@@ -29,7 +29,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 const CQRS_BARREL =
   "node_modules/.pnpm/@effect-server-utils+cqrs/node_modules/@effect-server-utils/cqrs/dist/esm/index.js";
 
-const EFFECT_BARREL = "node_modules/.pnpm/effect@4.0.0-beta.94/node_modules/effect/dist/index.js";
+const EFFECT_BARREL = "node_modules/.pnpm/effect@4.0.5/node_modules/effect/dist/index.js";
 
 const config = {
   resolve: {
@@ -85,7 +85,7 @@ const policy = (): LoadedPolicy => {
     resolver: makeModuleResolverFake({
       "@effect-server-utils/cqrs": CQRS_BARREL,
       effect: EFFECT_BARREL,
-      "effect/Effect": "node_modules/.pnpm/effect@4.0.0-beta.94/node_modules/effect/dist/Effect.js",
+      "effect/Effect": "node_modules/.pnpm/effect@4.0.5/node_modules/effect/dist/Effect.js",
     }),
     ignoreUnresolved: [],
     notices: [],

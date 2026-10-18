@@ -14,8 +14,8 @@ import {
 const CQRS_BARREL =
   "node_modules/.pnpm/@effect-server-utils+cqrs/node_modules/@effect-server-utils/cqrs/dist/esm/index.js";
 
-const EFFECT_BARREL = "node_modules/.pnpm/effect@4.0.0-beta.94/node_modules/effect/dist/index.js";
-const EFFECT_MODULE = "node_modules/.pnpm/effect@4.0.0-beta.94/node_modules/effect/dist/Effect.js";
+const EFFECT_BARREL = "node_modules/.pnpm/effect@4.0.5/node_modules/effect/dist/index.js";
+const EFFECT_MODULE = "node_modules/.pnpm/effect@4.0.5/node_modules/effect/dist/Effect.js";
 
 const resolver = makeModuleResolverFake({
   "@effect-server-utils/cqrs": CQRS_BARREL,

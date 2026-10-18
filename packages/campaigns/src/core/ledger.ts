@@ -106,11 +106,16 @@ const LedgerV1 = Schema.Struct({
   entries: Schema.Array(Schema.String),
 });
 
-const decode = Schema.decodeUnknownResult(Ledger, { errors: "all", onExcessProperty: "error" });
+const decode = Schema.decodeUnknownResult(Ledger, {
+  errors: "all",
+  onExcessProperty: "error",
+  reportInput: true,
+});
 
 const decodeV1 = Schema.decodeUnknownResult(LedgerV1, {
   errors: "all",
   onExcessProperty: "error",
+  reportInput: true,
 });
 
 export const EMPTY_LEDGER = (campaign: string, objective: string, now: number): Ledger => ({
@@ -591,6 +596,7 @@ export type MeasureConcession = typeof MeasureConcession.Type;
 const decodeMeasure = Schema.decodeUnknownResult(MeasureLedger, {
   errors: "all",
   onExcessProperty: "error",
+  reportInput: true,
 });
 
 export const isMeasureLedger = (raw: unknown): boolean =>
@@ -879,6 +885,7 @@ export type Note = typeof Note.Type;
 const decodeRecord = Schema.decodeUnknownResult(SectorRecord, {
   errors: "all",
   onExcessProperty: "error",
+  reportInput: true,
 });
 
 export const decodeSectorRecord = (raw: unknown): Result.Result<SectorRecord, string> => {
@@ -1026,6 +1033,7 @@ export type PlanRecord = typeof PlanRecord.Type;
 const decodePlan = Schema.decodeUnknownResult(PlanRecord, {
   errors: "all",
   onExcessProperty: "error",
+  reportInput: true,
 });
 
 export const decodePlanRecord = (raw: unknown): Result.Result<PlanRecord, string> => {

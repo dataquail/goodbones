@@ -122,7 +122,7 @@ afterAll(() => {
   repo.dispose();
 });
 
-describe.sequential("an objective's ledger", () => {
+describe("an objective's ledger", { concurrent: false }, () => {
   it("check fails on a campaign with hits and no ledger, naming the command to run", () => {
     const result = check(repo, ["src"]);
     expect(result.code).toBe(1);
@@ -443,7 +443,7 @@ afterAll(() => {
   ladder.dispose();
 });
 
-describe.sequential("a campaign with sectors and phases", () => {
+describe("a campaign with sectors and phases", { concurrent: false }, () => {
   it("births sectors from the markers and derives their phases, in both hosts", () => {
     const result = check(ladder, ["src"]);
     expect(result.code).toBe(1);

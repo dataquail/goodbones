@@ -238,7 +238,7 @@ afterAll(() => {
   rmSync(root, { force: true, recursive: true });
 });
 
-describe.sequential("the shared files", () => {
+describe("the shared files", { concurrent: false }, () => {
   it("are taken out before any sector is born, and are on no phase", async () => {
     const { report } = await check();
     const sectors = report.campaigns[0]?.sectors ?? [];

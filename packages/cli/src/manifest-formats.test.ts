@@ -115,7 +115,7 @@ afterAll(() => {
   rmSync(scratch, { force: true, recursive: true });
 });
 
-describe.sequential("a YAML manifest", () => {
+describe("a YAML manifest", { concurrent: false }, () => {
   const root = path.join(scratch, "yaml");
 
   it("is discovered by name and reports what the module form does", async () => {
@@ -153,7 +153,7 @@ describe.sequential("a YAML manifest", () => {
   });
 });
 
-describe.sequential("architecture init", () => {
+describe("architecture init", { concurrent: false }, () => {
   const root = path.join(scratch, "init");
 
   it("writes a starter manifest that loads, and says what to run next", async () => {
@@ -183,7 +183,7 @@ describe.sequential("architecture init", () => {
   });
 });
 
-describe.sequential("architecture migrate", () => {
+describe("architecture migrate", { concurrent: false }, () => {
   const root = path.join(scratch, "migrate");
 
   it("writes the module manifest as YAML that decodes to the same policy", async () => {

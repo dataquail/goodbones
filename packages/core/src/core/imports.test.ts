@@ -175,7 +175,7 @@ describe("evaluateImportEdge", () => {
     };
 
     const targets = {
-      effect: "node_modules/.pnpm/effect@4.0.0-beta.94/node_modules/effect/dist/Schema.js",
+      effect: "node_modules/.pnpm/effect@4.0.5/node_modules/effect/dist/Schema.js",
       lodash: "node_modules/.pnpm/lodash@4.17.21/node_modules/lodash/index.js",
       local: "packages/server/src/platform/ids/user-id.ts",
     };

@@ -227,7 +227,7 @@ afterAll(() => {
   rmSync(root, { force: true, recursive: true });
 });
 
-describe.sequential("a campaign with sectors and phases", () => {
+describe("a campaign with sectors and phases", { concurrent: false }, () => {
   it("births sectors from the markers, derives each one's phase, and asks for a clear", async () => {
     const { exit, report } = await check();
     expect(Exit.isFailure(exit)).toBe(true);

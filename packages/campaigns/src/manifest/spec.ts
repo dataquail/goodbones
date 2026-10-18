@@ -196,11 +196,14 @@ const CampaignProbes = Schema.Struct({
   ignores: Schema.optionalKey(Schema.Array(CampaignProbe)),
 });
 
+// The `u` flag on these patterns is what lets the JSON Schema carry them:
+// Effect exports a regex as `pattern` only in the Unicode mode JSON Schema reads.
+//
 // `30d`, `12h`: how long a campaign may go without progress before the
 // conformance report calls it stalled.
-const Duration = Schema.String.check(Schema.isPattern(/^\d+[dh]$/));
+const Duration = Schema.String.check(Schema.isPattern(/^\d+[dh]$/u));
 
-const KebabId = Schema.String.check(Schema.isPattern(/^[a-z0-9]+(?:-[a-z0-9]+)*$/));
+const KebabId = Schema.String.check(Schema.isPattern(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u));
 
 // A term quantified over a sector's files: `has` a detector at least one
 // file (or declaration, or match) in the sector satisfies — a presence;

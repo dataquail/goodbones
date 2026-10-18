@@ -114,6 +114,19 @@
     "agent": {
       "type": "string"
     },
+    "launcher": {
+      "type": "string"
+    },
+    "allowedLaunchers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "launchers": {
+      "not": {},
+      "description": "launcher commands can only be defined in machine config (~/.config/chernabog/config.yaml)"
+    },
     "limits": {
       "type": "object",
       "properties": {

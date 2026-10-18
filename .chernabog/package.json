@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "devDependencies": {
+    "@chernabog/sdk": "0.1.0",
+    "effect": "4.0.5"
+  }
+}

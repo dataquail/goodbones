@@ -2,12 +2,12 @@
 // the agent implement it in a worktree, run the local gate, open the pull
 // request, wait for CI and hand off for review.
 //
-// Each block is a durable activity from @overmander/sdk. Reorder them, leave
-// one out, or put a step of your own from .overmander/stages/ in between with
+// Each block is a durable activity from @chernabog/sdk. Reorder them, leave
+// one out, or put a step of your own from .chernabog/stages/ in between with
 // `step("name", input, OutputSchema)`. Side effects belong inside activities or
 // steps, never in the workflow body, which runs again whenever the run resumes.
 
-import { defineFlow, Implement } from '@overmander/sdk';
+import { defineFlow, Implement } from '@chernabog/sdk';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 

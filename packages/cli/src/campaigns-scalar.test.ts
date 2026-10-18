@@ -178,7 +178,7 @@ afterAll(() => {
   rmSync(root, { force: true, recursive: true });
 });
 
-describe.sequential("a scalar objective", () => {
+describe("a scalar objective", { concurrent: false }, () => {
   it("measures each sector, holds it at the phase naming the scalar, and asks for a clear", async () => {
     const { exit, report } = await check();
     expect(Exit.isFailure(exit)).toBe(true);
@@ -403,7 +403,7 @@ const COMMAND_MANIFEST = (command: string): string =>
     tree: { "src/": { layout: "open", children: {} } },
   });
 
-describe.sequential("a command measure", () => {
+describe("a command measure", { concurrent: false }, () => {
   const writeAt = (file: string, source: string): void => {
     const at = path.join(commandRoot, file);
     mkdirSync(path.dirname(at), { recursive: true });

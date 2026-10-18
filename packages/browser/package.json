@@ -56,7 +56,7 @@
   "dependencies": {
     "@goodbones/core": "workspace:*",
     "@goodbones/typescript": "workspace:*",
-    "effect": "4.0.0-beta.94"
+    "effect": "4.0.5"
   },
   "peerDependencies": {
     "@goodbones/ast-grep": "workspace:^",

@@ -299,6 +299,7 @@ const Limits = Schema.Struct({
 const decodeTree = Schema.decodeUnknownResult(Schema.Record(Schema.String, ManifestNodeSchema), {
   errors: "all",
   onExcessProperty: "error",
+  reportInput: true,
 });
 
 // A tree of nodes, as an `endState` is once rebased: decoded like the
@@ -356,7 +357,11 @@ export const globsOf = (globs: string | ReadonlyArray<string>): ReadonlyArray<st
 // fixing one line wants to know about the other three. A key the schema does
 // not declare is refused rather than dropped — a misspelled `matchNot` that
 // decoded to nothing would be a rule quietly enforcing less than it says.
-const decode = Schema.decodeUnknownResult(Manifest, { errors: "all", onExcessProperty: "error" });
+const decode = Schema.decodeUnknownResult(Manifest, {
+  errors: "all",
+  onExcessProperty: "error",
+  reportInput: true,
+});
 const flatten = SchemaIssue.makeFormatterStandardSchemaV1();
 
 export type DecodedManifest = {

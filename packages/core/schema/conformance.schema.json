@@ -41,19 +41,11 @@
     },
     "files": {
       "type": "number",
-      "allOf": [
-        {
-          "description": "Files walked."
-        }
-      ]
+      "description": "Files walked."
     },
     "outside": {
       "type": "number",
-      "allOf": [
-        {
-          "description": "Walked files under the manifest's `limits.outside`: judged by every rule, and left out of `coverage` and `residue`."
-        }
-      ]
+      "description": "Walked files under the manifest's `limits.outside`: judged by every rule, and left out of `coverage` and `residue`."
     },
     "ok": {
       "type": "boolean",
@@ -67,35 +59,19 @@
           "properties": {
             "covered": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "Files this family reaches."
-                }
-              ]
+              "description": "Files this family reaches."
             },
             "total": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "Files the limits count: those walked, less the ones under `limits.outside`."
-                }
-              ]
+              "description": "Files the limits count: those walked, less the ones under `limits.outside`."
             },
             "floor": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "The fraction the manifest's `limits.coverage` states for this family, when it states one."
-                }
-              ]
+              "description": "The fraction the manifest's `limits.coverage` states for this family, when it states one."
             },
             "ceiling": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "The most files this family may leave unreached (`total - covered`), as the manifest's `limits.unreached` states it, when it states one."
-                }
-              ]
+              "description": "The most files this family may leave unreached (`total - covered`), as the manifest's `limits.unreached` states it, when it states one."
             }
           },
           "required": [
@@ -109,35 +85,19 @@
           "properties": {
             "covered": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "Files this family reaches."
-                }
-              ]
+              "description": "Files this family reaches."
             },
             "total": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "Files the limits count: those walked, less the ones under `limits.outside`."
-                }
-              ]
+              "description": "Files the limits count: those walked, less the ones under `limits.outside`."
             },
             "floor": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "The fraction the manifest's `limits.coverage` states for this family, when it states one."
-                }
-              ]
+              "description": "The fraction the manifest's `limits.coverage` states for this family, when it states one."
             },
             "ceiling": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "The most files this family may leave unreached (`total - covered`), as the manifest's `limits.unreached` states it, when it states one."
-                }
-              ]
+              "description": "The most files this family may leave unreached (`total - covered`), as the manifest's `limits.unreached` states it, when it states one."
             }
           },
           "required": [
@@ -151,35 +111,19 @@
           "properties": {
             "covered": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "Files this family reaches."
-                }
-              ]
+              "description": "Files this family reaches."
             },
             "total": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "Files the limits count: those walked, less the ones under `limits.outside`."
-                }
-              ]
+              "description": "Files the limits count: those walked, less the ones under `limits.outside`."
             },
             "floor": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "The fraction the manifest's `limits.coverage` states for this family, when it states one."
-                }
-              ]
+              "description": "The fraction the manifest's `limits.coverage` states for this family, when it states one."
             },
             "ceiling": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "The most files this family may leave unreached (`total - covered`), as the manifest's `limits.unreached` states it, when it states one."
-                }
-              ]
+              "description": "The most files this family may leave unreached (`total - covered`), as the manifest's `limits.unreached` states it, when it states one."
             }
           },
           "required": [
@@ -193,35 +137,19 @@
           "properties": {
             "covered": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "Files this family reaches."
-                }
-              ]
+              "description": "Files this family reaches."
             },
             "total": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "Files the limits count: those walked, less the ones under `limits.outside`."
-                }
-              ]
+              "description": "Files the limits count: those walked, less the ones under `limits.outside`."
             },
             "floor": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "The fraction the manifest's `limits.coverage` states for this family, when it states one."
-                }
-              ]
+              "description": "The fraction the manifest's `limits.coverage` states for this family, when it states one."
             },
             "ceiling": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "The most files this family may leave unreached (`total - covered`), as the manifest's `limits.unreached` states it, when it states one."
-                }
-              ]
+              "description": "The most files this family may leave unreached (`total - covered`), as the manifest's `limits.unreached` states it, when it states one."
             }
           },
           "required": [
@@ -235,35 +163,19 @@
           "properties": {
             "covered": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "Files this family reaches."
-                }
-              ]
+              "description": "Files this family reaches."
             },
             "total": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "Files the limits count: those walked, less the ones under `limits.outside`."
-                }
-              ]
+              "description": "Files the limits count: those walked, less the ones under `limits.outside`."
             },
             "floor": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "The fraction the manifest's `limits.coverage` states for this family, when it states one."
-                }
-              ]
+              "description": "The fraction the manifest's `limits.coverage` states for this family, when it states one."
             },
             "ceiling": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "The most files this family may leave unreached (`total - covered`), as the manifest's `limits.unreached` states it, when it states one."
-                }
-              ]
+              "description": "The most files this family may leave unreached (`total - covered`), as the manifest's `limits.unreached` states it, when it states one."
             }
           },
           "required": [
@@ -291,19 +203,11 @@
           "properties": {
             "count": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "What the measure counts today."
-                }
-              ]
+              "description": "What the measure counts today."
             },
             "ceiling": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "The count the manifest's `limits.conformance` states for this measure, when it states one."
-                }
-              ]
+              "description": "The count the manifest's `limits.conformance` states for this measure, when it states one."
             }
           },
           "required": [
@@ -316,19 +220,11 @@
           "properties": {
             "count": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "What the measure counts today."
-                }
-              ]
+              "description": "What the measure counts today."
             },
             "ceiling": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "The count the manifest's `limits.conformance` states for this measure, when it states one."
-                }
-              ]
+              "description": "The count the manifest's `limits.conformance` states for this measure, when it states one."
             }
           },
           "required": [
@@ -341,19 +237,11 @@
           "properties": {
             "count": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "What the measure counts today."
-                }
-              ]
+              "description": "What the measure counts today."
             },
             "ceiling": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "The count the manifest's `limits.conformance` states for this measure, when it states one."
-                }
-              ]
+              "description": "The count the manifest's `limits.conformance` states for this measure, when it states one."
             }
           },
           "required": [
@@ -366,19 +254,11 @@
           "properties": {
             "count": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "What the measure counts today."
-                }
-              ]
+              "description": "What the measure counts today."
             },
             "ceiling": {
               "type": "number",
-              "allOf": [
-                {
-                  "description": "The count the manifest's `limits.conformance` states for this measure, when it states one."
-                }
-              ]
+              "description": "The count the manifest's `limits.conformance` states for this measure, when it states one."
             }
           },
           "required": [
@@ -434,11 +314,7 @@
           },
           "allowances": {
             "type": "number",
-            "allOf": [
-              {
-                "description": "Distinct entries the node wrote, `allow` and `external` together."
-              }
-            ]
+            "description": "Distinct entries the node wrote, `allow` and `external` together."
           }
         },
         "required": [
@@ -564,11 +440,7 @@
       "properties": {
         "size": {
           "type": "number",
-          "allOf": [
-            {
-              "description": "Entries in the baseline file."
-            }
-          ]
+          "description": "Entries in the baseline file."
         }
       },
       "required": [
@@ -579,11 +451,7 @@
     },
     "cycles": {
       "type": "number",
-      "allOf": [
-        {
-          "description": "Strongly connected components of more than one file, or a file importing itself, anywhere in the walked graph — in a cycles rule's scope or not."
-        }
-      ]
+      "description": "Strongly connected components of more than one file, or a file importing itself, anywhere in the walked graph — in a cycles rule's scope or not."
     },
     "slack": {
       "type": "array",
@@ -612,11 +480,7 @@
           },
           "of": {
             "type": "number",
-            "allOf": [
-              {
-                "description": "With `fragment`: how many non-vacant nodes were granted the entry through it. None of them uses it."
-              }
-            ]
+            "description": "With `fragment`: how many non-vacant nodes were granted the entry through it. None of them uses it."
           }
         },
         "required": [
@@ -651,19 +515,11 @@
           },
           "usedAt": {
             "type": "number",
-            "allOf": [
-              {
-                "description": "Nodes granted the entry through the fragment that use it."
-              }
-            ]
+            "description": "Nodes granted the entry through the fragment that use it."
           },
           "of": {
             "type": "number",
-            "allOf": [
-              {
-                "description": "Non-vacant nodes granted the entry through the fragment."
-              }
-            ]
+            "description": "Non-vacant nodes granted the entry through the fragment."
           }
         },
         "required": [
@@ -721,27 +577,15 @@
           },
           "count": {
             "type": "number",
-            "allOf": [
-              {
-                "description": "Holdouts across every objective and sector."
-              }
-            ]
+            "description": "Holdouts across every objective and sector."
           },
           "progress": {
             "type": "number",
-            "allOf": [
-              {
-                "description": "For a campaign with phases: its sectors' positions on the ladder, averaged, over its `steps` — so it rises as sectors advance and never falls when one enters a phase. For one with none: cleared over everything ever ledgered, across its objectives."
-              }
-            ]
+            "description": "For a campaign with phases: its sectors' positions on the ladder, averaged, over its `steps` — so it rises as sectors advance and never falls when one enters a phase. For one with none: cleared over everything ever ledgered, across its objectives."
           },
           "steps": {
             "type": "number",
-            "allOf": [
-              {
-                "description": "How many defined phases the ladder has; 0 for a campaign with no phases. A sector at the open phase has taken every step."
-              }
-            ]
+            "description": "How many defined phases the ladder has; 0 for a campaign with no phases. A sector at the open phase has taken every step."
           },
           "objectives": {
             "type": "array",
@@ -765,43 +609,23 @@
                 },
                 "initial": {
                   "type": "number",
-                  "allOf": [
-                    {
-                      "description": "Holdouts recorded as each sector entered the window, summed."
-                    }
-                  ]
+                  "description": "Holdouts recorded as each sector entered the window, summed."
                 },
                 "allowed": {
                   "type": "number",
-                  "allOf": [
-                    {
-                      "description": "Holdouts added since by `objectives concede` or a re-baseline, each with a concession."
-                    }
-                  ]
+                  "description": "Holdouts added since by `objectives concede` or a re-baseline, each with a concession."
                 },
                 "count": {
                   "type": "number",
-                  "allOf": [
-                    {
-                      "description": "Holdouts in the ledger now, every sector summed."
-                    }
-                  ]
+                  "description": "Holdouts in the ledger now, every sector summed."
                 },
                 "cleared": {
                   "type": "number",
-                  "allOf": [
-                    {
-                      "description": "Holdouts removed by `objectives clear` because they stopped firing."
-                    }
-                  ]
+                  "description": "Holdouts removed by `objectives clear` because they stopped firing."
                 },
                 "closed": {
                   "type": "number",
-                  "allOf": [
-                    {
-                      "description": "Holdouts still firing when a sector left the window — not progress."
-                    }
-                  ]
+                  "description": "Holdouts still firing when a sector left the window — not progress."
                 },
                 "over": {
                   "type": "string",
@@ -812,11 +636,7 @@
                 },
                 "entered": {
                   "type": "number",
-                  "allOf": [
-                    {
-                      "description": "How many sectors the ledger has recorded in the objective's window, closed ones included."
-                    }
-                  ]
+                  "description": "How many sectors the ledger has recorded in the objective's window, closed ones included."
                 },
                 "progress": {
                   "anyOf": [
@@ -842,11 +662,7 @@
                 },
                 "concessions": {
                   "type": "number",
-                  "allOf": [
-                    {
-                      "description": "How many times a count was allowed to go up."
-                    }
-                  ]
+                  "description": "How many times a count was allowed to go up."
                 },
                 "complete": {
                   "type": "boolean",
@@ -869,19 +685,11 @@
                     },
                     "value": {
                       "type": "number",
-                      "allOf": [
-                        {
-                          "description": "The number measured now, every sector in window summed."
-                        }
-                      ]
+                      "description": "The number measured now, every sector in window summed."
                     },
                     "recorded": {
                       "type": "number",
-                      "allOf": [
-                        {
-                          "description": "The number the ledger holds the sectors to, summed: the best `objectives clear` has written, plus conceded rises."
-                        }
-                      ]
+                      "description": "The number the ledger holds the sectors to, summed: the best `objectives clear` has written, plus conceded rises."
                     },
                     "target": {
                       "anyOf": [
@@ -896,11 +704,7 @@
                     },
                     "tolerance": {
                       "type": "number",
-                      "allOf": [
-                        {
-                          "description": "How far either side of the record still counts as at it."
-                        }
-                      ]
+                      "description": "How far either side of the record still counts as at it."
                     }
                   },
                   "required": [
@@ -952,11 +756,7 @@
                 },
                 "sectors": {
                   "type": "number",
-                  "allOf": [
-                    {
-                      "description": "How many sectors are derived to stand at this phase."
-                    }
-                  ]
+                  "description": "How many sectors are derived to stand at this phase."
                 }
               },
               "required": [
@@ -1002,19 +802,11 @@
                 },
                 "files": {
                   "type": "number",
-                  "allOf": [
-                    {
-                      "description": "How many files the sector claims."
-                    }
-                  ]
+                  "description": "How many files the sector claims."
                 },
                 "position": {
                   "type": "number",
-                  "allOf": [
-                    {
-                      "description": "Where the sector stands on the ladder: the phases behind it, plus the share of its current phase that is paid. From 0 to the campaign's `steps`."
-                    }
-                  ]
+                  "description": "Where the sector stands on the ladder: the phases behind it, plus the share of its current phase that is paid. From 0 to the campaign's `steps`."
                 },
                 "residue": {
                   "type": "object",
@@ -1046,19 +838,11 @@
             "properties": {
               "files": {
                 "type": "number",
-                "allOf": [
-                  {
-                    "description": "Files in the scope no sector claims."
-                  }
-                ]
+                "description": "Files in the scope no sector claims."
               },
               "holdouts": {
                 "type": "number",
-                "allOf": [
-                  {
-                    "description": "Holdouts in the legacy, under the first phase's objectives — where a holdout moved out of a sector lands."
-                  }
-                ]
+                "description": "Holdouts in the legacy, under the first phase's objectives — where a holdout moved out of a sector lands."
               }
             },
             "required": [
@@ -1073,19 +857,11 @@
             "properties": {
               "files": {
                 "type": "number",
-                "allOf": [
-                  {
-                    "description": "Files in the scope the campaign's `shared` names."
-                  }
-                ]
+                "description": "Files in the scope the campaign's `shared` names."
               },
               "holdouts": {
                 "type": "number",
-                "allOf": [
-                  {
-                    "description": "Holdouts of the objectives read over the shared: the prerequisites not yet met."
-                  }
-                ]
+                "description": "Holdouts of the objectives read over the shared: the prerequisites not yet met."
               }
             },
             "required": [

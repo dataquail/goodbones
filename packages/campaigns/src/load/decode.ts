@@ -19,6 +19,7 @@ export { DEFAULT_LEDGER_DIR } from "../manifest/spec.js";
 const decode = Schema.decodeUnknownResult(CampaignsManifest, {
   errors: "all",
   onExcessProperty: "error",
+  reportInput: true,
 });
 const flatten = SchemaIssue.makeFormatterStandardSchemaV1();
 

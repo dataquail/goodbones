@@ -108,7 +108,7 @@ afterAll(() => {
   repo.dispose();
 });
 
-describe.sequential("a scalar objective", () => {
+describe("a scalar objective", { concurrent: false }, () => {
   it("check measures the sector and asks for a clear, which records it as a number", () => {
     const before = check(repo, ["src"]);
     expect(before.code).toBe(1);

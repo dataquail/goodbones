@@ -84,7 +84,7 @@ const failureOf = (exit: Exit.Exit<void, CliFailure>): string => {
 
 const manifestPath = () => path.join(root, "architecture.json");
 
-describe.sequential("the CLI without @goodbones/campaigns", () => {
+describe("the CLI without @goodbones/campaigns", { concurrent: false }, () => {
   it("checks clean, with no campaigns in the report", async () => {
     const { exit, output } = await capture(
       check(await load(), ["src"], { format: "json", manifestPath: manifestPath() }),

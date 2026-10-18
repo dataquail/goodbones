@@ -40,7 +40,7 @@ afterAll(() => {
   repo.dispose();
 });
 
-describe.sequential("inference", () => {
+describe("inference", { concurrent: false }, () => {
   it("asks nothing off a terminal, and says so", () => {
     const inferred = cli(repo, ["infer"]);
     expect(inferred.code, inferred.stderr).toBe(0);

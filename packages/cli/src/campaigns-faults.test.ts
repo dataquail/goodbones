@@ -229,7 +229,7 @@ afterAll(() => {
   rmSync(root, { force: true, recursive: true });
 });
 
-describe.sequential("the faults a strangling plants", () => {
+describe("the faults a strangling plants", { concurrent: false }, () => {
   it("names work done ahead of the plan, and refuses it under onAhead: ratchet (O1)", async () => {
     // A read served before the backfill is attested: a served-phase holdout
     // paid down while billing waits at backfilled.

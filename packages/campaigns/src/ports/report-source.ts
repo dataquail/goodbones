@@ -14,6 +14,7 @@ export type ReportSpec = {
 // The commands or files a spec names, as a list.
 export const reportSourcesOf = (spec: ReportSpec): ReadonlyArray<string> => {
   const named = spec.command ?? spec.file ?? [];
+
   return typeof named === "string" ? [named] : named;
 };
 

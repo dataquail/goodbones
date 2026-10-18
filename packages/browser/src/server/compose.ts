@@ -16,6 +16,11 @@ import * as Result from "effect/Result";
 import type { CampaignsFamily, CampaignsHost } from "./campaigns/host.js";
 import { campaignsNotInstalled } from "./campaigns/none.js";
 
+// The two optional peers, loaded only through `importOptional`: the glue that
+// names `@goodbones/campaigns`, and the syntax matcher.
+const loadCampaignsLive = () => import("./campaigns/live.js");
+const loadAstGrep = () => import("@goodbones/ast-grep");
+
 // This host's composition root: the same three lines the CLI and the plugin
 // each have, on purpose — the three hosts share the core and never each
 // other. Nothing below this file names TypeScript or ast-grep.
@@ -24,7 +29,8 @@ import { campaignsNotInstalled } from "./campaigns/none.js";
 // optional peer with a native binary: composed into the pack when it is
 // installed, and a campaign that needs it without it is refused at load.
 export const hostLanguages = async (): Promise<ReadonlyArray<Language>> => {
-  const astGrep = await importOptional(() => import("@goodbones/ast-grep"), "@goodbones/ast-grep");
+  const astGrep = await importOptional(loadAstGrep, "@goodbones/ast-grep");
+
   return [typescriptLanguage(astGrep === null ? {} : { syntax: astGrep.astGrepMatcher() })];
 };
 
@@ -32,16 +38,19 @@ export const hostLanguages = async (): Promise<ReadonlyArray<Language>> => {
 // browser, and `none` when it is not. Everything on the server that names
 // the package is under `campaigns/`, reached through this one import.
 export const hostCampaigns = async (): Promise<CampaignsFamily> =>
-  (await importOptional(() => import("./campaigns/live.js"), "@goodbones/campaigns"))
-    ?.liveCampaigns ?? campaignsNotInstalled;
+  (await importOptional(loadCampaignsLive, "@goodbones/campaigns"))?.liveCampaigns ??
+  campaignsNotInstalled;
 
 export const hostNow = (): number => {
   const pinned = process.env.ARCHITECTURE_NOW;
+
   if (pinned === undefined || pinned === "") return Date.now();
   const parsed = /^\d+$/.test(pinned) ? Number(pinned) : Date.parse(pinned);
+
   if (Number.isNaN(parsed)) {
     throw new Error(`ARCHITECTURE_NOW is ${JSON.stringify(pinned)}, which is not a date.`);
   }
+
   return parsed;
 };
 
@@ -73,6 +82,7 @@ export const loadPolicyFromFile = async (
   const read = await readManifestFile(configPath);
   const campaigns = given ?? (await hostCampaigns());
   const composed = await campaigns.compose(repoRoot, configPath, read.manifest);
+
   const loaded = loadPolicy({
     repoRoot,
     configPath,
@@ -84,7 +94,9 @@ export const loadPolicyFromFile = async (
     uninstalled: composed.uninstalled,
     now: hostNow(),
   });
+
   if (Result.isFailure(loaded)) throw loaded.failure;
+
   return {
     policy: loaded.success,
     campaigns: campaigns.host,

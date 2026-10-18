@@ -31,11 +31,12 @@ const anchorsOf = (
   lines: number,
 ): ReadonlyArray<Anchored> => {
   const here = nodes
-    .filter((node) => node.position?.file === file)
-    .map((node) => ({ node, line: node.position?.line ?? 0 }))
+    .flatMap((node) => (node.position?.file === file ? [{ node, line: node.position.line }] : []))
     .sort((a, b) => (a.line !== b.line ? a.line - b.line : a.node.depth - b.node.depth));
+
   return here.map((one, index) => {
     const next = here.slice(index + 1).find((other) => other.line > one.line);
+
     return { node: one.node, line: one.line, end: next === undefined ? lines : next.line - 1 };
   });
 };
@@ -64,12 +65,15 @@ export const ManifestPane = ({
   const active = files.find((file) => file.path === tab) ?? files[0];
   const lines = useMemo(() => (active === undefined ? [] : active.text.split("\n")), [active]);
   const tokens = useMemo(() => tokenizeLines(lines), [lines]);
+
   const anchors = useMemo(
     () => (active === undefined ? [] : anchorsOf(atlas.manifest.nodes, active.path, lines.length)),
     [active, atlas, lines.length],
   );
+
   const byLine = useMemo(() => new Map(anchors.map((one) => [one.line, one] as const)), [anchors]);
   const own = anchors.find((one) => one.node.id === activeNode) ?? null;
+
   const chainLines = useMemo(
     () => new Set(anchors.filter((one) => chain.includes(one.node.id)).map((one) => one.line)),
     [anchors, chain],
@@ -78,11 +82,15 @@ export const ManifestPane = ({
   // The unused allowances, found where they were written.
   const slackLines = useMemo(() => {
     const found = new Map<number, string>();
+
     for (const anchor of anchors) {
       const unused = (anchor.node.imports?.allowances ?? []).filter((one) => !one.used);
+
       if (unused.length === 0) continue;
+
       for (let line = anchor.line; line <= anchor.end; line += 1) {
         const text = lines[line - 1] ?? "";
+
         for (const allowance of unused) {
           if (
             new RegExp(`(^|[\\s\\[,"'])${escapeRegExp(allowance.entry)}(["',\\]\\s]|$)`).test(text)
@@ -92,6 +100,7 @@ export const ManifestPane = ({
         }
       }
     }
+
     return found;
   }, [anchors, lines]);
 
@@ -100,18 +109,22 @@ export const ManifestPane = ({
   const targetLine = scrollTo !== null && scrollTo.file === active?.path ? scrollTo.line : null;
   useEffect(() => {
     if (targetLine === null || listRef.current === null) return;
+
     const element = listRef.current.querySelector<HTMLElement>(
       `[data-line="${String(targetLine)}"]`,
     );
+
     element?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [targetLine, tab]);
 
   // The innermost node whose lines include this one.
   const nodeAtLine = (line: number): AtlasNode | null => {
     let best: Anchored | null = null;
+
     for (const anchor of anchors) {
       if (anchor.line <= line && (best === null || anchor.line >= best.line)) best = anchor;
     }
+
     return best?.node ?? null;
   };
 
@@ -142,12 +155,18 @@ export const ManifestPane = ({
           const line = index + 1;
           const anchor = byLine.get(line);
           const classes = ["line"];
+
           if (anchor !== undefined) classes.push("anchor");
+
           if (own !== null && line >= own.line && line <= own.end) classes.push("own");
+
           if (chainLines.has(line)) classes.push("chain");
+
           if (anchor?.node.id === selectedNode) classes.push("selected");
           const slack = slackLines.get(line);
+
           if (slack !== undefined) classes.push("slack");
+
           return (
             <li
               key={line}

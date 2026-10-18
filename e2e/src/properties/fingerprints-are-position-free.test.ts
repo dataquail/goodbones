@@ -49,6 +49,7 @@ describe("fingerprints are position-free", () => {
           async ([tree, shuffle]) => {
             await tick();
             const repo = repoOf(tree);
+
             try {
               repo.writeManifest(campaignManifest(repo.profile));
               const before = check(repo, ["src"]);
@@ -57,10 +58,12 @@ describe("fingerprints are position-free", () => {
 
               for (const [file, spec] of Object.entries(specsOf(tree, repo.profile))) {
                 const { order, padding } = shuffle[file] ?? { order: [], padding: 0 };
+
                 const reordered = repo.profile.render({
                   ...spec,
                   imports: order.map((index) => spec.imports[index] ?? ""),
                 });
+
                 repo.write(file, reordered.replaceAll("\n", `\n${"\n".repeat(padding)}`));
               }
 

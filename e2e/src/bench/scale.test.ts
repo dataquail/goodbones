@@ -38,8 +38,10 @@ const PER_FOLDER = 25;
 // A fixed-seed generator, so two runs see the same tree.
 const lcg = (seed: number) => {
   let state = seed >>> 0;
+
   return (bound: number): number => {
     state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+
     return state % bound;
   };
 };
@@ -53,13 +55,16 @@ const generate = (count: number): Generated => {
   const next = lcg(1);
   const names: Array<string> = [];
   const perLayer = Math.ceil(count / LAYERS.length);
+
   for (const layer of LAYERS) {
     for (let i = 0; i < perLayer && names.length < count; i++) {
       names.push(`src/${layer}/folder${String(Math.floor(i / PER_FOLDER))}/module${String(i)}.ts`);
     }
   }
+
   const layerOf = (file: string): number =>
     LAYERS.findIndex((layer) => file.includes(`/${layer}/`));
+
   const byLayer = LAYERS.map((_, index) => names.filter((file) => layerOf(file) === index));
 
   const files: Record<string, FileContent> = {};
@@ -70,8 +75,10 @@ const generate = (count: number): Generated => {
     // resolves every edge.
     const reachable = byLayer.slice(0, layer + 1).flat();
     const imports: Array<ImportSpec> = [];
+
     for (let k = 0; k < FAN_OUT; k++) {
       const target = reachable[next(reachable.length)];
+
       if (target === undefined || target === file) continue;
       const relative = specifierOf(file, target);
       imports.push(
@@ -80,6 +87,7 @@ const generate = (count: number): Generated => {
           : { from: relative, namespace: `ns${String(k)}` },
       );
     }
+
     const facts = source({
       imports,
       exports: ["value0", "value1", "value2"],
@@ -91,6 +99,7 @@ const generate = (count: number): Generated => {
         { calls: index % 5 === 0 ? "useState" : "run" },
       ],
     });
+
     files[file] = typescript.render(facts) + bodyOf(index);
   });
   // The entry the orphan rule starts from: it imports the first file of every
@@ -196,6 +205,7 @@ const generate = (count: number): Generated => {
 // file is mostly made of, none of which the manifest above speaks about.
 const bodyOf = (index: number): string => {
   const blocks: Array<string> = [];
+
   for (let k = 0; k < BODY; k += 1) {
     const id = `${String(index)}_${String(k)}`;
     blocks.push(
@@ -208,6 +218,7 @@ const bodyOf = (index: number): string => {
       `export interface Shape${id} { a: string; b(): void }`,
     );
   }
+
   return blocks.length === 0 ? "" : `${blocks.join("\n")}\n`;
 };
 
@@ -215,9 +226,11 @@ const specifierOf = (from: string, to: string): string => {
   const fromParts = from.split("/").slice(0, -1);
   const toParts = to.split("/");
   let shared = 0;
+
   while (shared < fromParts.length && fromParts[shared] === toParts[shared]) shared += 1;
   const up = fromParts.length - shared;
   const rest = toParts.slice(shared).join("/");
+
   return up === 0 ? `./${rest}` : `${"../".repeat(up)}${rest}`;
 };
 
@@ -232,28 +245,36 @@ const time = (repo: Repo, argv: ReadonlyArray<string>): Timing => {
   const runs: Array<number> = [];
   let files = 0;
   let violations = 0;
+
   for (let i = 0; i < RUNS; i++) {
     const started = performance.now();
+
     const result = cli(repo, [...argv, "--json", "src"], {
       maxBuffer: 1 << 30,
       ...(BIN === undefined ? {} : { bin: BIN }),
     });
+
     runs.push(performance.now() - started);
+
     if (result.stdout.length === 0) {
       throw new Error(`${argv.join(" ")} printed nothing:\n${result.stderr}`);
     }
+
     const json = JSON.parse(result.stdout) as {
       readonly files?: number;
       readonly violations?: ReadonlyArray<unknown>;
     };
+
     files = json.files ?? 0;
     violations = json.violations?.length ?? 0;
   }
+
   return { command: argv.join(" "), runs, files, violations };
 };
 
 const median = (values: ReadonlyArray<number>): number => {
   const sorted = [...values].sort((a, b) => a - b);
+
   return sorted[Math.floor(sorted.length / 2)] ?? 0;
 };
 
@@ -266,12 +287,16 @@ const format = (timings: ReadonlyArray<Timing>): string => {
     `${Math.min(...one.runs).toFixed(0)} ms`,
     `${(median(one.runs) / one.files).toFixed(2)} ms/file`,
   ]);
+
   const header = ["command", "files", "violations", "median", "best", "per file"];
+
   const widths = header.map((_, i) =>
     Math.max(header[i]?.length ?? 0, ...rows.map((r) => r[i]?.length ?? 0)),
   );
+
   const line = (cells: ReadonlyArray<string>) =>
     `| ${cells.map((cell, i) => cell.padEnd(widths[i] ?? 0)).join(" | ")} |`;
+
   return [
     line(header),
     `| ${widths.map((w) => "-".repeat(w)).join(" | ")} |`,
@@ -306,6 +331,7 @@ describe.skipIf(process.env.BENCH === undefined)("scale", () => {
       { ...withGraph, command: "check (with graph)" },
       { ...conformance, command: "conformance" },
     ]);
+
     process.stdout.write(
       `\n${String(FILES)} files, ${String(RUNS)} runs each, median and best:\n${table}\n\n`,
     );

@@ -42,6 +42,7 @@ afterAll(() => {
 const walk = (root: string): ReadonlyArray<string> =>
   readdirSync(root).flatMap((entry) => {
     const at = path.join(root, entry);
+
     return statSync(at).isDirectory() ? walk(at) : [at];
   });
 
@@ -71,6 +72,7 @@ describe("installed shape", () => {
       cwd: repo.root,
       encoding: "utf8",
     });
+
     expect(run.error).toBeUndefined();
     expect(run.status).toBe(1);
     expect((JSON.parse(run.stdout) as { files: number }).files).toBe(11);
@@ -78,6 +80,7 @@ describe("installed shape", () => {
 
   it("init and explain run from the install too", () => {
     const fresh = createRepo({ files: { "src/main.ts": "export const main = 1;\n" } });
+
     try {
       const wrote = cli(fresh, ["init"], { bin: installed.bin });
       expect(wrote.code, wrote.stderr).toBe(0);

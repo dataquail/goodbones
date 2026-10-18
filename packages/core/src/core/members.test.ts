@@ -13,7 +13,9 @@ import {
 
 const compile = (rules: ReadonlyArray<MemberRule>) => {
   const compiled = compileMemberRules(rules);
+
   if (Result.isFailure(compiled)) throw compiled.failure;
+
   return compiled.success;
 };
 
@@ -147,6 +149,7 @@ describe("evaluateMemberSite", () => {
       matchNot: "^find",
       allow: "^(insert|update|delete|upsert)(One|Many)$",
     };
+
     const rules = [dumbReads, dumbWrites];
 
     expect(violationsAt(rules, typeMember("grantRole"))).toEqual(["dumb-repository-ports-writes"]);
@@ -190,6 +193,7 @@ describe("memberRulesFailingTheirProbe", () => {
   describe("with a source", () => {
     const INTERSECTION = "export type TodosRepositoryShape = Base & { findOneById(): void };";
     const LITERAL = "export type TodosRepositoryShape = { findOneById(): void };";
+
     const parser = makeFactExtractorFake({
       // The parser reads the literal's member, and nothing out of the intersection.
       [LITERAL]: {
@@ -206,6 +210,7 @@ describe("memberRulesFailingTheirProbe", () => {
         ],
       },
     });
+
     const sourced = (source: string): MemberRule => ({
       ...dumbReads,
       probe: { from: PORT, name: "findOneById", source },

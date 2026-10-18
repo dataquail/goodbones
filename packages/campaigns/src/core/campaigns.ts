@@ -20,6 +20,7 @@ import {
   type SyntaxTree,
   type Violation,
 } from "@goodbones/core";
+import * as Match from "effect/Match";
 import * as Result from "effect/Result";
 
 import type {
@@ -38,7 +39,6 @@ import type {
   PhaseRule,
   ReportFormat,
 } from "../domain/config.js";
-import type { CampaignMeasure } from "../ports/campaign-measure.js";
 import type { CampaignPredicate, Range } from "../ports/campaign-predicate.js";
 import type { ReportSource, ReportSpec } from "../ports/report-source.js";
 
@@ -249,15 +249,19 @@ const targetOf = (
 ): Result.Result<Target, PatternInvalid> => {
   if (typeof resolves === "string") {
     const compiled = compilePatterns(name, field, resolves);
+
     if (Result.isFailure(compiled)) return Result.fail(compiled.failure);
     const [pattern] = compiled.success;
+
     return pattern === undefined
       ? Result.fail(
           new PatternInvalid({ ruleName: name, field, pattern: resolves, detail: "empty pattern" }),
         )
       : Result.succeed({ kind: "path", pattern });
   }
+
   if ("external" in resolves) return Result.succeed({ kind: "external", name: resolves.external });
+
   return Result.succeed({ kind: "builtin", name: resolves.builtin });
 };
 
@@ -269,41 +273,55 @@ const compileDetector = (
     terms: ReadonlyArray<Detector>,
   ): Result.Result<ReadonlyArray<CompiledDetector>, PatternInvalid> => {
     const compiled: Array<CompiledDetector> = [];
+
     for (const term of terms) {
       const one = compileDetector(name, term);
+
       if (Result.isFailure(one)) return Result.fail(one.failure);
       compiled.push(one.success);
     }
+
     return Result.succeed(compiled);
   };
+
   const patterns = (field: string, value: string | ReadonlyArray<string> | undefined) =>
     compilePatterns(name, field, value);
 
   if ("all" in detector) {
     const terms = compileAll(detector.all);
+
     return Result.isFailure(terms)
       ? Result.fail(terms.failure)
       : Result.succeed({ kind: "all", terms: terms.success });
   }
+
   if ("any" in detector) {
     const terms = compileAll(detector.any);
+
     return Result.isFailure(terms)
       ? Result.fail(terms.failure)
       : Result.succeed({ kind: "any", terms: terms.success });
   }
+
   if ("not" in detector) {
     const term = compileDetector(name, detector.not);
+
     return Result.isFailure(term)
       ? Result.fail(term.failure)
       : Result.succeed({ kind: "not", term: term.success });
   }
+
   if ("path" in detector) {
     const file = patterns("path.file", detector.path.file);
+
     if (Result.isFailure(file)) return Result.fail(file.failure);
     const fileNot = patterns("path.fileNot", detector.path.fileNot);
+
     if (Result.isFailure(fileNot)) return Result.fail(fileNot.failure);
     const convention = patterns("path.convention", detector.path.convention);
+
     if (Result.isFailure(convention)) return Result.fail(convention.failure);
+
     return Result.succeed({
       kind: "path",
       file: file.success,
@@ -312,18 +330,24 @@ const compileDetector = (
       convention: convention.success[0] ?? null,
     });
   }
+
   if ("imports" in detector) {
     const resolves = targetOf(name, "imports.resolves", detector.imports.resolves);
+
     if (Result.isFailure(resolves)) return Result.fail(resolves.failure);
+
     return Result.succeed({
       kind: "imports",
       resolves: resolves.success,
       symbols: detector.imports.symbols === undefined ? null : [...detector.imports.symbols],
     });
   }
+
   if ("exports" in detector) {
     const named = patterns("exports.name", detector.exports.name);
+
     if (Result.isFailure(named)) return Result.fail(named.failure);
+
     return Result.succeed({
       kind: "exports",
       name: named.success,
@@ -332,11 +356,15 @@ const compileDetector = (
       reexport: detector.exports.reexport ?? null,
     });
   }
+
   if ("members" in detector) {
     const named = patterns("members.name", detector.members.name);
+
     if (Result.isFailure(named)) return Result.fail(named.failure);
     const inside = patterns("members.in", detector.members.in);
+
     if (Result.isFailure(inside)) return Result.fail(inside.failure);
+
     return Result.succeed({
       kind: "members",
       subject: detector.members.subject,
@@ -345,15 +373,18 @@ const compileDetector = (
       declares: detector.members.declares === undefined ? null : [...detector.members.declares],
     });
   }
+
   if ("requires" in detector) {
     return Result.succeed({ kind: "requires", templates: [...detector.requires] });
   }
+
   if ("content" in detector) {
     // The codec refuses a bare string here; a caller that built the rule by
     // hand can still pass one, and `new RegExp(undefined)` is `/(?:)/`, which
     // matches every file. A detector that fires on everything is refused,
     // not compiled.
     const source: unknown = detector.content.regex;
+
     if (typeof source !== "string") {
       return Result.fail(
         new PatternInvalid({
@@ -364,7 +395,9 @@ const compileDetector = (
         }),
       );
     }
+
     let regex: RegExp;
+
     try {
       regex = new RegExp(source, "m");
     } catch (cause) {
@@ -377,36 +410,48 @@ const compileDetector = (
         }),
       );
     }
+
     return Result.succeed({ kind: "content", regex });
   }
+
   if ("syntax" in detector) {
     const where: Array<CompiledNarrowing> = [];
+
     for (const [capture, narrowing] of Object.entries(detector.syntax.where ?? {})) {
       const regex = patterns(`syntax.where.${capture}.regex`, narrowing.regex);
+
       if (Result.isFailure(regex)) return Result.fail(regex.failure);
       let binding: CompiledNarrowing["binding"] = null;
+
       if (narrowing.binding !== undefined) {
         const resolves = targetOf(
           name,
           `syntax.where.${capture}.binding.resolves`,
           narrowing.binding.resolves,
         );
+
         if (Result.isFailure(resolves)) return Result.fail(resolves.failure);
         binding = {
           resolves: resolves.success,
           member: narrowing.binding.member === undefined ? null : [...narrowing.binding.member],
         };
       }
+
       where.push({ capture, regex: regex.success[0] ?? null, binding });
     }
+
     return Result.succeed({ kind: "syntax", rule: detector.syntax.rule, where });
   }
+
   if ("report" in detector) {
     const term = detector.report;
+
     if (term.pattern !== undefined) {
       const pattern = patterns("report.pattern", term.pattern);
+
       if (Result.isFailure(pattern)) return Result.fail(pattern.failure);
     }
+
     return Result.succeed({
       kind: "report",
       command: term.command ?? null,
@@ -417,6 +462,7 @@ const compileDetector = (
       codesNot: new Set(term.codesNot ?? []),
     });
   }
+
   return Result.succeed({ kind: "fn", name: detector.fn });
 };
 
@@ -425,10 +471,13 @@ const compileMeasureSource = (
   source: MeasureSource,
 ): Result.Result<CompiledMeasureSource, PatternInvalid> => {
   if ("lines" in source) return Result.succeed({ kind: "lines" });
+
   if ("files" in source) return Result.succeed({ kind: "files" });
+
   if ("fn" in source)
     return Result.succeed({ kind: "fn", detect: { kind: "fn", name: source.fn } });
   const detect = compileDetector(name, source);
+
   return Result.isFailure(detect)
     ? Result.fail(detect.failure)
     : Result.succeed({ kind: "report", detect: detect.success });
@@ -440,18 +489,24 @@ const compileMeasure = (
 ): Result.Result<CompiledMeasure, PatternInvalid> => {
   if ("command" in measure) {
     const pattern = compilePatterns(name, "measure.pattern", measure.pattern);
+
     if (Result.isFailure(pattern)) return Result.fail(pattern.failure);
+
     return Result.succeed({
       kind: "command",
       command: measure.command,
       pattern: pattern.success[0] ?? null,
     });
   }
+
   if ("ratio" in measure) {
     const of = compileMeasureSource(name, measure.ratio.of);
+
     if (Result.isFailure(of)) return Result.fail(of.failure);
     const per = compileMeasureSource(name, measure.ratio.per);
+
     if (Result.isFailure(per)) return Result.fail(per.failure);
+
     return Result.succeed({
       kind: "ratio",
       of: of.success,
@@ -459,7 +514,9 @@ const compileMeasure = (
       scale: measure.ratio.scale,
     });
   }
+
   const of = compileMeasureSource(name, measure);
+
   return Result.isFailure(of)
     ? Result.fail(of.failure)
     : Result.succeed({ kind: "sum", of: of.success });
@@ -469,32 +526,43 @@ export const compileObjective = (
   rule: ObjectiveRule,
 ): Result.Result<CompiledObjective, PatternInvalid> => {
   let detect: CompiledDetector | null = null;
+
   if (rule.match !== undefined) {
     const compiled = compileDetector(rule.name, rule.match);
+
     if (Result.isFailure(compiled)) return Result.fail(compiled.failure);
     detect = compiled.success;
   }
+
   let sector: CompiledSectorTerm | null = null;
+
   if (rule.sector !== undefined) {
     if ("has" in rule.sector) {
       const compiled = compileDetector(rule.name, rule.sector.has);
+
       if (Result.isFailure(compiled)) return Result.fail(compiled.failure);
       sector = { kind: "has", detect: compiled.success };
     } else if ("oneRoot" in rule.sector) {
       sector = { kind: "oneRoot" };
     } else {
       const hosts = compilePatterns(rule.name, "sector.oneHost", rule.sector.oneHost);
+
       if (Result.isFailure(hosts)) return Result.fail(hosts.failure);
       sector = { kind: "oneHost", hosts: hosts.success };
     }
   }
+
   let measure: CompiledMeasure | null = null;
+
   if (rule.measure !== undefined) {
     const compiled = compileMeasure(rule.name, rule.measure);
+
     if (Result.isFailure(compiled)) return Result.fail(compiled.failure);
     measure = compiled.success;
   }
+
   const holdout = rule.holdout ?? null;
+
   return Result.succeed({
     name: rule.name,
     id: rule.id,
@@ -527,13 +595,17 @@ const compilePerimeter = (
       return Result.succeed({ kind: perimeter.kind });
     case "glob": {
       const glob = compilePatterns(name, "perimeter.glob", perimeter.glob);
+
       return Result.isFailure(glob)
         ? Result.fail(glob.failure)
         : Result.succeed({ kind: "glob", glob: glob.success });
     }
+
     case "marker": {
       const marker = compilePatterns(name, "perimeter.marker", perimeter.marker);
+
       if (Result.isFailure(marker)) return Result.fail(marker.failure);
+
       return Result.succeed({
         kind: "marker",
         marker: marker.success,
@@ -554,9 +626,12 @@ const compilePerimeter = (
               },
       });
     }
+
     case "match": {
       const detect = compileDetector(`${name}/perimeter`, perimeter.match);
+
       if (Result.isFailure(detect)) return Result.fail(detect.failure);
+
       return Result.succeed({
         kind: "match",
         detect: detect.success,
@@ -571,23 +646,32 @@ export const compileCampaignRule = (
   rule: CampaignRule,
 ): Result.Result<CompiledCampaign, PatternInvalid> => {
   const scope = compilePatterns(rule.name, "scope", rule.scope);
+
   if (Result.isFailure(scope)) return Result.fail(scope.failure);
   const legacy = compilePatterns(rule.name, "legacy", rule.legacy);
+
   if (Result.isFailure(legacy)) return Result.fail(legacy.failure);
   const sharedFiles = compilePatterns(rule.name, "shared", rule.shared);
+
   if (Result.isFailure(sharedFiles)) return Result.fail(sharedFiles.failure);
   let perimeter: CompiledPerimeter | null = null;
+
   if (rule.perimeter !== undefined) {
     const compiled = compilePerimeter(rule.name, rule.perimeter);
+
     if (Result.isFailure(compiled)) return Result.fail(compiled.failure);
     perimeter = compiled.success;
   }
+
   const objectives: Array<CompiledObjective> = [];
+
   for (const objective of rule.objectives) {
     const one = compileObjective(objective);
+
     if (Result.isFailure(one)) return Result.fail(one.failure);
     objectives.push(one.success);
   }
+
   return Result.succeed({
     name: rule.name,
     id: rule.id,
@@ -612,11 +696,14 @@ export const compileCampaignRules = (
   rules: ReadonlyArray<CampaignRule>,
 ): Result.Result<ReadonlyArray<CompiledCampaign>, PatternInvalid> => {
   const compiled: Array<CompiledCampaign> = [];
+
   for (const rule of rules) {
     const one = compileCampaignRule(rule);
+
     if (Result.isFailure(one)) return Result.fail(one.failure);
     compiled.push(one.success);
   }
+
   return Result.succeed(compiled);
 };
 
@@ -733,10 +820,12 @@ type LeafAnswer =
 // FNV-1a, so the core needs no hashing library.
 const contentHash = (text: string): string => {
   let hash = 0x811c9dc5;
+
   for (let i = 0; i < text.length; i += 1) {
     hash ^= text.charCodeAt(i);
     hash = Math.imul(hash, 0x01000193);
   }
+
   return (hash >>> 0).toString(16).padStart(8, "0");
 };
 
@@ -750,9 +839,11 @@ export const matchKeyOf = (anchor: string | null, text: string): string =>
 // duplicates.
 const uniqueKeys = (): ((key: string) => string) => {
   const seen = new Map<string, number>();
+
   return (key) => {
     const count = (seen.get(key) ?? 0) + 1;
     seen.set(key, count);
+
     return count === 1 ? key : `${key}~${String(count)}`;
   };
 };
@@ -773,9 +864,13 @@ const exportGoverned = (
   site: ExportSite,
 ): boolean => {
   if (term.kinds !== null && !term.kinds.includes(site.kind)) return false;
+
   if (term.declares !== null && !term.declares.includes(site.declares)) return false;
+
   if (term.reexport !== null && term.reexport !== site.reexport) return false;
+
   if (term.name.length > 0 && !anyMatches(term.name, site.name)) return false;
+
   return true;
 };
 
@@ -784,14 +879,18 @@ const memberGoverned = (
   site: MemberSite,
 ): boolean => {
   if (term.subject !== site.subject) return false;
+
   if (term.in.length > 0 && (site.in === undefined || !anyMatches(term.in, site.in))) return false;
+
   if (
     term.declares !== null &&
     (site.declares === undefined || !term.declares.includes(site.declares))
   ) {
     return false;
   }
+
   if (term.name.length > 0 && !anyMatches(term.name, site.name)) return false;
+
   return true;
 };
 
@@ -808,19 +907,27 @@ const bindingAdmits = (
   input: CampaignInput,
 ): boolean => {
   const root = IDENTIFIER.exec(captured)?.[0];
+
   if (root === undefined) return false;
+
   for (const specifier of input.facts.specifiers) {
     for (const binding of input.facts.bindings.get(specifier) ?? []) {
       if (binding.local !== root) continue;
       const resolved = input.resolver.resolve(input.file, specifier);
+
       if (Result.isFailure(resolved)) return false;
+
       if (!targetMatches(narrowing.resolves, resolved.success)) return false;
+
       if (narrowing.member === null) return true;
+
       const accessed =
         binding.kind === "named" ? binding.symbol : ACCESSED.exec(captured.slice(root.length))?.[1];
+
       return accessed !== undefined && narrowing.member.includes(accessed);
     }
   }
+
   return false;
 };
 
@@ -831,9 +938,13 @@ const narrowed = (
 ): boolean =>
   where.every((one) => {
     const captured = match.captures.get(one.capture);
+
     if (captured === undefined) return false;
+
     if (one.regex !== null && !one.regex.test(captured)) return false;
+
     if (one.binding !== null && !bindingAdmits(one.binding, captured, input)) return false;
+
     return true;
   });
 
@@ -842,6 +953,7 @@ const declarationsOf = (
   ranges: ReadonlyMap<string, Range> = new Map(),
 ): LeafAnswer => {
   const set = new Set(names);
+
   return {
     level: "declaration",
     names: set,
@@ -863,30 +975,43 @@ const evaluateLeaf = (term: CompiledDetector, input: CampaignInput): LeafAnswer 
   switch (term.kind) {
     case "path": {
       if (anyMatches(term.fileNot, input.file)) return { level: "file", holds: false };
+
       for (const pattern of term.file) {
         const found = pattern.exec(input.file);
+
         if (found === null) continue;
+
         if (term.convention === null || term.subject === null) {
           return { level: "file", holds: true };
         }
+
         const subject = found[term.subject];
+
         return { level: "file", holds: subject !== undefined && term.convention.test(subject) };
       }
+
       return { level: "file", holds: false };
     }
+
     case "imports": {
       for (const specifier of input.facts.specifiers) {
         if (term.symbols !== null) {
           const bound = input.facts.bindings.get(specifier) ?? [];
           const wanted = term.symbols;
+
           if (!bound.some((binding) => wanted.includes(binding.symbol))) continue;
         }
+
         const resolved = input.resolver.resolve(input.file, specifier);
+
         if (Result.isFailure(resolved)) continue;
+
         if (targetMatches(term.resolves, resolved.success)) return { level: "file", holds: true };
       }
+
       return { level: "file", holds: false };
     }
+
     case "exports":
       return declarationsOf(
         input.facts.exportSites
@@ -895,11 +1020,14 @@ const evaluateLeaf = (term: CompiledDetector, input: CampaignInput): LeafAnswer 
       );
     case "members": {
       const sites = input.facts.memberSites.filter((site) => memberGoverned(term, site));
+
       // A called name sits in no declaration the facts know, so a `calls`
       // term is a statement about the file.
       if (term.subject === "calls") return { level: "file", holds: sites.length > 0 };
+
       return declarationsOf(sites.flatMap((site) => (site.in === undefined ? [] : [site.in])));
     }
+
     case "requires":
       return {
         level: "file",
@@ -913,6 +1041,7 @@ const evaluateLeaf = (term: CompiledDetector, input: CampaignInput): LeafAnswer 
       if (input.syntax === null) return matchesOf([]);
       const unique = uniqueKeys();
       const candidates: Array<Candidate> = [];
+
       for (const match of input.syntax.findAll(term.rule)) {
         if (!narrowed(term.where, match, input)) continue;
         candidates.push({
@@ -921,8 +1050,10 @@ const evaluateLeaf = (term: CompiledDetector, input: CampaignInput): LeafAnswer 
           range: match.range,
         });
       }
+
       return matchesOf(candidates);
     }
+
     case "report": {
       // Each diagnostic is a match: anchored on the declaration at its
       // position (or none, at the top level or without a matcher), keyed by
@@ -930,8 +1061,10 @@ const evaluateLeaf = (term: CompiledDetector, input: CampaignInput): LeafAnswer 
       // moving and changes when the message does.
       const unique = uniqueKeys();
       const candidates: Array<Candidate> = [];
+
       for (const diagnostic of input.reports.diagnosticsOf(specOf(term), input.file)) {
         if (term.codes !== null && !term.codes.has(diagnostic.code)) continue;
+
         if (term.codesNot.has(diagnostic.code)) continue;
         const position = { line: diagnostic.line, column: diagnostic.column };
         const anchor = input.syntax?.anchorAt(position) ?? null;
@@ -942,22 +1075,29 @@ const evaluateLeaf = (term: CompiledDetector, input: CampaignInput): LeafAnswer 
           range: { start: position, end: position },
         });
       }
+
       return matchesOf(candidates);
     }
+
     case "fn": {
       const predicate = input.functions.get(term.name);
+
       if (predicate === undefined) return { level: "file", holds: false };
+
       const answer = predicate({
         file: input.file,
         text: input.text,
         facts: input.facts,
         syntax: input.syntax,
       });
+
       if (typeof answer === "boolean") return { level: "file", holds: answer };
+
       return matchesOf(
         answer.map((one) => ({ key: one.subject, anchor: one.subject, range: one.range ?? null })),
       );
     }
+
     default:
       throw new Error(`not a leaf: ${term.kind}`);
   }
@@ -1019,6 +1159,7 @@ const judge = (
       return !judge(term.term, candidate, unit, evaluation);
     default: {
       const answer = evaluation.leaf(term);
+
       return candidate === null ? holdsAtAll(answer) : holdsFor(answer, candidate, unit);
     }
   }
@@ -1038,26 +1179,36 @@ const prepare = (
     case "all": {
       for (const child of byCost(term.terms)) {
         const verdict = prepare(child, unit, evaluation);
+
         if (verdict === false) return false;
       }
+
       return null;
     }
+
     case "any": {
       for (const child of byCost(term.terms)) {
         const verdict = prepare(child, unit, evaluation);
+
         if (verdict === true && unit === "file") return true;
       }
+
       return null;
     }
+
     case "not": {
       const verdict = prepare(term.term, unit, evaluation);
+
       return verdict === null ? null : !verdict;
     }
+
     default: {
       if (!isFileLevel(term, unit)) {
         evaluation.leaf(term);
+
         return null;
       }
+
       return holdsAtAll(evaluation.leaf(term));
     }
   }
@@ -1067,13 +1218,16 @@ const FILE_CANDIDATE: Candidate = { key: "", anchor: null, range: null };
 
 const evaluationOf = (input: CampaignInput): Evaluation => {
   const answers = new Map<CompiledDetector, LeafAnswer>();
+
   return {
     answers,
     leaf: (term) => {
       const found = answers.get(term);
+
       if (found !== undefined) return found;
       const answer = evaluateLeaf(term, input);
       answers.set(term, answer);
+
       return answer;
     },
   };
@@ -1081,8 +1235,10 @@ const evaluationOf = (input: CampaignInput): Evaluation => {
 
 const universeOf = (evaluation: Evaluation, unit: CampaignUnit): ReadonlyArray<Candidate> => {
   const byKey = new Map<string, Candidate>();
+
   for (const answer of evaluation.answers.values()) {
     if (answer.level === "file") continue;
+
     if (unit === "declaration" && answer.level === "match") {
       // A match sources the declaration it sits in; one at the top level of
       // the file sits in none and sources nothing.
@@ -1090,11 +1246,15 @@ const universeOf = (evaluation: Evaluation, unit: CampaignUnit): ReadonlyArray<C
         if (one.anchor === null || byKey.has(one.anchor)) continue;
         byKey.set(one.anchor, { key: one.anchor, anchor: one.anchor, range: one.range });
       }
+
       continue;
     }
+
     if (unit === "match" && answer.level === "declaration") continue;
+
     for (const one of answer.candidates) if (!byKey.has(one.key)) byKey.set(one.key, one);
   }
+
   return [...byKey.values()].sort((left, right) => left.key.localeCompare(right.key));
 };
 
@@ -1121,11 +1281,15 @@ export const candidatesOf = (
 ): ReadonlyArray<{ readonly key: string; readonly range: Range | null }> => {
   const evaluation = evaluationOf(input);
   const verdict = prepare(detect, unit, evaluation);
+
   if (unit === "file") {
     const holds = verdict ?? judge(detect, null, "file", evaluation);
+
     return holds ? [{ key: "", range: null }] : [];
   }
+
   if (verdict === false) return [];
+
   return universeOf(evaluation, unit)
     .filter((candidate) => judge(detect, candidate, unit, evaluation))
     .map((candidate) => ({ key: candidate.key, range: candidate.range }));
@@ -1142,11 +1306,15 @@ export const evaluateObjective = (
   const detect = rule.detect;
   const evaluation = evaluationOf(input);
   const verdict = prepare(detect, rule.unit, evaluation);
+
   if (rule.unit === "file") {
     const holds = verdict ?? judge(detect, null, "file", evaluation);
+
     return holds ? [hitOf(rule, input.file, FILE_CANDIDATE)] : [];
   }
+
   if (verdict === false) return [];
+
   return universeOf(evaluation, rule.unit)
     .filter((candidate) => judge(detect, candidate, rule.unit, evaluation))
     .map((candidate) => hitOf(rule, input.file, candidate));
@@ -1171,32 +1339,42 @@ export const reportSpecsOf = (
   rules: ReadonlyArray<CompiledCampaign>,
 ): ReadonlyArray<ReportSpec> => {
   const seen = new Map<string, ReportSpec>();
+
   const walk = (detector: CompiledDetector): void => {
     switch (detector.kind) {
       case "all":
       case "any":
         for (const term of detector.terms) walk(term);
+
         return;
       case "not":
         walk(detector.term);
+
         return;
       case "report": {
         const spec = specOf(detector);
         seen.set(JSON.stringify(spec), spec);
+
         return;
       }
+
       default:
         return;
     }
   };
+
   for (const rule of rules) {
     for (const objective of rule.objectives) {
       if (objective.detect !== null) walk(objective.detect);
+
       if (objective.sector?.kind === "has") walk(objective.sector.detect);
+
       for (const detect of measureDetectorsOf(objective)) walk(detect);
     }
+
     if (rule.perimeter?.kind === "match") walk(rule.perimeter.detect);
   }
+
   return [...seen.values()];
 };
 
@@ -1209,7 +1387,13 @@ export const evaluateObjectives = (
 // Scalar objectives: a number per file, summed per sector.
 
 const measureSourcesOf = (measure: CompiledMeasure): ReadonlyArray<CompiledMeasureSource> =>
-  measure.kind === "sum" ? [measure.of] : measure.kind === "ratio" ? [measure.of, measure.per] : [];
+  Match.value(measure).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      sum: (sum): ReadonlyArray<CompiledMeasureSource> => [sum.of],
+      ratio: (ratio): ReadonlyArray<CompiledMeasureSource> => [ratio.of, ratio.per],
+      command: (): ReadonlyArray<CompiledMeasureSource> => [],
+    }),
+  );
 
 // The detectors a scalar objective reads a file through: its report and
 // function sources, so the loader holds its functions, the host reads its
@@ -1240,9 +1424,12 @@ const measureSource = (source: CompiledMeasureSource, input: CampaignInput): num
   switch (source.kind) {
     case "lines": {
       let lines = 0;
+
       for (const line of input.text.split("\n")) if (NON_BLANK.test(line)) lines += 1;
+
       return lines;
     }
+
     case "files":
       return 1;
     case "report":
@@ -1251,15 +1438,17 @@ const measureSource = (source: CompiledMeasureSource, input: CampaignInput): num
       // The loader holds whatever the manifest named; a measure reads its
       // answer as a number, and anything else — a boolean, a list, a
       // negative or non-finite number — is `NaN`, which `check` refuses.
-      const found = input.functions.get(source.detect.name) as
-        ((...args: Parameters<CampaignMeasure>) => unknown) | undefined;
+      const found = input.functions.get(source.detect.name);
+
       if (found === undefined) return Number.NaN;
-      const answer = found({
+
+      const answer: unknown = found({
         file: input.file,
         text: input.text,
         facts: input.facts,
         syntax: input.syntax,
       });
+
       return typeof answer === "number" && Number.isFinite(answer) && answer >= 0
         ? answer
         : Number.NaN;
@@ -1273,11 +1462,16 @@ export type MeasureParts = { readonly of: number; readonly per: number };
 export const ZERO_PARTS: MeasureParts = { of: 0, per: 0 };
 
 export const measureFile = (measure: CompiledMeasure, input: CampaignInput): MeasureParts =>
-  measure.kind === "ratio"
-    ? { of: measureSource(measure.of, input), per: measureSource(measure.per, input) }
-    : measure.kind === "sum"
-      ? { of: measureSource(measure.of, input), per: 0 }
-      : ZERO_PARTS;
+  Match.value(measure).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      ratio: (ratio): MeasureParts => ({
+        of: measureSource(ratio.of, input),
+        per: measureSource(ratio.per, input),
+      }),
+      sum: (sum): MeasureParts => ({ of: measureSource(sum.of, input), per: 0 }),
+      command: (): MeasureParts => ZERO_PARTS,
+    }),
+  );
 
 export const addParts = (left: MeasureParts, right: MeasureParts): MeasureParts => ({
   of: left.of + right.of,
@@ -1288,7 +1482,9 @@ export const addParts = (left: MeasureParts, right: MeasureParts): MeasureParts 
 // (0 where the denominator is).
 export const valueOfParts = (measure: CompiledMeasure, parts: MeasureParts): number => {
   if (measure.kind !== "ratio") return roundMeasure(parts.of);
+
   if (parts.per === 0) return Number.isNaN(parts.of) ? Number.NaN : 0;
+
   return roundMeasure((measure.scale * parts.of) / parts.per);
 };
 
@@ -1296,10 +1492,13 @@ export const valueOfParts = (measure: CompiledMeasure, parts: MeasureParts): num
 // group of the first match of the pattern. `NaN` when neither reads as one.
 export const numberFromOutput = (measure: CompiledMeasure, output: string): number => {
   if (measure.kind !== "command") return Number.NaN;
+
   const text =
     measure.pattern === null ? output.trim() : measure.pattern.exec(output)?.groups?.value;
+
   if (text === undefined || text.trim() === "") return Number.NaN;
   const value = Number(text.trim());
+
   return Number.isFinite(value) ? roundMeasure(value) : Number.NaN;
 };
 
@@ -1310,11 +1509,14 @@ export const numberFromOutput = (measure: CompiledMeasure, output: string): numb
 // count does.
 export const distanceToTarget = (objective: CompiledObjective, value: number): number => {
   if (objective.target === null) return 0;
+
   // A number that did not measure holds the sector where it is — `check`
   // refuses it — rather than letting it pass a phase it has not met.
   if (Number.isNaN(value)) return 1;
+
   const distance =
     objective.direction === "down" ? value - objective.target : objective.target - value;
+
   return Math.max(0, roundMeasure(distance));
 };
 
@@ -1381,14 +1583,17 @@ export const explainDetector = (
   if (detect === null) return [];
   const evaluation = evaluationOf(input);
   const lines: Array<TermAnswer> = [];
+
   const walk = (term: CompiledDetector, negated: boolean): void => {
     switch (term.kind) {
       case "all":
       case "any":
         for (const one of term.terms) walk(one, negated);
+
         return;
       case "not":
         walk(term.term, !negated);
+
         return;
       default: {
         const answer = evaluation.leaf(term);
@@ -1400,7 +1605,9 @@ export const explainDetector = (
       }
     }
   };
+
   walk(detect, false);
+
   return lines;
 };
 
@@ -1422,6 +1629,7 @@ export const probeInputOf = (
   const edges = probe.edges ?? {};
   const files = new Set(probe.files ?? []);
   const text = probe.source ?? "";
+
   // The probe's diagnostics, one-based as written, on the probe's own file.
   const reported = (probe.report ?? []).map((one) => ({
     file: probe.path,
@@ -1430,6 +1638,7 @@ export const probeInputOf = (
     code: one.code ?? "",
     message: one.message ?? "",
   }));
+
   return {
     file: probe.path,
     text,
@@ -1437,6 +1646,7 @@ export const probeInputOf = (
     resolver: {
       resolve: (fromFile, specifier) => {
         const target = edges[specifier];
+
         return target === undefined
           ? Result.fail(
               new ImportUnresolved({ fromFile, specifier, detail: "not among the probe's edges" }),
@@ -1478,6 +1688,7 @@ export const campaignsFailingTheirProbe = (
   functions: ReadonlyMap<string, CampaignPredicate>,
 ): ReadonlyArray<FailedProbe> => {
   const failed: Array<FailedProbe> = [];
+
   for (const rule of rules) {
     const check = (
       name: string,
@@ -1488,11 +1699,15 @@ export const campaignsFailingTheirProbe = (
     ): CampaignInput | null => {
       if (!anyMatches(rule.scope, probe.path)) {
         failed.push({ name, probe, expected, outOfScope: true });
+
         return null;
       }
+
       const input = probeInputOf(probe, extractor, matcherFor(probe.path), functions);
       const hits = candidatesOf(detect, unit, input);
+
       if (expected === "fires" && hits.length === 0) failed.push({ name, probe, expected });
+
       if (expected === "ignores" && hits.length > 0) {
         const admitting = explainDetector(detect, input).find((line) => line.answer);
         failed.push({
@@ -1502,10 +1717,13 @@ export const campaignsFailingTheirProbe = (
           ...(admitting === undefined ? {} : { admittedBy: admitting.term }),
         });
       }
+
       return input;
     };
+
     for (const objective of rule.objectives) {
       const measure = objective.measure;
+
       if (measure !== null) {
         // A scalar's probe is proven on the number the file contributes:
         // the probe's `value` when it states one, above zero when it does
@@ -1513,53 +1731,72 @@ export const campaignsFailingTheirProbe = (
         const prove = (probe: CampaignProbe, expected: "fires" | "ignores"): void => {
           if (!anyMatches(rule.scope, probe.path)) {
             failed.push({ name: objective.name, probe, expected, outOfScope: true });
+
             return;
           }
+
           const input = probeInputOf(probe, extractor, matcherFor(probe.path), functions);
           const measured = valueOfParts(measure, measureFile(measure, input));
+
           const holds =
             expected === "ignores"
               ? measured === 0
               : probe.value === undefined
                 ? measured > 0
                 : measured === roundMeasure(probe.value);
+
           if (!holds) failed.push({ name: objective.name, probe, expected, measured });
         };
+
         for (const probe of objective.probes.fires) prove(probe, "fires");
+
         for (const probe of objective.probes.ignores) prove(probe, "ignores");
         continue;
       }
+
       const detect = detectorOf(objective);
+
       if (detect === null) continue;
       const unit = objective.sector?.kind === "has" ? "file" : objective.unit;
+
       for (const probe of objective.probes.fires)
         check(objective.name, detect, unit, probe, "fires");
+
       for (const probe of objective.probes.ignores) {
         check(objective.name, detect, unit, probe, "ignores");
       }
     }
+
     if (rule.perimeter?.kind === "match") {
       const perimeter = rule.perimeter;
       const name = `${rule.name}/perimeter`;
-      let endShape = false;
+      let reachesEndState = false;
+
       for (const probe of perimeter.probes.fires) {
         const input = check(name, perimeter.detect, perimeter.unit, probe, "fires");
+
         if (input === null) continue;
+
         const firing = rule.objectives.some(
           (objective) =>
             objective.detect !== null &&
             candidatesOf(objective.detect, objective.unit, input).length > 0,
         );
-        if (!firing) endShape = true;
+
+        if (!firing) reachesEndState = true;
       }
+
       for (const probe of perimeter.probes.ignores) {
         check(name, perimeter.detect, perimeter.unit, probe, "ignores");
       }
+
       const [first] = perimeter.probes.fires;
-      if (!endShape && first !== undefined) {
+
+      if (!reachesEndState && first !== undefined) {
         failed.push({ name, probe: first, expected: "end-shape" });
       }
     }
   }
+
   return failed;
 };

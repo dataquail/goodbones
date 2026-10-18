@@ -28,8 +28,10 @@ const nudgeFor = (
   evaluations: Parameters<typeof nudgeOf>[1],
 ): Nudge | null => {
   if (campaignsOf(policy).campaignRules.length === 0) return null;
+
   try {
     const diff = readDiff(policy.repoRoot, null);
+
     return nudgeOf(policy, evaluations, diff, null, null, null);
   } catch {
     return null;
@@ -45,10 +47,12 @@ export const liveCampaigns: CampaignsFamily = {
     },
     view: (request) => {
       const { factsOf, policy, textOf } = request;
+
       const evaluations = evaluateCampaigns(policy, request.roots, request.walked, {
         textOf,
         factsOf,
       });
+
       return campaignViewOf({
         policy,
         name: request.name,
@@ -67,6 +71,7 @@ export const liveCampaigns: CampaignsFamily = {
   // receives the functions as a map and touches no module loader.
   compose: async (repoRoot, configPath, manifest) => {
     const loaded = await loadCampaignFunctions(configPath, manifest);
+
     return {
       manifest: loaded.manifest,
       extensions: [

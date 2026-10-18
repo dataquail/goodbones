@@ -17,14 +17,17 @@ import { loadPolicyFromFile } from "./config-loader.js";
 RuleTester.describe = (text, fn) => {
   describe(text, { concurrent: false }, fn);
 };
+
 RuleTester.it = (text, fn) => {
   it(text, { concurrent: false }, fn);
 };
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+
 // Inside the package, as config-loader.test.ts explains: Vitest resolves the
 // loader's dynamic import of an `.mjs` manifest through its own module graph.
 const scratch = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.tmp-absent-tests");
+
 mkdirSync(scratch, { recursive: true });
 
 afterAll(() => {
@@ -33,6 +36,7 @@ afterAll(() => {
 
 const writeConfig = (name: string, value: unknown): string => {
   writeFileSync(path.join(scratch, name), JSON.stringify(value));
+
   return path.join(scratch, name);
 };
 
@@ -56,6 +60,7 @@ describe("the plugin without @goodbones/campaigns", { concurrent: false }, () =>
       writeConfig("plain.json", MANIFEST),
       campaignsNotInstalled,
     );
+
     expect(policy.importRules.map((rule) => rule.name)).toEqual(["packages-core-src/imports"]);
   });
 

@@ -6,7 +6,9 @@ const matcher = astGrepMatcher();
 
 const parse = (text: string, file = "src/a.tsx") => {
   const tree = matcher.parse(file, text);
+
   if (tree === null) throw new Error(`no grammar for ${file}`);
+
   return tree;
 };
 
@@ -22,6 +24,7 @@ describe("astGrepMatcher", () => {
     const tree = parse(
       "import { Component } from 'react';\nexport class Foo extends Component { render() { return null; } }",
     );
+
     const matches = tree.findAll({ pattern: "class $NAME extends $BASE { $$$ }" });
     expect(
       matches.map((one) => [one.captures.get("NAME"), one.captures.get("BASE"), one.anchor]),
@@ -78,9 +81,11 @@ describe("astGrepMatcher", () => {
       ].join("\n"),
       "src/a.ts",
     );
+
     const anchors = tree
       .findAll({ pattern: "hit($N)" })
       .map((one) => [one.captures.get("N"), one.anchor]);
+
     expect(anchors).toEqual([
       ["1", "m"],
       ["2", "AC"],
@@ -117,6 +122,7 @@ describe("astGrepMatcher", () => {
       ].join("\n"),
       "src/a.ts",
     );
+
     expect(tree.anchorAt({ line: 2, column: 4 })).toBe("inner");
     expect(tree.anchorAt({ line: 4, column: 2 })).toBe("outer");
     expect(tree.anchorAt({ line: 6, column: 8 })).toBe("top");

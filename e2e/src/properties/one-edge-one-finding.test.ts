@@ -43,6 +43,7 @@ describe("one edge, one finding", () => {
           async ([tree, index]) => {
             await tick();
             const repo = repoOf(tree);
+
             try {
               repo.write(OUTSIDE, exports("outside"));
               const inferred = cli(repo, ["infer", "--exhaustive", "--write"]);
@@ -60,9 +61,11 @@ describe("one edge, one finding", () => {
               const after = check(repo, ["src"]);
               expect(after.json.ok).toBe(false);
               expect(after.json.unresolved).toEqual([]);
+
               const added = fingerprintsOf(after.json).filter(
                 (one) => !fingerprintsOf(before.json).includes(one),
               );
+
               expect(added).toHaveLength(1);
               expect(added[0]).toMatch(/^import\|/);
               expect(added[0]).toContain(`|${importer}|${OUTSIDE}`);

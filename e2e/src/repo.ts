@@ -56,6 +56,7 @@ export type Repo = {
 
 export const renderManifest = (content: ManifestContent, format: ManifestFormat): string => {
   if (typeof content === "string") return content;
+
   switch (format) {
     case "yaml":
     case "yml":
@@ -72,24 +73,31 @@ export const createRepo = (options: RepoOptions = {}): Repo => {
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), "goodbones-e2e-")));
 
   const at = (file: string): string => path.join(root, file);
+
   const writeText = (file: string, text: string): void => {
     mkdirSync(path.dirname(at(file)), { recursive: true });
     writeFileSync(at(file), text);
   };
+
   const write = (file: string, content: FileContent): void => {
     writeText(file, typeof content === "string" ? content : profile.render(content));
   };
+
   const writeManifest = (content: ManifestContent, format: ManifestFormat = "yaml"): string => {
     const file = MANIFEST_FILENAMES[format];
     writeText(file, renderManifest(content, format));
+
     return file;
   };
 
   for (const [file, text] of Object.entries(profile.support)) writeText(file, text);
+
   for (const [name, subpaths] of Object.entries(options.packages ?? {})) {
     for (const [file, text] of Object.entries(profile.stub(name, subpaths))) writeText(file, text);
   }
+
   for (const [file, content] of Object.entries(options.files ?? {})) write(file, content);
+
   if (options.manifest !== undefined) writeManifest(options.manifest, options.manifestFormat);
 
   return {

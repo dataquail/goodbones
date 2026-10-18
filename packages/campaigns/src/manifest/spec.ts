@@ -122,17 +122,20 @@ const ReportTerm = Schema.Struct({
   // term with nothing to match lines against.
   Schema.makeFilter((term) => {
     const issues: Array<Schema.FilterIssue> = [];
+
     if ((term.command === undefined) === (term.file === undefined)) {
       issues.push(
         "a report term names exactly one of `command` (a program to run) and `file` (a report already written)",
       );
     }
+
     if (term.format === "regex" && term.pattern === undefined) {
       issues.push({
         path: ["pattern"],
         issue: "a `regex` report term needs a `pattern` with named groups `file` and `line`",
       });
     }
+
     return issues;
   }),
 );
@@ -239,12 +242,14 @@ const MeasureSpec = Schema.Union([
 ]);
 
 type MeasureSpec = typeof MeasureSpec.Type;
+
 export type MeasureSourceSpec = typeof MeasureSourceSpec.Type;
 
 // Whether any source of the measure is one a probe must prove: a report or
 // a function, which can drift into measuring nothing.
 const measureNeedsProbe = (measure: MeasureSpec): boolean => {
   const sources = "ratio" in measure ? [measure.ratio.of, measure.ratio.per] : [measure];
+
   return sources.some((one) => "report" in one || "fn" in one);
 };
 
@@ -286,14 +291,17 @@ const Objective = Schema.Struct({
 }).check(
   Schema.makeFilter((objective) => {
     const issues: Array<Schema.FilterIssue> = [];
+
     const named = [objective.match, objective.sector, objective.measure].filter(
       (one) => one !== undefined,
     ).length;
+
     if (named !== 1) {
       issues.push(
         "an objective names exactly one of `match` (a detector over each file), `sector` (a term over the sector's files) and `measure` (a number per sector)",
       );
     }
+
     if (objective.measure !== undefined) {
       if (objective.holdout !== undefined) {
         issues.push({
@@ -301,6 +309,7 @@ const Objective = Schema.Struct({
           issue: "a `measure` objective holds nothing out: it is a number, so drop `holdout`",
         });
       }
+
       if (objective.direction === undefined) {
         issues.push({
           path: ["direction"],
@@ -308,6 +317,7 @@ const Objective = Schema.Struct({
             "a `measure` objective states which way is better: `direction: down` or `direction: up`",
         });
       }
+
       if ("command" in objective.measure && objective.probes !== undefined) {
         issues.push({
           path: ["probes"],
@@ -324,13 +334,16 @@ const Objective = Schema.Struct({
             "a `measure` with a `report` or `fn` source carries `probes.fires`: at least one file it must measure above zero",
         });
       }
+
       return issues;
     }
+
     for (const key of ["direction", "tolerance", "target"] as const) {
       if (objective[key] !== undefined) {
         issues.push({ path: [key], issue: `\`${key}\` belongs to a \`measure\` objective` });
       }
     }
+
     if (objective.holdout === undefined) {
       issues.push({
         path: ["holdout"],
@@ -338,6 +351,7 @@ const Objective = Schema.Struct({
           "an objective with `match` or `sector` says what one holdout is: `holdout: file`, `declaration`, `match` or `sector`",
       });
     }
+
     if (
       objective.sector !== undefined &&
       objective.holdout !== undefined &&
@@ -348,12 +362,14 @@ const Objective = Schema.Struct({
         issue: "a `sector` objective's holdout is the sector: write `holdout: sector`",
       });
     }
+
     if (objective.match !== undefined && objective.holdout === "sector") {
       issues.push({
         path: ["holdout"],
         issue: "a `match` objective's holdout is `file`, `declaration` or `match`",
       });
     }
+
     if (objective.match !== undefined && (objective.probes?.fires.length ?? 0) === 0) {
       issues.push({
         path: ["probes"],
@@ -361,6 +377,7 @@ const Objective = Schema.Struct({
           "a `match` objective carries `probes.fires`: at least one source it must report, as every rule proves it can fire",
       });
     }
+
     return issues;
   }),
 );
@@ -402,6 +419,7 @@ const PhaseConcessionSpec = Schema.Struct({
 // and decoded as a tree once the lowering has rebased it for a sector, so
 // the node codec itself never learns the extra entry.
 const EndStateSpec = Schema.Record(Schema.String, Schema.Unknown);
+
 // A phase: a named, ordered group of objectives. Defined when it names one
 // (or is `attested`, or carries an `endState`); open when it has only an
 // intent, and then it is last. `intent` is what the phase is for, in a
@@ -476,14 +494,23 @@ export const CampaignsManifest = Schema.Struct({
 });
 
 export type CampaignsManifest = typeof CampaignsManifest.Type;
+
 export type CampaignSpec = typeof Campaign.Type;
+
 export type ObjectiveSpec = typeof Objective.Type;
+
 export type PhaseSpec = typeof Phase.Type;
+
 export type PerimeterSpec = typeof PerimeterSpec.Type;
+
 export type SectorTermSpec = typeof SectorTermSpec.Type;
+
 export type EndStateSpec = typeof EndStateSpec.Type;
+
 export type CampaignProbeSpec = typeof CampaignProbe.Type;
+
 export type CampaignProbesSpec = typeof CampaignProbes.Type;
+
 export type SyntaxTermSpec = typeof SyntaxTerm.Type;
 
 export const DEFAULT_LEDGER_DIR = ".architecture-campaigns";
@@ -491,5 +518,6 @@ export const DEFAULT_LEDGER_DIR = ".architecture-campaigns";
 // `30d` -> milliseconds. The schema has already refused any other shape.
 export const durationMs = (duration: string): number => {
   const amount = Number(duration.slice(0, -1));
+
   return amount * (duration.endsWith("h") ? 3_600_000 : 86_400_000);
 };

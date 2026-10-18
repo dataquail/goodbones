@@ -16,6 +16,7 @@ describe("inference is sound", () => {
         fc.asyncProperty(arbTree(typescript), async (tree) => {
           await tick();
           const repo = repoOf(tree);
+
           try {
             for (const [name, flags] of [
               ["exhaustive", ["--exhaustive"]],

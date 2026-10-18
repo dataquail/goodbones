@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import type { CampaignCard } from "../../../model/campaigns.js";
 import { columnOfSector, columnsOf, Ladder } from "./Ladder.js";
+import type { Pick } from "./pick.js";
 
 // The ladder: one column per phase and one for the end, sectors in the
 // column of their phase, and a hover that lights what relates.
@@ -155,7 +156,12 @@ describe("Ladder", { concurrent: false }, () => {
   });
 
   it("draws every phase, objective and sector, and lights what a hovered objective touches", () => {
-    const onHover = vi.fn();
+    const hovered: Array<Pick | null> = [];
+
+    const onHover = (pick: Pick | null): void => {
+      hovered.push(pick);
+    };
+
     const { container, rerender } = render(
       <Ladder
         campaign={campaign()}
@@ -166,6 +172,7 @@ describe("Ladder", { concurrent: false }, () => {
         onPick={() => undefined}
       />,
     );
+
     expect(container.querySelectorAll("g.phase-box")).toHaveLength(3);
     expect(container.querySelectorAll("g.chip-box")).toHaveLength(2);
     expect(container.querySelectorAll("g.sector-box")).toHaveLength(4);
@@ -174,9 +181,10 @@ describe("Ladder", { concurrent: false }, () => {
     expect(container.querySelector("g.sector-box.nudged")).not.toBeNull();
 
     const chip = container.querySelectorAll("g.chip-box")[1];
+
     if (chip === undefined) throw new Error("no chip");
     fireEvent.mouseEnter(chip);
-    expect(onHover).toHaveBeenCalledWith({ kind: "objective", id: "no-sql" });
+    expect(hovered).toContainEqual({ kind: "objective", id: "no-sql" });
 
     rerender(
       <Ladder

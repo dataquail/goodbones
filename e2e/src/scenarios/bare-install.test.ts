@@ -27,6 +27,7 @@ const HOSTS: ReadonlyArray<Package> = ["core", "typescript", "cli", "oxlint", "b
 // The every-family manifest without its campaign: what this user writes.
 const withoutCampaigns = (repo: Repo): Readonly<Record<string, unknown>> => {
   const { campaigns: _campaigns, ...rest } = everyFamilyManifest(repo.profile);
+
   return rest;
 };
 
@@ -102,21 +103,26 @@ describe("an install without the optional peers", () => {
 
   it("writes the browser's static export, with a campaign view that says the package is missing", () => {
     const bin = path.join(path.dirname(installed.bin), "goodbones-browser");
+
     const run = spawnSync(process.execPath, [bin, "build", "--out", "out", ...EVERY_FAMILY_ROOTS], {
       cwd: repo.root,
       encoding: "utf8",
     });
+
     expect(run.status, run.stderr).toBe(0);
+
     const view = JSON.parse(readFileSync(repo.path("out/__goodbones/campaigns.json"), "utf8")) as {
       readonly installed: boolean;
       readonly campaigns: ReadonlyArray<unknown>;
     };
+
     expect(view.installed).toBe(false);
     expect(view.campaigns).toEqual([]);
   });
 
   it("refuses a manifest that declares a campaign, naming the package, in both hosts", () => {
     const campaigned = createRepo({ files: everyFamilyFiles });
+
     try {
       campaigned.writeManifest(everyFamilyManifest(campaigned.profile));
       const own = installPacked(campaigned, tarballs, HOSTS);
@@ -135,6 +141,7 @@ describe("an install without the optional peers", () => {
 
   it("refuses a `syntax` term with campaigns installed and no matcher, naming the matcher", () => {
     const syntactic = createRepo({ files: everyFamilyFiles });
+
     try {
       syntactic.writeManifest({
         resolve: { scopes: [syntactic.profile.scope] },

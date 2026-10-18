@@ -39,6 +39,7 @@ import { describe, it } from "vitest";
 import { makeCampaignsRule } from "./campaigns/rule.js";
 
 RuleTester.describe = describe;
+
 RuleTester.it = it;
 
 // The plugin sees one file, so a sector's phase comes from the ledgers: an
@@ -167,6 +168,7 @@ const rules: ReadonlyArray<CampaignRule> = [
 ];
 
 const compiled = compileCampaignRules(rules);
+
 if (Result.isFailure(compiled)) throw compiled.failure;
 
 const policyWith = (
@@ -225,7 +227,9 @@ const ledger = (
 
 // The sector's record, as `clear` writes it, placed at a phase.
 const [ladder] = compiled.success;
+
 if (ladder === undefined) throw new Error("no campaign");
+
 const placed = (phase: number): ReadonlyMap<string, SectorRecord> =>
   new Map([
     [
@@ -338,8 +342,11 @@ new RuleTester({ cwd: repoRoot }).run(
 // A scalar's record places the sector: the plugin cannot sum the sector's
 // lines, so it reads the value `clear` recorded and its distance to target.
 const shrink = compiled.success[1];
+
 if (shrink === undefined) throw new Error("no campaign");
+
 const scalarFile = path.join(repoRoot, "scalar/billing/service.ts");
+
 const recordedAt = (value: number): ReadonlyMap<string, MeasureLedger> =>
   new Map([
     [
@@ -354,6 +361,7 @@ const recordedAt = (value: number): ReadonlyMap<string, MeasureLedger> =>
       ),
     ],
   ]);
+
 const shrinkPlaced = (phase: number): ReadonlyMap<string, SectorRecord> =>
   new Map([
     [
@@ -390,10 +398,13 @@ new RuleTester({ cwd: repoRoot }).run(
 // what the shared files' ledger carries for it, reports it on the shared files'
 // own files, and never on a sector's.
 const shared = compiled.success[2];
+
 if (shared === undefined) throw new Error("no campaign");
+
 const sharedFile = path.join(repoRoot, "shared/billing/service.ts");
 const platformFile = path.join(repoRoot, "shared/platform/guard.ts");
 const SHARED_CODE = "export function f() { stub('guard'); return knex('y'); }\n";
+
 const stubLedger = (holdouts: ReadonlyArray<string>): ReadonlyMap<string, Ledger> =>
   new Map([
     [
@@ -401,6 +412,7 @@ const stubLedger = (holdouts: ReadonlyArray<string>): ReadonlyMap<string, Ledger
       clearedSector(EMPTY_LEDGER("shared", "no-stub", 0), "shared", holdouts, "match", 0, "inside"),
     ],
   ]);
+
 const sharedPlaced: ReadonlyMap<string, SectorRecord> = new Map([
   [
     ledgerKeyOf("shared", "shared/billing"),

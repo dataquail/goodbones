@@ -21,6 +21,7 @@ import { describe, it } from "vitest";
 import { makeSurfaceRule } from "./surface-rule.js";
 
 RuleTester.describe = describe;
+
 RuleTester.it = it;
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -77,7 +78,9 @@ const config = {
 
 const policy = (): LoadedPolicy => {
   const surfaceRules = compileSurfaceRules(config.surface);
+
   if (Result.isFailure(surfaceRules)) throw surfaceRules.failure;
+
   return {
     repoRoot,
     config: { resolve: config.resolve, tree: {} },

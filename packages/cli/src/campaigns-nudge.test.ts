@@ -107,6 +107,7 @@ const git = (...args: ReadonlyArray<string>): string =>
 
 const policyAt = (now = "2026-10-01T00:00:00Z") => {
   process.env.ARCHITECTURE_NOW = now;
+
   return loadPolicy(root);
 };
 
@@ -115,13 +116,17 @@ const capture = async (effect: Effect.Effect<void, CliFailure>) => {
   const original = process.stdout.write.bind(process.stdout);
   process.stdout.write = (chunk: string) => {
     lines.push(String(chunk));
+
     return true;
   };
+
   try {
     const exit = await Effect.runPromiseExit(effect);
+
     const failure = Exit.isFailure(exit)
       ? (Cause.squash(exit.cause) as { message?: string })
       : null;
+
     return { exit, output: lines.join(""), failure: failure?.message ?? "" };
   } finally {
     process.stdout.write = original;
@@ -156,12 +161,16 @@ const nudge = async (...flags: ReadonlyArray<string>) => {
   const json = await capture(
     campaigns(await policyAt(), ["src"], ["status", "--changed", ...flags, "--json"]),
   );
+
   const text = await capture(
     campaigns(await policyAt(), ["src"], ["status", "--changed", ...flags]),
   );
+
   const parsed = JSON.parse(json.output) as { ok: boolean; sectors: Array<Sector> };
   const todo = parsed.sectors.find((one) => one.sector === "todo");
+
   if (todo === undefined) throw new Error("the diff did not touch the todo sector");
+
   return { exit: json.exit, ok: parsed.ok, todo, text: text.output };
 };
 
@@ -220,6 +229,7 @@ describe(
       // The role check goes: todo derives to `mirrored`, whose two raw writes
       // no ledger has seen. They were there all along.
       write("src/todo/service.ts", SERVICE(['  rawWrite("a");', '  return rawWrite("b");']));
+
       for (const flags of [[], ["--base", "HEAD"]]) {
         const { exit, ok, text, todo } = await nudge(...flags);
         expect(Exit.isSuccess(exit), text).toBe(true);
@@ -244,6 +254,7 @@ describe(
         );
         expect(text).toContain("onTouch: ratchet (of fenced) — ok");
       }
+
       await clear("2026-10-02T00:00:00Z");
       commit("fenced paid down");
     });
@@ -300,6 +311,7 @@ describe(
         ].join("\n"),
       );
       expect(text).not.toContain("in the files you touched");
+
       const conceded = await capture(
         objectives(
           await policyAt("2026-10-03T00:00:00Z"),
@@ -307,6 +319,7 @@ describe(
           ["concede", "strangle/lines", "--reason", "the dual-write", "--by", "me"],
         ),
       );
+
       expect(Exit.isSuccess(conceded.exit), conceded.failure).toBe(true);
       await clear("2026-10-03T00:00:00Z");
       commit("mirrored");
@@ -319,6 +332,7 @@ describe(
           ["export const a = 1;", "export const b = 2;", "export const c = 3;", ""].join("\n"),
       );
       write("src/todo/more-routes.ts", 'export const more = [route("/todos/x")];\n');
+
       for (const flags of [[], ["--base", "HEAD"]]) {
         const { exit, ok, text, todo } = await nudge(...flags);
         expect(Exit.isFailure(exit)).toBe(true);
@@ -362,8 +376,10 @@ describe(
             ],
           ),
         );
+
         expect(Exit.isSuccess(conceded.exit), conceded.failure).toBe(true);
       }
+
       // The ledger mode already read the ledger: it is quiet about both.
       const ledgerMode = await nudge();
       expect(ledgerMode.ok).toBe(true);

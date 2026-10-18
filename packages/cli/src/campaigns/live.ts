@@ -42,6 +42,7 @@ const host: CampaignsHost = {
   evaluate: evaluateCampaigns,
   hitsOf: (policy, evaluations) => {
     const isLedgered = ledgeredFilter(policy, evaluations);
+
     return evaluations.flatMap((evaluation) =>
       hitsInWindow(evaluation).map((hit) => ({
         violation: hit.violation,
@@ -66,11 +67,14 @@ const host: CampaignsHost = {
   // not saying what its author thinks.
   explainLines: (policy, relative, evaluate) => {
     const selected = campaignsSelecting(campaignsOf(policy).campaignRules, relative);
+
     if (selected.length === 0) return [];
     const evaluations = evaluate();
+
     return selected.flatMap((rule) => {
       const at = path.join(policy.repoRoot, relative);
       const text = existsSync(at) ? readFileSync(at, "utf8") : "";
+
       const input = {
         file: relative,
         text,
@@ -81,26 +85,34 @@ const host: CampaignsHost = {
         functions: campaignsOf(policy).functions,
         reports: campaignsOf(policy).reports,
       };
+
       const evaluation = evaluations.find((one) => one.rule.id === rule.id);
+
       return [
         ...(evaluation === undefined ? [] : explainCampaignLines(policy, evaluation, relative)),
         ...rule.objectives.flatMap((objective) => {
           const measure = objective.measure;
+
           if (measure !== null) {
             // A scalar: what this file adds to its sector's number.
             if (measure.kind === "command") return [];
             const parts = measureFile(measure, input);
+
             const here =
               measure.kind === "ratio"
                 ? `${String(parts.of)} of ${String(parts.per)} here`
                 : `${String(valueOfParts(measure, parts))} here`;
+
             return [
               `      ${objective.name} — ${firstSentence(objective.intent ?? objective.message)} (measure, ${objective.direction}; ${here})`,
             ];
           }
+
           const table = explainObjective(objective, input);
+
           if (table.length === 0) return [];
           const fired = table.length > 0 && table.every((line) => line.answer);
+
           return [
             `      ${objective.name} — ${firstSentence(objective.intent ?? objective.message)} (${objective.holdout}; ${fired ? "fires here" : "no hit"})`,
             ...table.map(
@@ -123,10 +135,13 @@ export const liveCampaigns: CampaignsFamily = {
   // manifest held as a value has no file for them to resolve against.
   compose: async (repoRoot, configPath, manifest) => {
     const reports = makeReportSourceLive(repoRoot);
+
     if (configPath === null) {
       return { manifest, extensions: [campaignsExtension({ reports })], uninstalled: [] };
     }
+
     const loaded = await loadCampaignFunctions(configPath, manifest);
+
     return {
       manifest: loaded.manifest,
       extensions: [campaignsExtension({ functions: loaded.functions, reports })],

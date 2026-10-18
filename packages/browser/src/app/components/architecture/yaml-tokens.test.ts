@@ -60,6 +60,7 @@ describe("tokenize", () => {
       "    # not a comment",
       "  imports:",
     ];
+
     const tokens = tokenizeLines(lines);
     expect(tokens[0]?.map((token) => token.kind)).toContain("indicator");
     expect(tokens[1]).toEqual([{ kind: "text", text: lines[1] }]);

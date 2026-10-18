@@ -42,18 +42,23 @@ const fileFor = (siteDir: string, pathname: string): string | null => {
   const decoded = decodeURIComponent(pathname);
   const wanted = decoded.endsWith("/") ? `${decoded}index.html` : decoded;
   const resolved = path.resolve(siteDir, `.${wanted}`);
+
   if (!resolved.startsWith(siteDir)) return null;
+
   if (existsSync(resolved) && statSync(resolved).isFile()) return resolved;
   // `/architecture` for `architecture.html`, as the build's `format: file`
   // emits pages.
   const asPage = `${resolved}.html`;
+
   if (existsSync(asPage) && statSync(asPage).isFile()) return asPage;
+
   return null;
 };
 
 export const serve = (options: ServeOptions): Promise<Served> =>
   new Promise((resolve, reject) => {
     const siteDir = path.resolve(options.siteDir);
+
     const server = createServer((request, response) => {
       options
         .handler(request, response)
@@ -61,12 +66,15 @@ export const serve = (options: ServeOptions): Promise<Served> =>
           if (handled) return;
           const url = new URL(request.url ?? "/", "http://localhost");
           const file = fileFor(siteDir, url.pathname);
+
           if (file === null) {
             response.statusCode = 404;
             response.setHeader("content-type", "text/plain; charset=utf-8");
             response.end("not found");
+
             return;
           }
+
           response.statusCode = 200;
           response.setHeader(
             "content-type",
@@ -81,6 +89,7 @@ export const serve = (options: ServeOptions): Promise<Served> =>
           response.end(String(cause));
         });
     });
+
     server.once("error", reject);
     server.listen(options.port, options.host, () => {
       const address = server.address() as AddressInfo;

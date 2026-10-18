@@ -15,23 +15,46 @@ import { makeSource } from "./source.js";
 // for a route that is not there, the feed announcing itself and then each
 // change, a computation that fails answering 500 once and trying again.
 
-const collected = (stamp: string): Collected =>
-  ({
-    atlas: { version: 1, name: "repo", generatedAt: stamp, files: [], edges: [] },
-    campaigns: { version: 1, name: "repo", generatedAt: stamp, ledgerDir: ".l", campaigns: [] },
-  }) as unknown as Collected;
+const collected = (stamp: string): Collected => ({
+  atlas: {
+    version: 1,
+    name: "repo",
+    generatedAt: stamp,
+    roots: [],
+    manifest: { path: "architecture.yaml", files: [], aliases: {}, nodes: [], rules: [] },
+    files: [],
+    folders: [],
+    edges: [],
+    violations: [],
+    unresolved: [],
+    cycles: 0,
+  },
+  campaigns: {
+    version: 1,
+    name: "repo",
+    generatedAt: stamp,
+    installed: true,
+    ledgerDir: ".l",
+    campaigns: [],
+    nudge: null,
+  },
+});
 
 let computed = 0;
 let failNext = false;
+
 const source = makeSource({
   repoRoot: "/nowhere",
   roots: ["svc"],
   compute: () => {
     computed += 1;
+
     if (failNext) {
       failNext = false;
+
       return Promise.reject(new Error("the manifest does not decode"));
     }
+
     return Promise.resolve(collected(`stamp-${String(computed)}`));
   },
 });
@@ -42,12 +65,14 @@ let base: string;
 beforeAll(async () => {
   const handler = makeHandler(source);
   server = createServer((request, response) => {
-    void handler(request, response).then((handled) => {
+    void (async () => {
+      const handled = await handler(request, response);
+
       if (!handled) {
         response.statusCode = 418;
         response.end("not mine");
       }
-    });
+    })();
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   base = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`;
@@ -85,13 +110,17 @@ describe("the handler", { concurrent: false }, () => {
     const events = await fetch(`${base}/__goodbones/events`);
     expect(events.headers.get("content-type")).toBe("text/event-stream");
     const body = events.body as ReadableStream<Uint8Array> | null;
+
     if (body === null) throw new Error("no body");
     const reader = body.getReader();
     const decoder = new TextDecoder();
+
     const read = async (): Promise<string> => {
       const chunk: Uint8Array | undefined = (await reader.read()).value;
+
       return chunk === undefined ? "" : decoder.decode(chunk);
     };
+
     expect(await read()).toBe('event: hello\ndata: {"live":false}\n\n');
 
     source.invalidate(["svc/main.go"]);

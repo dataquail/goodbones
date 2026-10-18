@@ -16,16 +16,18 @@ const src = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sources = (dir: string): ReadonlyArray<string> =>
   readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const at = path.join(dir, entry.name);
+
     if (entry.isDirectory()) return sources(at);
+
     return entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts") ? [at] : [];
   });
 
 // Every static `import … from` / `export … from` naming the specifier, with
 // the type-only ones left out. A dynamic `import("…")` is not matched.
 const valueImportsOf = (text: string, specifier: string): ReadonlyArray<string> =>
-  [...text.matchAll(/^(import|export)\s+(type\s+)?[^;]*?from\s+"([^"]+)";/gms)]
-    .filter((match) => match[3] === specifier && match[2] === undefined)
-    .map((match) => match[0]);
+  [...text.matchAll(/^(import|export)\s+(type\s+)?[^;]*?from\s+"([^"]+)";/gms)].flatMap((match) =>
+    match[3] === specifier && match[2] === undefined ? [match[0]] : [],
+  );
 
 const offenders = (specifier: string, allowed: ReadonlyArray<string>): ReadonlyArray<string> =>
   sources(src)
@@ -63,6 +65,7 @@ describe("the optional peers", () => {
       'const d = await import("@goodbones/campaigns");',
       'import {\n  e,\n  f,\n} from "@goodbones/campaigns";',
     ].join("\n");
+
     expect(valueImportsOf(text, "@goodbones/campaigns")).toHaveLength(2);
   });
 });

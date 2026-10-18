@@ -7,16 +7,18 @@ export const makeFileSystemFake = (
   contents: Readonly<Record<string, string>> = {},
 ): FileSystem => {
   const paths = new Set([...present, ...Object.keys(contents)]);
+
   return {
     exists: (repoRelativePath) => paths.has(repoRelativePath),
     readText: (repoRelativePath) => contents[repoRelativePath] ?? null,
     list: (repoRelativeDir) => {
       const prefix = repoRelativeDir === "" ? "" : `${repoRelativeDir}/`;
+
       return [
         ...new Set(
-          [...paths]
-            .filter((one) => one.startsWith(prefix))
-            .map((one) => one.slice(prefix.length).split("/")[0] ?? ""),
+          [...paths].flatMap((one) =>
+            one.startsWith(prefix) ? [one.slice(prefix.length).split("/")[0] ?? ""] : [],
+          ),
         ),
       ]
         .filter((one) => one !== "")

@@ -29,6 +29,7 @@ const pct = (fraction: number | null): string =>
 const when = (iso: string | null): string => {
   if (iso === null) return "—";
   const date = new Date(iso);
+
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleDateString();
 };
 
@@ -53,15 +54,7 @@ export const Detail = ({ campaign, onPick, pinned, shown, view }: Props): React.
         <span className="hint">click to pin</span>
       )}
     </div>
-    {shown.kind === "campaign" ? (
-      <CampaignDetail view={view} campaign={campaign} onPick={onPick} />
-    ) : shown.kind === "phase" ? (
-      <PhaseDetail campaign={campaign} id={shown.id} onPick={onPick} />
-    ) : shown.kind === "objective" ? (
-      <ObjectiveDetail campaign={campaign} id={shown.id} onPick={onPick} />
-    ) : (
-      <SectorDetail view={view} campaign={campaign} name={shown.name} onPick={onPick} />
-    )}
+    <ShownDetail view={view} campaign={campaign} shown={shown} onPick={onPick} />
   </div>
 );
 
@@ -75,6 +68,7 @@ const CampaignDetail = ({
   onPick: Props["onPick"];
 }): React.JSX.Element => {
   const nudged = view.nudge?.sectors.filter((one) => one.campaign === campaign.id) ?? [];
+
   return (
     <>
       <h2>{campaign.title ?? campaign.id}</h2>
@@ -256,10 +250,34 @@ const CampaignDetail = ({
   );
 };
 
+const ShownDetail = ({
+  campaign,
+  onPick,
+  shown,
+  view,
+}: Omit<Props, "pinned">): React.JSX.Element => {
+  switch (shown.kind) {
+    case "campaign":
+      return <CampaignDetail view={view} campaign={campaign} onPick={onPick} />;
+    case "phase":
+      return <PhaseDetail campaign={campaign} id={shown.id} onPick={onPick} />;
+    case "objective":
+      return <ObjectiveDetail campaign={campaign} id={shown.id} onPick={onPick} />;
+    default:
+      return <SectorDetail view={view} campaign={campaign} name={shown.name} onPick={onPick} />;
+  }
+};
+
+const VERDICT_FLAGS: Readonly<Record<SectorNudge["verdict"], string>> = {
+  ok: "good",
+  back: "bad",
+  "no-paydown": "warn",
+  hotfix: "warn",
+  ahead: "warn",
+};
+
 const NudgeWord = ({ nudge }: { nudge: SectorNudge }): React.JSX.Element => (
-  <span
-    className={`flag ${nudge.verdict === "ok" ? "good" : nudge.verdict === "back" ? "bad" : "warn"}`}
-  >
+  <span className={`flag ${VERDICT_FLAGS[nudge.verdict]}`}>
     {nudge.verdict}
     {nudge.ask === "none" ? "" : ` · ${nudge.ask}`}
   </span>
@@ -275,8 +293,10 @@ const PhaseDetail = ({
   onPick: Props["onPick"];
 }): React.JSX.Element | null => {
   const phase: PhaseCard | undefined = campaign.phases.find((one) => one.id === id);
+
   if (phase === undefined) return null;
   const here = campaign.sectors.filter((one) => one.phase === phase.index && !one.done);
+
   return (
     <>
       <h2 className="mono">{phase.id}</h2>
@@ -336,6 +356,7 @@ const PhaseDetail = ({
       <ul className="list">
         {phase.objectives.map((objectiveId) => {
           const objective = campaign.objectives.find((one) => one.id === objectiveId);
+
           return (
             <li key={objectiveId}>
               <button
@@ -397,8 +418,10 @@ const ObjectiveDetail = ({
   onPick: Props["onPick"];
 }): React.JSX.Element | null => {
   const objective: ObjectiveCard | undefined = campaign.objectives.find((one) => one.id === id);
+
   if (objective === undefined) return null;
   const measure = objective.measure;
+
   return (
     <>
       <h2 className="mono">
@@ -565,10 +588,13 @@ const SectorDetail = ({
   onPick: Props["onPick"];
 }): React.JSX.Element | null => {
   const sector: SectorCard | undefined = campaign.sectors.find((one) => one.name === name);
+
   if (sector === undefined) return null;
+
   const nudge = view.nudge?.sectors.find(
     (one) => one.campaign === campaign.id && one.sector === name,
   );
+
   return (
     <>
       <h2 className="mono">
@@ -617,6 +643,7 @@ const SectorDetail = ({
         {campaign.objectives.map((objective) => {
           const count = sector.residue[objective.id] ?? sector.counts[objective.id];
           const value = sector.values[objective.id];
+
           return (
             <li key={objective.id}>
               <button

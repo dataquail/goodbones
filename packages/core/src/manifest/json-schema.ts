@@ -1,3 +1,4 @@
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
 import { Manifest } from "./manifest.js";
@@ -21,7 +22,14 @@ export const MANIFEST_NODE_SCHEMA_ID =
   "https://dataquail.github.io/goodbones/schema/architecture-node.schema.json";
 
 type JsonValue = string | number | boolean | null | JsonObject | ReadonlyArray<JsonValue>;
+
 type JsonObject = { readonly [key: string]: JsonValue };
+
+// The generator types its document as records of `unknown`; it writes JSON,
+// and is read back as JSON here rather than asserted to be.
+const decodeJsonObject = Schema.decodeUnknownResult(Schema.Record(Schema.String, Schema.Json));
+
+const jsonObjectOf = (value: unknown): JsonObject => Result.getOrThrow(decodeJsonObject(value));
 
 const entriesOf = (value: JsonObject): ReadonlyArray<readonly [string, JsonValue]> =>
   Object.entries(value);
@@ -39,8 +47,11 @@ const isList = (value: JsonValue): value is ReadonlyArray<JsonValue> => Array.is
 const definitionNameOf = (name: string, definition: JsonValue): string => {
   if (!/^(Suspend|Union)_\d*$/.test(name)) return name;
   const text = JSON.stringify(definition);
+
   if (text.includes('"children"')) return "ManifestNode";
+
   if (text.includes('"all"')) return "Detector";
+
   return name;
 };
 
@@ -73,9 +84,11 @@ const Include: JsonObject = {
 // admits one wherever the value may stand.
 const admitReferences = (value: JsonValue): JsonValue => {
   if (Array.isArray(value)) return value.map(admitReferences);
+
   if (!isObject(value)) return value;
 
   const rebuilt: Record<string, JsonValue> = {};
+
   for (const [key, entry] of entriesOf(value)) {
     if (key === "$ref" && typeof entry === "string") {
       const name = entry.replace(/^#\/\$defs\//, "");
@@ -84,12 +97,15 @@ const admitReferences = (value: JsonValue): JsonValue => {
       rebuilt[key] = admitReferences(entry);
     }
   }
+
   if (rebuilt.type === "object" && "properties" in rebuilt) {
     return { anyOf: [{ $ref: USE_REFERENCE }, { $ref: INCLUDE_REFERENCE }, rebuilt] };
   }
+
   if (rebuilt.type === "array") {
     return { anyOf: [{ $ref: INCLUDE_REFERENCE }, rebuilt] };
   }
+
   return rebuilt;
 };
 
@@ -111,9 +127,12 @@ const SCHEMA_PROPERTY: JsonObject = {
 // shape as the loader would.
 const withKeyPatterns = (value: JsonValue): JsonValue => {
   if (Array.isArray(value)) return value.map(withKeyPatterns);
+
   if (!isObject(value)) return value;
   const rebuilt: Record<string, JsonValue> = {};
+
   for (const [childKey, entry] of entriesOf(value)) rebuilt[childKey] = withKeyPatterns(entry);
+
   if (
     rebuilt.type === "object" &&
     "patternProperties" in rebuilt &&
@@ -121,6 +140,7 @@ const withKeyPatterns = (value: JsonValue): JsonValue => {
   ) {
     rebuilt.additionalProperties = false;
   }
+
   return rebuilt;
 };
 
@@ -138,13 +158,16 @@ export const manifestJsonSchema = (options: ManifestJsonSchemaOptions = {}): Jso
     options.extensions === undefined || options.extensions.length === 0
       ? Manifest
       : Schema.Struct(Object.assign({}, Manifest.fields, ...options.extensions));
-  const generated = Schema.toJsonSchemaDocument(whole, {
-    onExcessProperty: "error",
-  }) as unknown as {
-    readonly schema: JsonObject;
-    readonly definitions: JsonObject;
+
+  const document = Schema.toJsonSchemaDocument(whole, { onExcessProperty: "error" });
+
+  const generated = {
+    schema: jsonObjectOf(document.schema),
+    definitions: jsonObjectOf(document.definitions),
   };
+
   const { properties, ...root } = generated.schema;
+
   if (properties === undefined || !isObject(properties)) {
     throw new Error("the manifest schema generated with no properties");
   }
@@ -152,7 +175,9 @@ export const manifestJsonSchema = (options: ManifestJsonSchemaOptions = {}): Jso
   for (const [name, definition] of entriesOf(generated.definitions)) {
     DEFINITION_NAMES[name] = definitionNameOf(name, definition);
   }
+
   const definitions: Record<string, JsonValue> = {};
+
   for (const [name, definition] of entriesOf(generated.definitions)) {
     definitions[DEFINITION_NAMES[name] ?? name] = admitReferences(definition);
   }
@@ -182,19 +207,25 @@ export const manifestJsonSchema = (options: ManifestJsonSchemaOptions = {}): Jso
 export const manifestNodeJsonSchema = (options: ManifestJsonSchemaOptions = {}): JsonObject => {
   const whole = manifestJsonSchema(options);
   const definitions = whole.$defs;
+
   if (definitions === undefined || !isObject(definitions)) {
     throw new Error("the manifest schema generated with no definitions");
   }
+
   const node = definitions.ManifestNode;
   const variants = node !== undefined && isObject(node) ? node.anyOf : undefined;
+
   const object =
     variants !== undefined && isList(variants)
       ? variants.find((variant) => isObject(variant) && variant.type === "object")
       : undefined;
+
   if (object === undefined || !isObject(object)) {
     throw new Error("the manifest schema generated with no object form of a node");
   }
+
   const { $id: _id, $schema: _schema, ...rest } = object;
+
   return {
     $schema: "https://json-schema.org/draft/2020-12/schema",
     $id: MANIFEST_NODE_SCHEMA_ID,

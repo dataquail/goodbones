@@ -178,10 +178,13 @@ const captureReport = async (effect: Effect.Effect<void, CliFailure>) => {
   const original = process.stdout.write.bind(process.stdout);
   process.stdout.write = (chunk: string) => {
     lines.push(String(chunk));
+
     return true;
   };
+
   try {
     const exit = await Effect.runPromiseExit(effect);
+
     return { exit, output: lines.join("") };
   } finally {
     process.stdout.write = original;
@@ -201,6 +204,7 @@ describe("check", { concurrent: false }, () => {
     const { exit, output } = await captureReport(
       check(await loadPolicy(repoRoot), ["src", "lib"], "json"),
     );
+
     const report = JSON.parse(output) as CheckReport;
 
     expect(Exit.isFailure(exit)).toBe(true);
@@ -245,10 +249,12 @@ describe("check", { concurrent: false }, () => {
 
   it("carries the floor in the JSON coverage, and is not ok under it", async () => {
     const policy = await loadPolicy(repoRoot);
+
     const floored = {
       ...policy,
       config: { ...policy.config, limits: { coverage: { imports: 0.5 } } },
     };
+
     const { output } = await captureReport(check(floored, ["src", "lib"], "json"));
     const report = JSON.parse(output) as CheckReport;
 
@@ -273,9 +279,11 @@ describe("check", { concurrent: false }, () => {
       ...policy,
       config: { ...policy.config, limits: { conformance: { residue: 0, slack: 1 } } },
     };
+
     const held = JSON.parse(
       (await captureReport(check(capped, ["src", "lib", "etc"], "json"))).output,
     ) as CheckReport;
+
     expect(held.conformance.residue).toEqual({ count: 1, ceiling: 0 });
     expect(held.conformance.slack).toEqual({ count: 1, ceiling: 1 });
     expect(held.conformance.vacant).toEqual({ count: 1 });
@@ -284,10 +292,12 @@ describe("check", { concurrent: false }, () => {
 
   it("fails check when a measure is over the ceiling the policy states, and not at it", async () => {
     const policy = await loadPolicy(repoRoot);
+
     const over = {
       ...policy,
       config: { ...policy.config, limits: { conformance: { residue: 0, vacant: 1 } } },
     };
+
     const { exit, output } = await captureReport(check(over, ["src", "lib", "etc"]));
 
     expect(Exit.isFailure(exit)).toBe(true);
@@ -301,6 +311,7 @@ describe("check", { concurrent: false }, () => {
       ...policy,
       config: { ...policy.config, limits: { conformance: { residue: 1, vacant: 1, slack: 1 } } },
     };
+
     const held = await captureReport(check(at, ["src", "lib", "etc"]));
     expect(JSON.stringify(held.exit)).not.toContain("conformance above ceiling");
     expect(held.output).not.toContain("conformance is above the ceiling");
@@ -329,6 +340,7 @@ describe("explain", { concurrent: false }, () => {
   it("names the rules of every other family that speak to the file", async () => {
     const view = (await captureReport(explain(await loadPolicy(repoRoot), "src/thing.view.tsx")))
       .output;
+
     expect(view).toContain("may not name (exports):");
     expect(view).toContain("no-factories");
     expect(view).toContain("vocabulary (members):");
@@ -362,10 +374,12 @@ describe("coverage", { concurrent: false }, () => {
 
   it("fails check when a family is under the floor the policy states", async () => {
     const policy = await loadPolicy(repoRoot);
+
     const floored = {
       ...policy,
       config: { ...policy.config, limits: { coverage: { imports: 0.5 } } },
     };
+
     const { exit, output } = await captureReport(check(floored, ["src", "lib"]));
 
     expect(Exit.isFailure(exit)).toBe(true);
@@ -378,19 +392,23 @@ describe("coverage", { concurrent: false }, () => {
   // what is left unreached does not.
   it("holds the files a family leaves unreached to a count, which deleting reached files cannot move", async () => {
     const policy = await loadPolicy(repoRoot);
+
     const capped = (imports: number) => ({
       ...policy,
       config: { ...policy.config, limits: { unreached: { imports } } },
     });
+
     const over = await captureReport(check(capped(2), ["src", "lib"]));
     expect(Exit.isFailure(over.exit)).toBe(true);
     expect(over.output).toContain(
       "more files are unreached than the ceiling the policy states for itself:",
     );
     expect(over.output).toContain("  imports: 3 files unreached, ceiling 2");
+
     const report = JSON.parse(
       (await captureReport(check(capped(2), ["src", "lib"], "json"))).output,
     ) as CheckReport;
+
     expect(report.coverage.imports).toEqual({ covered: 2, total: 5, ceiling: 2 });
     expect(report.ok).toBe(false);
 
@@ -400,10 +418,12 @@ describe("coverage", { concurrent: false }, () => {
     // where it was 40%, and still three files unreached.
     const shrunk = await captureReport(check(capped(3), ["lib"]));
     expect(shrunk.output).not.toContain("more files are unreached");
+
     const floored = {
       ...policy,
       config: { ...policy.config, limits: { coverage: { imports: 0.4 } } },
     };
+
     expect((await captureReport(check(floored, ["src", "lib"]))).output).not.toContain(
       "coverage is below the floor",
     );
@@ -417,6 +437,7 @@ describe("coverage", { concurrent: false }, () => {
 
   it("leaves what `limits.outside` names out of every count the limits hold", async () => {
     const policy = await loadPolicy(repoRoot);
+
     const outside = {
       ...policy,
       config: {
@@ -429,9 +450,11 @@ describe("coverage", { concurrent: false }, () => {
         },
       },
     };
+
     const report = JSON.parse(
       (await captureReport(check(outside, ["src", "lib", "etc"], "json"))).output,
     ) as CheckReport;
+
     // Six files walked, and judged; two counted.
     expect(report.files).toBe(6);
     expect(report.outside).toBe(4);
@@ -476,6 +499,7 @@ describe("facts", { concurrent: false }, () => {
       edges: Array<unknown>;
       memberSites: Array<{ subject: string; name: string }>;
     };
+
     expect(parsed.file).toBe("src/thing.view.tsx");
     expect(parsed.edges).toEqual([]);
     expect(parsed.memberSites).toEqual([
@@ -550,6 +574,7 @@ describe("run", { concurrent: false }, () => {
     const { exit, output } = await captureReport(
       run(repoRoot, ["conformance", "src", "--json", "--against", "target.config.mjs", "lib"]),
     );
+
     const snapshot = JSON.parse(output) as Snapshot;
 
     expect(Exit.isSuccess(exit)).toBe(true);
@@ -566,12 +591,14 @@ describe("run", { concurrent: false }, () => {
     const onCheck = await captureReport(
       run(repoRoot, ["check", "--against", "target.config.mjs", "src"]),
     );
+
     expect(Exit.isFailure(onCheck.exit)).toBe(true);
     expect(JSON.stringify(onCheck.exit)).toContain("conformance");
   });
 });
 
 const ROOTS = ["src", "lib", "etc"];
+
 const conformance = (
   policy: Parameters<typeof conformanceWith>[0],
   format: "text" | "json" = "text",
@@ -674,10 +701,14 @@ describe("conformance", { concurrent: false }, () => {
       ROOTS,
       path.join(repoRoot, "architecture.config.mjs"),
     );
+
     const fingerprints = snapshot.violations.map((one) => one.fingerprint);
+
     const at = (prefix: string): number => {
       const index = fingerprints.findIndex((one) => one.startsWith(prefix));
+
       if (index === -1) throw new Error(`no violation ${prefix} in ${fingerprints.join("\n")}`);
+
       return index;
     };
 
@@ -687,12 +718,14 @@ describe("conformance", { concurrent: false }, () => {
     expect(at("import|src/imports|src/thing.repository.ts|lib/bus.ts")).toBeLessThan(
       at("structure|src/*.repository.ts/requires|src/thing.repository.ts"),
     );
+
     // Same height, fingerprint order — so the list is the same on every run.
     const again = snapshotOf(
       await loadPolicy(repoRoot),
       ROOTS,
       path.join(repoRoot, "architecture.config.mjs"),
     );
+
     expect(again.violations.map((one) => one.fingerprint)).toEqual(fingerprints);
   });
 
@@ -716,6 +749,7 @@ describe("conformance", { concurrent: false }, () => {
 
   it("marks each measure against its ceiling, and says when the ceiling can come down", async () => {
     const policy = await loadPolicy(repoRoot);
+
     const capped = {
       ...policy,
       config: {
@@ -723,6 +757,7 @@ describe("conformance", { concurrent: false }, () => {
         limits: { conformance: { residue: 0, vacant: 1, slack: 3, concentration: 0 } },
       },
     };
+
     const { exit, output } = await captureReport(conformance(capped));
 
     // A measurement, never a gate: over the ceiling is a mark, not a failure.
@@ -739,6 +774,7 @@ describe("conformance", { concurrent: false }, () => {
     const snapshot = JSON.parse(
       (await captureReport(conformance(capped, "json"))).output,
     ) as Snapshot;
+
     expect(snapshot.conformance.slack).toEqual({ count: 1, ceiling: 3 });
     expect(Result.isSuccess(decodeSnapshot(snapshot))).toBe(true);
   });
@@ -776,6 +812,7 @@ describe("baseline", { concurrent: false }, () => {
     const { exit } = await captureReport(
       writeBaseline(await loadPolicy(baselineRoot), ["src", "lib"]),
     );
+
     const written = JSON.parse(readFileSync(baselineAt, "utf8")) as { entries: Array<string> };
 
     expect(Exit.isSuccess(exit)).toBe(true);
@@ -799,6 +836,7 @@ describe("baseline", { concurrent: false }, () => {
     const { exit, output } = await captureReport(
       check(await loadPolicy(baselineRoot), ["src", "lib"], "json"),
     );
+
     const report = JSON.parse(output) as CheckReport;
 
     expect(Exit.isSuccess(exit)).toBe(true);
@@ -815,6 +853,7 @@ describe("baseline", { concurrent: false }, () => {
       baselineAt,
       JSON.stringify({ version: 1, entries: ["import|src/imports|src/gone.ts|lib/bus.ts"] }),
     );
+
     const { exit, output } = await captureReport(
       check(await loadPolicy(baselineRoot), ["src", "lib"]),
     );
@@ -828,6 +867,7 @@ describe("baseline", { concurrent: false }, () => {
     const { exit, output } = await captureReport(
       check(await loadPolicy(baselineRoot), ["src", "lib"], "json"),
     );
+
     const report = JSON.parse(output) as CheckReport;
 
     expect(Exit.isFailure(exit)).toBe(true);
@@ -858,9 +898,11 @@ describe("resolution and a damaged baseline", { concurrent: false }, () => {
   // every violation reports.
   it("carries nothing when the baseline file is not readable as JSON", async () => {
     writeFileSync(baselineAt, "{ not json");
+
     const { exit, output } = await captureReport(
       check(await loadPolicy(baselineRoot), ["src", "lib"]),
     );
+
     rmSync(baselineAt, { force: true });
 
     expect(Exit.isFailure(exit)).toBe(true);
@@ -882,6 +924,7 @@ describe("resolution and a damaged baseline", { concurrent: false }, () => {
 // again, a regression, the unrecorded-growth failure, concede, and what
 // conformance says.
 const campaignRoot = path.resolve(here, "../../../.tmp-cli-campaign-tests");
+
 const ledgerAt = (campaign: string, objective: string) =>
   path.join(campaignRoot, ".architecture-campaigns", campaign, `${objective}.json`);
 
@@ -947,6 +990,7 @@ const CAMPAIGN_MANIFEST = `export default {
 const campaignPolicy = (now?: string) => {
   if (now !== undefined) process.env.ARCHITECTURE_NOW = now;
   else delete process.env.ARCHITECTURE_NOW;
+
   return loadPolicy(campaignRoot);
 };
 
@@ -1053,6 +1097,7 @@ describe("campaigns", { concurrent: false }, () => {
     const cleared = await captureReport(
       objectives(await campaignPolicy("2026-09-10T00:00:00Z"), ["src"], ["clear"]),
     );
+
     expect(Exit.isSuccess(cleared.exit)).toBe(true);
     expect(cleared.output).toContain(
       "legacy-to-modern/out-of-legacy: 1 holdout cleared; 1 holdout left.",
@@ -1077,9 +1122,11 @@ describe("campaigns", { concurrent: false }, () => {
     const report = JSON.parse(output) as CheckReport;
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(report.campaigns.find((one) => one.id === "no-throw")?.drifted).toBe(1);
+
     const cleared = await captureReport(
       objectives(await campaignPolicy(), ["src"], ["clear", "no-throw"]),
     );
+
     expect(cleared.output).toContain("no-throw/throws: 1 holdout rewritten; 1 holdout left.");
   });
 
@@ -1094,6 +1141,7 @@ describe("campaigns", { concurrent: false }, () => {
     const refused = await captureReport(
       objectives(await campaignPolicy(), ["src"], ["concede", "legacy-to-modern"]),
     );
+
     expect(Exit.isFailure(refused.exit)).toBe(true);
 
     const conceded = await captureReport(
@@ -1110,6 +1158,7 @@ describe("campaigns", { concurrent: false }, () => {
         ],
       ),
     );
+
     expect(Exit.isSuccess(conceded.exit)).toBe(true);
     expect(conceded.output).toContain(
       "legacy-to-modern/out-of-legacy: 1 holdout conceded, recorded by someone@example.com",
@@ -1134,6 +1183,7 @@ describe("campaigns", { concurrent: false }, () => {
     const ledger = readLedger("legacy-to-modern", "out-of-legacy");
     writeIn(campaignRoot, "src/legacy/four.ts", "export const four = 4;\n");
     const scope = ledger.sectors.scope;
+
     if (scope === undefined) throw new Error("no scope sector");
     writeFileSync(
       at,
@@ -1156,6 +1206,7 @@ describe("campaigns", { concurrent: false }, () => {
         manifestPath: path.join(campaignRoot, "architecture.config.mjs"),
       }),
     );
+
     const snapshot = JSON.parse(stalled.output) as Snapshot;
     expect(Result.isSuccess(decodeSnapshot(snapshot))).toBe(true);
     expect(
@@ -1194,6 +1245,7 @@ describe("campaigns", { concurrent: false }, () => {
         manifestPath: path.join(campaignRoot, "architecture.config.mjs"),
       }),
     );
+
     expect(text.output).toContain("campaigns: 2 campaigns, 2 stalled");
     expect(text.output).toMatch(/legacy-to-modern\s+33%\s+2 left\s+@team\/platform\s+stalled/);
     expect(text.output).toMatch(/out-of-legacy\s+33%\s+2 left\s+1 cleared\s+1 conceded/);
@@ -1203,6 +1255,7 @@ describe("campaigns", { concurrent: false }, () => {
     const { exit, output } = await captureReport(
       check(await campaignPolicy("2026-10-15T00:00:00Z"), ["src"], "text"),
     );
+
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(output).toContain("notice: campaign legacy-to-modern has stalled");
 
@@ -1220,9 +1273,11 @@ describe("campaigns", { concurrent: false }, () => {
     const status = await captureReport(campaigns(await campaignPolicy(), ["src"], []));
     expect(status.output).toContain("2 campaigns under src");
     expect(status.output).toMatch(/legacy-to-modern\s+100%\s+0 left.*complete/);
+
     const explained = await captureReport(
       explain(await campaignPolicy(), "src/thrower.ts", ["src"]),
     );
+
     expect(explained.output).toContain("campaigns:");
     expect(explained.output).toContain("campaign/no-throw: sector scope");
     expect(explained.output).toContain("in window: throws ✗");
@@ -1236,17 +1291,22 @@ describe("campaigns", { concurrent: false }, () => {
     const retired = await captureReport(
       run(campaignRoot, ["campaigns", "init", "no-throw", "src"], "architecture.config.mjs"),
     );
+
     expect(Exit.isFailure(retired.exit)).toBe(true);
     const failure = Exit.isFailure(retired.exit) ? Cause.squash(retired.exit.cause) : null;
     expect((failure as { message?: string } | null)?.message).toContain("`campaigns init` is gone");
+
     const { exit, output } = await captureReport(
       run(campaignRoot, ["campaigns", "src"], "architecture.config.mjs"),
     );
+
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(output).toContain("2 campaigns under src");
+
     const cleared = await captureReport(
       run(campaignRoot, ["objectives", "clear", "src"], "architecture.config.mjs"),
     );
+
     expect(Exit.isSuccess(cleared.exit)).toBe(true);
   });
 
@@ -1374,11 +1434,14 @@ describe("a report term", { concurrent: false }, () => {
     const { exit, output } = await captureReport(
       check(await loadPolicy(reportRoot), ["src"], "json"),
     );
+
     const report = JSON.parse(output) as CheckReport;
     expect(Exit.isFailure(exit)).toBe(true);
+
     const subjects = report.violations
       .filter((one) => one.kind === "campaign")
       .map((one) => `${one.ruleName}|${one.subject ?? ""}`);
+
     expect(subjects).toEqual([
       // Two identical diagnostics at two positions in `parse` are two
       // entries, and the one printed twice at one position is one; TS6133 is
@@ -1400,6 +1463,7 @@ describe("a report term", { concurrent: false }, () => {
     const { output } = await captureReport(
       explain(await loadPolicy(reportRoot), "src/a.ts", ["src"]),
     );
+
     expect(output).toContain("✓ report tsc `node report.mjs` (3)");
     expect(output).toContain("✓ report oxlint file oxlint.json (1)");
   });
@@ -1419,9 +1483,11 @@ describe("a report term", { concurrent: false }, () => {
         "",
       ].join("\n"),
     );
+
     const { exit, output } = await captureReport(
       check(await loadPolicy(reportRoot), ["src"], "json"),
     );
+
     const report = JSON.parse(output) as CheckReport;
     const typeErrors = report.campaigns.find((one) => one.id === "type-errors");
     // One TS2551 reworded (drifted, still carried), the other gone (stale).

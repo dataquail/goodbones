@@ -40,6 +40,7 @@ const same = (a: Pick | null, b: Pick): boolean =>
 
 export const columnsOf = (campaign: CampaignCard): ReadonlyArray<Column> => {
   const standing = campaign.objectives.some((one) => one.phase === null);
+
   return [
     ...(standing || campaign.phases.length === 0 ? [{ kind: "standing" } as const] : []),
     ...campaign.phases.map((_, index) => ({ kind: "phase", index }) as const),
@@ -54,9 +55,11 @@ export const columnOfSector = (
   sector: SectorCard,
 ): number => {
   if (sector.done) return columns.length - 1;
+
   // On no phase: it stands before the ladder, in the first column.
   if (campaign.phases.length === 0 || sector.shared) return 0;
   const at = columns.findIndex((one) => one.kind === "phase" && one.index === sector.phase);
+
   return at === -1 ? 0 : at;
 };
 
@@ -65,8 +68,10 @@ const truncate = (text: string, max: number): string =>
 
 const scalarLabel = (objective: ObjectiveCard): string => {
   const measure = objective.measure;
+
   if (measure === null) return String(objective.count);
   const value = measure.value === null ? "?" : String(measure.value);
+
   return measure.target === null ? value : `${value}→${String(measure.target)}`;
 };
 
@@ -81,24 +86,35 @@ export const Ladder = ({
   const columns = columnsOf(campaign);
   const focus = hover ?? selected;
   const x = (column: number): number => X0 + column * (COL + GAP);
-  const objectivesIn = (column: Column): ReadonlyArray<ObjectiveCard> =>
-    column.kind === "standing"
-      ? campaign.objectives.filter((one) => one.phase === null)
-      : column.kind === "phase"
-        ? campaign.objectives.filter((one) => one.phase === campaign.phases[column.index]?.id)
-        : [];
+
+  const objectivesIn = (column: Column): ReadonlyArray<ObjectiveCard> => {
+    switch (column.kind) {
+      case "standing":
+        return campaign.objectives.filter((one) => one.phase === null);
+      case "phase":
+        return campaign.objectives.filter((one) => one.phase === campaign.phases[column.index]?.id);
+      default:
+        return [];
+    }
+  };
+
   const maxChips = Math.max(1, ...columns.map((column) => objectivesIn(column).length));
   const laneY = PHASE_Y + PHASE_H + 14 + maxChips * (CHIP_H + CHIP_GAP) + 18;
+
   const placed = campaign.sectors.map((sector) => ({
     sector,
     column: columnOfSector(campaign, columns, sector),
   }));
+
   const rowsIn = new Map<number, number>();
+
   const withRows = placed.map((one) => {
     const row = rowsIn.get(one.column) ?? 0;
     rowsIn.set(one.column, row + 1);
+
     return { ...one, row };
   });
+
   const maxRows = Math.max(1, ...rowsIn.values());
   const laneH = maxRows * (SECTOR_H + SECTOR_GAP) + 12;
   const width = x(columns.length) + 8;
@@ -109,10 +125,13 @@ export const Ladder = ({
     focus?.kind === "objective"
       ? campaign.objectives.find((one) => one.id === focus.id)
       : undefined;
+
   const focusPhaseIndex =
     focus?.kind === "phase" ? campaign.phases.findIndex((one) => one.id === focus.id) : -1;
+
   const focusSector =
     focus?.kind === "sector" ? campaign.sectors.find((one) => one.name === focus.name) : undefined;
+
   const sectorLit = (sector: SectorCard): boolean =>
     focusObjective !== undefined
       ? (sector.residue[focusObjective.id] ?? sector.counts[focusObjective.id] ?? 0) > 0
@@ -121,6 +140,7 @@ export const Ladder = ({
         : focusSector !== undefined
           ? focusSector.name === sector.name
           : false;
+
   const objectiveLit = (objective: ObjectiveCard): boolean =>
     focusSector !== undefined
       ? (focusSector.residue[objective.id] ?? 0) > 0
@@ -129,12 +149,14 @@ export const Ladder = ({
         : focusObjective !== undefined
           ? focusObjective.id === objective.id
           : false;
+
   const phaseLit = (index: number): boolean =>
     focusSector !== undefined
       ? focusSector.phase === index && !focusSector.done
       : focusObjective !== undefined
         ? focusObjective.phase === campaign.phases[index]?.id
         : focusPhaseIndex === index;
+
   const dimmed = focus !== null && focus.kind !== "campaign";
 
   return (
@@ -166,8 +188,10 @@ export const Ladder = ({
       {columns.map((column, i) => {
         const cx = x(i);
         const objectives = objectivesIn(column);
+
         if (column.kind === "end") {
           const done = campaign.sectors.filter((one) => one.done).length;
+
           return (
             <g key="end" className={`column end ${campaign.complete ? "lit" : ""}`}>
               <rect x={cx} y={PHASE_Y} width={COL} height={PHASE_H} rx="8" className="phase end" />
@@ -183,12 +207,16 @@ export const Ladder = ({
             </g>
           );
         }
+
         const phase = column.kind === "phase" ? campaign.phases[column.index] : undefined;
+
         const lit =
           column.kind === "phase"
             ? phaseLit(column.index)
             : focus?.kind === "objective" && focusObjective?.phase === null;
+
         const pick: Pick | null = phase === undefined ? null : { kind: "phase", id: phase.id };
+
         return (
           <g
             key={column.kind === "phase" ? `phase:${String(column.index)}` : "standing"}
@@ -243,7 +271,9 @@ export const Ladder = ({
                 14 +
                 j * (CHIP_H + CHIP_GAP) +
                 (phase !== undefined && phase.intent !== null ? 14 : 0);
+
               const objectivePick: Pick = { kind: "objective", id: objective.id };
+
               return (
                 <g
                   key={objective.id}
@@ -291,6 +321,7 @@ export const Ladder = ({
         const cy = laneY + 6 + row * (SECTOR_H + SECTOR_GAP);
         const left = Object.entries(sector.residue).reduce((sum, [, n]) => sum + n, 0);
         const pick: Pick = { kind: "sector", name: sector.name };
+
         const kind = sector.done
           ? "done"
           : sector.legacy
@@ -298,6 +329,7 @@ export const Ladder = ({
             : sector.shared
               ? "shared"
               : "sector";
+
         return (
           <g
             key={sector.name}

@@ -44,6 +44,7 @@ const PathTerm = Schema.Struct({
   subject: Schema.optionalKey(Schema.Finite),
   convention: Schema.optionalKey(Schema.String),
 });
+
 export type PathTerm = (typeof PathTerm)["Type"];
 
 const ImportsTerm = Schema.Struct({
@@ -53,6 +54,7 @@ const ImportsTerm = Schema.Struct({
   // Names that must be pulled across that edge; omit for any binding.
   symbols: Schema.optionalKey(Schema.Array(Schema.String)),
 });
+
 export type ImportsTerm = (typeof ImportsTerm)["Type"];
 
 const ExportsTerm = Schema.Struct({
@@ -61,6 +63,7 @@ const ExportsTerm = Schema.Struct({
   declares: Schema.optionalKey(Schema.Array(DeclarationKind)),
   reexport: Schema.optionalKey(Schema.Boolean),
 });
+
 export type ExportsTerm = (typeof ExportsTerm)["Type"];
 
 const MembersTerm = Schema.Struct({
@@ -69,9 +72,11 @@ const MembersTerm = Schema.Struct({
   in: Schema.optionalKey(PatternList),
   declares: Schema.optionalKey(Schema.Array(DeclarationKind)),
 });
+
 export type MembersTerm = (typeof MembersTerm)["Type"];
 
 const ContentTerm = Schema.Struct({ regex: Schema.String });
+
 type ContentTerm = (typeof ContentTerm)["Type"];
 
 // How a metavariable of a syntax rule is narrowed: by the text it captured,
@@ -92,6 +97,7 @@ const SyntaxTerm = Schema.Struct({
   rule: Schema.Unknown,
   where: Schema.optionalKey(Schema.Record(Schema.String, CaptureNarrowing)),
 });
+
 export type SyntaxTerm = (typeof SyntaxTerm)["Type"];
 
 // A pattern no parser of ours sees, reported by another program: a type
@@ -113,6 +119,7 @@ const ReportTerm = Schema.Struct({
   codes: Schema.optionalKey(Schema.Array(Schema.String)),
   codesNot: Schema.optionalKey(Schema.Array(Schema.String)),
 });
+
 export type ReportTerm = (typeof ReportTerm)["Type"];
 
 export type Detector =
@@ -161,6 +168,7 @@ export const SectorTerm = Schema.Union([
   Schema.Struct({ oneRoot: Schema.Literal(true) }),
   Schema.Struct({ oneHost: PatternList }),
 ]);
+
 export type SectorTerm = (typeof SectorTerm)["Type"];
 
 // One diagnostic a probe stands in for, positions one-based as a tool
@@ -202,6 +210,7 @@ export const MeasureSource = Schema.Union([
   Schema.Struct({ report: ReportTerm }),
   Schema.Struct({ fn: Schema.String }),
 ]);
+
 export type MeasureSource = (typeof MeasureSource)["Type"];
 
 // A scalar objective's number: one source summed, a ratio of two sums
@@ -215,10 +224,12 @@ export const Measure = Schema.Union([
   }),
   Schema.Struct({ command: Schema.String, pattern: Schema.optionalKey(Schema.String) }),
 ]);
+
 export type Measure = (typeof Measure)["Type"];
 
 // Which way a scalar objective's number is better.
 export const MeasureDirection = Schema.Literals(["down", "up"]);
+
 export type MeasureDirection = (typeof MeasureDirection)["Type"];
 
 // What a diff owes when it pays down a later phase's holdouts in a sector
@@ -227,6 +238,7 @@ export type MeasureDirection = (typeof MeasureDirection)["Type"];
 // backfill it needs has been attested; `ignore` leaves it unsaid, for an
 // objective every phase pays down — one that counts what is left of a sector.
 export const OnAhead = Schema.Literals(["advise", "ratchet", "ignore"]);
+
 export type OnAhead = (typeof OnAhead)["Type"];
 
 // An objective: a detector, a granularity, probes, and a ledger that only
@@ -297,6 +309,7 @@ export const PerimeterRule = Schema.Union([
     probes: CampaignProbes,
   }),
 ]);
+
 export type PerimeterRule = (typeof PerimeterRule)["Type"];
 
 // What a touched sector owes beyond the nudge. A strict ladder: the ledger
@@ -304,6 +317,7 @@ export type PerimeterRule = (typeof PerimeterRule)["Type"];
 // touched sector; `paydown` adds that a diff editing a holdout-bearing
 // declaration must leave the sector with fewer holdouts.
 export const OnTouch = Schema.Literals(["advise", "ratchet", "paydown"]);
+
 export type OnTouch = (typeof OnTouch)["Type"];
 
 // A dated receipt for a change to a defined phase, which authorizes the next
@@ -340,6 +354,7 @@ export const PhaseRule = Schema.Struct({
   definition: Schema.optionalKey(Schema.Unknown),
   hash: Schema.String,
 });
+
 export type PhaseRule = (typeof PhaseRule)["Type"];
 
 export const CampaignRule = Schema.Struct({
@@ -372,12 +387,21 @@ export const CampaignRule = Schema.Struct({
 });
 
 export type CampaignUnit = (typeof CampaignUnit)["Type"];
+
 export type Holdout = (typeof Holdout)["Type"];
+
 export type CampaignProbe = (typeof CampaignProbe)["Type"];
+
 export type CampaignProbes = (typeof CampaignProbes)["Type"];
+
 export type ProbeDiagnostic = (typeof ProbeDiagnostic)["Type"];
+
 export type ReportFormat = (typeof ReportFormat)["Type"];
+
 export type ObjectiveRule = (typeof ObjectiveRule)["Type"];
+
 export type PhaseConcession = (typeof PhaseConcession)["Type"];
+
 export type CampaignRule = (typeof CampaignRule)["Type"];
+
 export type CaptureNarrowing = (typeof CaptureNarrowing)["Type"];

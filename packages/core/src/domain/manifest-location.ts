@@ -35,7 +35,9 @@ export const renderManifestPath = (path: ManifestPath): string =>
         .map((segment, index) => {
           if (typeof segment === "number") return `[${String(segment)}]`;
           const key = String(segment);
+
           if (isIdentifier(key)) return index === 0 ? key : `.${key}`;
+
           return `[${JSON.stringify(key)}]`;
         })
         .join("");

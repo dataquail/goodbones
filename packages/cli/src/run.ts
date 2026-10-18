@@ -121,6 +121,7 @@ export const collectFindings = (
     policy.languages,
     policy.campaigns.widenedExtensions(policy),
   );
+
   const known = new Set(policy.languages.flatMap((one) => one.extensions));
   const files = walked.filter((file) => known.has(path.extname(file)));
   const violations: Array<Violation> = [];
@@ -130,19 +131,26 @@ export const collectFindings = (
   // Each file is read and parsed at most once, whether the per-file
   // families, the graph pass or a campaign asks first.
   const texts = new Map<string, string>();
+
   const textOf = (file: string): string => {
     const cached = texts.get(file);
+
     if (cached !== undefined) return cached;
     const text = readFileSync(path.join(policy.repoRoot, file), "utf8");
     texts.set(file, text);
+
     return text;
   };
+
   const parsed = new Map<string, SourceFacts>();
+
   const factsOf = (file: string): SourceFacts => {
     const cached = parsed.get(file);
+
     if (cached !== undefined) return cached;
     const facts = policy.extractor.factsOf(file, textOf(file));
     parsed.set(file, facts);
+
     return facts;
   };
 
@@ -152,6 +160,7 @@ export const collectFindings = (
     options.graph === true || hasGraphRules(policy.graph)
       ? buildGraph(files, policy.resolver, factsOf)
       : null;
+
   if (graph !== null && hasGraphRules(policy.graph)) {
     for (const violation of evaluateGraph(policy.graph, graph)) violations.push(violation);
   }
@@ -168,6 +177,7 @@ export const collectFindings = (
     const selectedExports = exportRulesSelecting(policy.exportRules, file);
     const selectedMembers = memberRulesSelecting(policy.memberRules, file);
     const selectedSurface = surfaceRulesSelecting(policy.surfaceRules, file);
+
     if (
       selectedImports.length +
         selectedExports.length +
@@ -195,23 +205,29 @@ export const collectFindings = (
       // is what keeps resolution off the hot path for the bulk of the repo.
       if (selectedImports.length > 0) {
         const resolved = policy.resolver.resolve(file, specifier);
+
         if (Result.isFailure(resolved)) {
           if (policy.config.resolve.unresolved === "off") continue;
+
           if (policy.ignoreUnresolved.some((pattern) => pattern.test(specifier))) continue;
           unresolved.push({ file, specifier, detail: resolved.failure.detail });
           continue;
         }
+
         edges.push({ importer: file, target: resolved.success });
+
         for (const violation of evaluateResolvedEdge(selectedImports, file, resolved.success)) {
           violations.push(violation);
         }
       }
 
       const bound = facts.bindings.get(specifier) ?? [];
+
       const exported = evaluateSelectedBindings(selectedExports, policy.resolver, {
         ...edge,
         bindings: bound,
       });
+
       if (!Result.isFailure(exported)) {
         for (const { violation } of exported.success) violations.push(violation);
       }
@@ -228,7 +244,9 @@ const baselinePathOf = (policy: LoadedPolicy): string | null =>
 
 const readBaseline = (policy: LoadedPolicy): Baseline => {
   const at = baselinePathOf(policy);
+
   if (at === null) return EMPTY_BASELINE;
+
   try {
     return decodeBaseline(JSON.parse(readFileSync(at, "utf8")) as unknown);
   } catch {
@@ -350,6 +368,7 @@ const measuresOf = (
   // allowlist that selects no file is vacant, and its entries are reported as
   // that rather than as lines nobody needs.
   const { concentration, slack } = slackOf(policy.importRules, edges, files);
+
   return {
     // Residue is a count of files, and counts the ones the limits count. A
     // node is live or vacant by every file under it, counted or not.
@@ -385,6 +404,7 @@ const reportOf = (
   const baseline = readBaseline(policy);
   const stale = staleEntriesOf(baseline, findings.violations);
   const { isBaselined } = makeBaselineFilter(baseline);
+
   const violations: Array<ReportedViolation> = [
     ...findings.violations.map((violation) => ({
       ...violation,
@@ -404,6 +424,7 @@ const reportOf = (
       entry: hit.entry,
     })),
   ];
+
   const campaigns = policy.campaigns.reportsOf(policy, findings.campaigns);
 
   // The floors. A policy states how much of the tree it reaches, per
@@ -415,12 +436,15 @@ const reportOf = (
   const files = listSourceFiles(policy.repoRoot, roots, policy.languages);
   const counted = countedFiles(files, outsideOf(policy));
   const found = coverageOf(policy, counted);
+
   const covered = (family: CoverageFamily): number =>
     family === "structure" ? found.structure.enumerated : found[family].covered;
+
   const coverage = Object.fromEntries(
     COVERAGE_FAMILIES.map((family) => {
       const floor = floors[family];
       const ceiling = unreached[family];
+
       return [
         family,
         {
@@ -432,6 +456,7 @@ const reportOf = (
       ];
     }),
   ) as CoverageReport;
+
   const shortfalls = shortfallsOf(coverage);
   const overruns = overrunsOf(coverage);
 
@@ -441,15 +466,19 @@ const reportOf = (
   const ceilings = policy.config.limits?.conformance ?? {};
   const measures = measuresOf(policy, files, findings.edges);
   const counts = countsOf(measures);
+
   const conformance = Object.fromEntries(
     CONFORMANCE_MEASURES.map((measure) => {
       const ceiling = ceilings[measure];
+
       return [measure, { count: counts[measure], ...(ceiling === undefined ? {} : { ceiling }) }];
     }),
   ) as ConformanceReport;
+
   const excesses = excessesOf(conformance);
 
   const reportable = violations.filter((one) => !one.baselined && !one.ledgered).length;
+
   const report: CheckReport = {
     version: 1,
     files: findings.files,
@@ -478,6 +507,7 @@ const reportOf = (
     },
     campaigns,
   };
+
   return { report, measures, files };
 };
 
@@ -494,6 +524,7 @@ const shortfallsOf = (coverage: CoverageReport): ReadonlyArray<Shortfall> =>
   COVERAGE_FAMILIES.flatMap((family) => {
     const { covered, floor, total } = coverage[family];
     const actual = total === 0 ? 1 : covered / total;
+
     return floor === undefined || !breaches({ direction: "up", limit: floor, tolerance: 0 }, actual)
       ? []
       : [{ family, actual, floor }];
@@ -512,6 +543,7 @@ const overrunsOf = (coverage: CoverageReport): ReadonlyArray<Overrun> =>
   COVERAGE_FAMILIES.flatMap((family) => {
     const { ceiling, covered, total } = coverage[family];
     const unreached = total - covered;
+
     return ceiling === undefined ||
       !breaches({ direction: "down", limit: ceiling, tolerance: 0 }, unreached)
       ? []
@@ -528,6 +560,7 @@ type Excess = {
 const excessesOf = (conformance: ConformanceReport): ReadonlyArray<Excess> =>
   CONFORMANCE_MEASURES.flatMap((measure) => {
     const { ceiling, count } = conformance[measure];
+
     return ceiling === undefined ||
       !breaches({ direction: "down", limit: ceiling, tolerance: 0 }, count)
       ? []
@@ -541,11 +574,17 @@ const failureOf = (
 ): CliFailure | null => {
   if (report.stale.length > 0) return fail("stale baseline entries");
   const [campaignFailure] = policy.campaigns.failuresOf(report.campaigns);
+
   if (campaignFailure !== undefined) return fail(campaignFailure);
+
   if (shortfalls.length > 0) return fail("coverage below floor");
+
   if (overrunsOf(report.coverage).length > 0) return fail("unreached above ceiling");
+
   if (excessesOf(report.conformance).length > 0) return fail("conformance above ceiling");
+
   if (report.ok) return null;
+
   return fail("architecture violations");
 };
 
@@ -562,6 +601,7 @@ const MEASURE_NOUNS: Readonly<Record<ConformanceMeasure, readonly [string, strin
 
 const describeExcess = (one: Excess): string => {
   const [singular, plural] = MEASURE_NOUNS[one.measure];
+
   return `  ${one.measure}: ${count(one.count, singular, plural)}, ceiling ${String(one.ceiling)}`;
 };
 
@@ -588,11 +628,14 @@ const renderCampaigns = (policy: LoadedPolicy, report: CheckReport): ReadonlyArr
 
 const renderText = (policy: LoadedPolicy, report: CheckReport): ReadonlyArray<string> => {
   const reportable = report.violations.filter((one) => one.kind !== "campaign" && !one.baselined);
+
   const carried =
     report.violations.filter((one) => one.kind !== "campaign").length - reportable.length;
+
   const shortfalls = shortfallsOf(report.coverage);
   const overruns = overrunsOf(report.coverage);
   const excesses = excessesOf(report.conformance);
+
   return [
     ...reportable.map(describe),
     ...report.unresolved.map(
@@ -666,6 +709,7 @@ export const check = (
       options.format === "json" ? [JSON.stringify(report_, null, 2)] : renderText(policy, report_),
     );
     const failure = failureOf(policy, report_, shortfallsOf(report_.coverage));
+
     if (failure !== null) return yield* Effect.fail(failure);
   });
 
@@ -693,8 +737,10 @@ export const snapshotOf = (
   // Ties keep the fingerprint order, so the list is the same on every run.
   const heightOfViolation = (one: ReportedViolation): number =>
     heights.get(one.subject ?? "") ?? heights.get(one.file) ?? 0;
+
   const violations = [...report_.violations].sort((left, right) => {
     const byHeight = heightOfViolation(left) - heightOfViolation(right);
+
     return byHeight !== 0 ? byHeight : left.fingerprint.localeCompare(right.fingerprint);
   });
 
@@ -728,7 +774,9 @@ export const snapshotOf = (
 const unreachedMark = (covered: number, total: number, ceiling: number | undefined): string => {
   if (ceiling === undefined) return "";
   const left = total - covered;
+
   if (left > ceiling) return `  ${String(left)} unreached > ${String(ceiling)} ✗`;
+
   return `  ${String(left)} unreached ≤ ${String(ceiling)} ✓${left < ceiling ? `, lower it to ${String(left)}` : ""}`;
 };
 
@@ -738,32 +786,41 @@ const outsideNote = (outside: number): string =>
 const renderSnapshot = (policy: LoadedPolicy, snapshot: Snapshot): ReadonlyArray<string> => {
   const reportable = snapshot.violations.filter((one) => !one.baselined && !one.ledgered);
   const carried = snapshot.violations.length - reportable.length;
+
   const row = (family: CoverageFamily): string => {
     const { ceiling, covered, floor, total } = snapshot.coverage[family];
     const fraction = total === 0 ? 1 : covered / total;
+
     const mark =
       floor === undefined
         ? ""
         : fraction >= floor
           ? `  ≥ ${percent(floor)} ✓`
           : `  < ${percent(floor)} ✗`;
+
     return `  ${family.padEnd(10)} ${String(covered).padStart(5)}/${String(total)}  ${percent(fraction).padStart(4)}${mark}${unreachedMark(covered, total, ceiling)}`;
   };
+
   const section = (title: string, lines: ReadonlyArray<string>): ReadonlyArray<string> => [
     "",
     title,
     ...lines,
   ];
+
   const vacantWidth = Math.max(0, ...snapshot.vacant.map((one) => one.node.length));
   // The document carries every partly-used fragment entry; the text shows
   // the ones concentrated enough to read as a per-file rule written wide.
   const concentrated = snapshot.concentration.filter(isConcentrated);
+
   // The ceiling beside each measure that has one, and the ratchet's nudge
   // when the count has fallen under it: a ceiling is lowered by hand.
   const ceilingMark = (measure: ConformanceMeasure): string => {
     const { ceiling, count: actual } = snapshot.conformance[measure];
+
     if (ceiling === undefined) return "";
+
     if (actual > ceiling) return `  > ${String(ceiling)} ✗`;
+
     return `  ≤ ${String(ceiling)} ✓${actual < ceiling ? `, lower it to ${String(actual)}` : ""}`;
   };
 
@@ -881,14 +938,17 @@ export const coverage = (
     const fractions = fractionsOf(found);
     const floors = policy.config.limits?.coverage ?? {};
     const ceilings = policy.config.limits?.unreached ?? {};
+
     const row = (family: keyof typeof fractions, covered: number, note: string): string => {
       const floor = floors[family];
+
       const mark =
         floor === undefined
           ? ""
           : fractions[family] >= floor
             ? `  ≥ ${percent(floor)} ✓`
             : `  < ${percent(floor)} ✗`;
+
       return `  ${family.padEnd(10)} ${String(covered).padStart(5)}/${String(found.files)}  ${percent(fractions[family]).padStart(4)}  ${note}${mark}${unreachedMark(covered, found.files, ceilings[family])}`;
     };
 
@@ -916,6 +976,7 @@ export const writeBaseline = (
 ): Effect.Effect<void, CliFailure> =>
   Effect.gen(function* () {
     const at = baselinePathOf(policy);
+
     if (at === null) {
       return yield* Effect.fail(
         fail("this policy declares no `baseline` path, so there is nowhere to write one"),
@@ -969,6 +1030,7 @@ export const explain = (
 
     const firstSentence = (message: string) =>
       `${(message.split(". ")[0] ?? message).replace(/\.$/, "")}.`;
+
     const named = (rule: { readonly name: string; readonly message: string }): string =>
       `    ${rule.name} — ${firstSentence(rule.message)}`;
 
@@ -977,9 +1039,11 @@ export const explain = (
     const restricted = exportRulesSelecting(policy.exportRules, relative).map(([rule]) => rule);
     const vocabulary = memberRulesSelecting(policy.memberRules, relative);
     const surface = surfaceRulesSelecting(policy.surfaceRules, relative);
+
     const scoped = (rule: { within: ReadonlyArray<RegExp>; withinNot: ReadonlyArray<RegExp> }) =>
       rule.within.some((pattern) => pattern.test(relative)) &&
       !rule.withinNot.some((pattern) => pattern.test(relative));
+
     const graph = [
       ...policy.graph.cycles.filter(scoped).map((rule) => `${named(rule)} (cycles)`),
       ...policy.graph.orphans.filter(scoped).map((rule) => `${named(rule)} (orphans)`),
@@ -991,6 +1055,7 @@ export const explain = (
         )
         .map((rule) => `${named(rule)} (reach)`),
     ];
+
     const section = (title: string, lines: ReadonlyArray<string>): ReadonlyArray<string> =>
       lines.length === 0 ? [] : ["", title, ...lines];
 
@@ -1063,6 +1128,7 @@ export const facts = (
       specifier,
       bindings: read.bindings.get(specifier) ?? [],
     }));
+
     const declared = read.memberSites.filter((site) => site.subject === "members");
     const called = read.memberSites.filter((site) => site.subject === "calls");
 
@@ -1180,6 +1246,7 @@ tree:
 export const init = (repoRoot: string): Effect.Effect<void, CliFailure> =>
   Effect.gen(function* () {
     const present = MANIFEST_FILENAMES.filter((name) => existsSync(path.resolve(repoRoot, name)));
+
     if (present.length > 0) {
       return yield* Effect.fail(
         fail(
@@ -1188,6 +1255,7 @@ export const init = (repoRoot: string): Effect.Effect<void, CliFailure> =>
         ),
       );
     }
+
     yield* Effect.sync(() => {
       writeFileSync(path.resolve(repoRoot, "architecture.yaml"), STARTER_MANIFEST);
     });
@@ -1214,6 +1282,7 @@ export const migrate = (
           : path.resolve(repoRoot, configFilename),
       catch: (cause) => fail(String(cause)),
     });
+
     if (![".mjs", ".js", ".cjs"].includes(path.extname(from))) {
       return yield* Effect.fail(
         fail(
@@ -1222,7 +1291,9 @@ export const migrate = (
         ),
       );
     }
+
     const to = path.resolve(repoRoot, "architecture.yaml");
+
     if (existsSync(to)) {
       return yield* Effect.fail(
         fail("architecture.yaml already exists; `migrate` does not overwrite it."),
@@ -1233,9 +1304,11 @@ export const migrate = (
       try: () => readManifestFile(from),
       catch: (cause) => fail(String(cause)),
     });
+
     // Written only if it decodes: a manifest that does not load as a module
     // is not going to load as YAML either, and the error names why.
     const decoded = decodeManifest(from, read.manifest);
+
     if (Result.isFailure(decoded)) return yield* Effect.fail(fail(decoded.failure.message));
 
     yield* Effect.sync(() => {
@@ -1304,9 +1377,12 @@ export const run = (
 
     // The three commands that write a manifest rather than read one.
     if (command === "init") return yield* init(repoRoot);
+
     if (command === "migrate") return yield* migrate(repoRoot, configFilename);
+
     if (command === "infer") {
       yield* infer(repoRoot, rest, configFilename);
+
       return;
     }
 
@@ -1316,20 +1392,24 @@ export const run = (
     // yet would fail for no one's benefit.
     const againstAt = rest.indexOf("--against");
     const against = againstAt === -1 ? undefined : rest[againstAt + 1];
+
     if (againstAt !== -1 && (against === undefined || against.startsWith("--"))) {
       return yield* Effect.fail(fail("--against needs a manifest path"));
     }
+
     if (against !== undefined && command !== "conformance") {
       return yield* Effect.fail(
         fail(`--against is a \`conformance\` flag; ${command} does not take it`),
       );
     }
+
     const manifestFilename = against ?? configFilename;
 
     const policy = yield* Effect.tryPromise({
       try: () => loadPolicyFromFile(repoRoot, manifestFilename),
       catch: (cause) => fail(String(cause)),
     });
+
     yield* Effect.sync(() => {
       for (const notice of policy.notices) process.stderr.write(`deprecated: ${notice}\n`);
     });
@@ -1346,12 +1426,14 @@ export const run = (
     }
 
     const json = rest.includes("--json");
+
     const positional = rest.filter(
       (argument, index) =>
         argument !== "--json" &&
         argument !== "--against" &&
         (againstAt === -1 || index !== againstAt + 1),
     );
+
     const roots = positional.length > 0 ? positional : ["packages"];
 
     switch (command) {
@@ -1373,16 +1455,22 @@ export const run = (
         return yield* writeBaseline(policy, roots);
       case "explain": {
         const [file, ...explainRoots] = positional;
+
         if (file === undefined) return yield* Effect.fail(fail("explain needs a file path"));
+
         return yield* explain(policy, file, explainRoots.length > 0 ? explainRoots : ["packages"]);
       }
+
       case "coverage":
         return yield* coverage(policy, roots);
       case "facts": {
         const [file] = positional;
+
         if (file === undefined) return yield* Effect.fail(fail("facts needs a file path"));
+
         return yield* facts(policy, file, json ? "json" : "text");
       }
+
       default:
         return yield* Effect.fail(
           fail(

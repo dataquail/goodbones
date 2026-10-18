@@ -3,3 +3,4 @@
 **/.astro/
 **/.nx/
 pnpm-lock.yaml
+tools/oxlint/

@@ -51,9 +51,11 @@ describe("plugin parity", () => {
     const expected = perFile
       .map((one) => `${RULE_OF[one.kind] ?? one.kind} ${one.file} [${one.ruleName}]`)
       .sort();
+
     const reported = linted.diagnostics
       .map((one) => `${one.rule} ${one.file} ${one.message.split("]")[0] ?? ""}]`)
       .sort();
+
     expect(reported).toEqual(expected);
 
     // And the graph findings are the CLI's alone.
@@ -69,8 +71,15 @@ describe("plugin parity", () => {
   it("is silent about a ledgered campaign hit in both hosts", () => {
     const ledgered = createRepo({ files: everyFamilyFiles });
     ledgered.writeManifest(everyFamilyManifest(ledgered.profile));
+
     try {
-      const cleared = cli(ledgered, ["objectives", "clear", "legacy-to-modern", ...EVERY_FAMILY_ROOTS]);
+      const cleared = cli(ledgered, [
+        "objectives",
+        "clear",
+        "legacy-to-modern",
+        ...EVERY_FAMILY_ROOTS,
+      ]);
+
       expect(cleared.code, cleared.stderr).toBe(0);
       const { json } = check(ledgered, EVERY_FAMILY_ROOTS);
       const hit = json.violations.find((one) => one.kind === "campaign");
@@ -92,9 +101,11 @@ describe("plugin parity", () => {
         "src/thing.view.ts": { imports: [], exports: [], declares: [{ calls: "useAtomValue" }] },
       },
     });
+
     fixed.remove("src/ports/stray.ts");
     fixed.remove("src/legacy/old.ts");
     fixed.writeManifest(everyFamilyManifest(fixed.profile));
+
     try {
       const { json } = check(fixed, EVERY_FAMILY_ROOTS);
       expect(json.violations.filter((one) => one.kind !== "graph")).toEqual([]);
@@ -136,6 +147,7 @@ describe("plugin parity", () => {
         },
       },
     });
+
     try {
       const checked = cli(vacuous, ["check", "--json", "src"]);
       expect(checked.code).toBe(1);

@@ -200,6 +200,7 @@ export type CampaignViewInput = {
 
 const dirnameOf = (file: string): string => {
   const at = file.lastIndexOf("/");
+
   return at === -1 ? "" : file.slice(0, at);
 };
 
@@ -209,14 +210,17 @@ const positionAt = (
   path: ManifestPath,
 ): AtlasPosition | null => {
   const found = locate?.(path);
+
   if (found === null || found === undefined) return null;
   const directory = dirnameOf(manifestPath);
+
   const file =
     found.file === undefined
       ? manifestPath
       : directory === ""
         ? found.file
         : `${directory}/${found.file}`;
+
   return { file, line: found.line, column: found.column };
 };
 
@@ -225,10 +229,12 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const stringAt = (value: unknown, ...keys: ReadonlyArray<string>): string | null => {
   let cursor: unknown = value;
+
   for (const key of keys) {
     if (!isRecord(cursor)) return null;
     cursor = cursor[key];
   }
+
   return typeof cursor === "string" ? cursor : null;
 };
 
@@ -244,9 +250,11 @@ export const campaignViewOf = (input: CampaignViewInput): CampaignView => {
     const { rule } = evaluation;
     const report = input.reports[index];
     const snapshot = snapshots[index];
+
     if (report === undefined || snapshot === undefined) {
       throw new Error(`campaign ${rule.id} was evaluated without a report`);
     }
+
     const scalar = new Set(
       rule.objectives.filter((one) => one.measure !== null).map((one) => one.id),
     );
@@ -255,8 +263,10 @@ export const campaignViewOf = (input: CampaignViewInput): CampaignView => {
       const own = report.objectives[j];
       const summary = snapshot.objectives[j];
       const ledger = state.ledgers.get(ledgerKeyOf(rule.id, objective.id));
+
       const sectors = (own?.sectors ?? []).map((sector): ObjectiveSectorCard => {
         const held = ledger?.sectors[sector.sector];
+
         return {
           sector: sector.sector,
           count: sector.count,
@@ -272,7 +282,9 @@ export const campaignViewOf = (input: CampaignViewInput): CampaignView => {
           measure: sector.measure ?? null,
         };
       });
+
       const namedAt = rule.phases.findIndex((phase) => phase.objectives.includes(objective.id));
+
       return {
         id: objective.id,
         message: objective.message,
@@ -284,13 +296,11 @@ export const campaignViewOf = (input: CampaignViewInput): CampaignView => {
           !objective.overShared || namedAt === -1
             ? []
             : [...evaluation.sectors.values()]
-                .filter(
-                  (one) =>
-                    one.phase === namedAt &&
-                    one.name !== LEGACY_SECTOR &&
-                    !isShared(rule, one.name),
+                .flatMap((one) =>
+                  one.phase === namedAt && one.name !== LEGACY_SECTOR && !isShared(rule, one.name)
+                    ? [one.name]
+                    : [],
                 )
-                .map((one) => one.name)
                 .sort(),
         position: position(["campaigns", rule.id, "objectives", objective.id]),
         count: summary?.count ?? own?.count ?? 0,
@@ -344,18 +354,22 @@ export const campaignViewOf = (input: CampaignViewInput): CampaignView => {
         }))
         .sort((a, b) => {
           const byFile = a.file.localeCompare(b.file);
+
           return byFile !== 0 ? byFile : a.entry.localeCompare(b.entry);
         });
 
     const sectors = [...evaluation.sectors.values()].map((sectorState): SectorCard => {
       const record = state.sectorRecords.get(ledgerKeyOf(rule.id, sectorState.name));
       const summary = snapshot.sectors.find((one) => one.name === sectorState.name);
+
       const residueTotal = Object.entries(sectorState.residue)
         .filter(([id]) => !scalar.has(id))
         .reduce((sum, [, n]) => sum + n, 0);
+
       const scalarOpen = Object.entries(sectorState.counts).some(
         ([id, n]) => scalar.has(id) && n > 0,
       );
+
       return {
         name: sectorState.name,
         legacy: sectorState.name === LEGACY_SECTOR,

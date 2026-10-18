@@ -21,6 +21,7 @@ const decode = Schema.decodeUnknownResult(CampaignsManifest, {
   onExcessProperty: "error",
   reportInput: true,
 });
+
 const flatten = SchemaIssue.makeFormatterStandardSchemaV1();
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -41,6 +42,7 @@ const pathOf = (issue: {
 // what a campaign used to be.
 const legacyCampaignsIssue = (campaigns: unknown): string | null => {
   if (campaigns === undefined) return null;
+
   if (isList(campaigns)) {
     return (
       "`campaigns` is a list. A campaign is now a map keyed by its id, and what a campaign used " +
@@ -49,9 +51,12 @@ const legacyCampaignsIssue = (campaigns: unknown): string | null => {
       "with `unit` renamed `holdout` and `detect` renamed `match`."
     );
   }
+
   if (!isRecord(campaigns)) return null;
+
   for (const [id, campaign] of Object.entries(campaigns)) {
     if (!isRecord(campaign)) continue;
+
     if ("detect" in campaign && !("objectives" in campaign)) {
       return (
         `campaign "${id}" carries a \`detect\` and no \`objectives\`. A campaign owns its ` +
@@ -60,6 +65,7 @@ const legacyCampaignsIssue = (campaigns: unknown): string | null => {
       );
     }
   }
+
   return null;
 };
 
@@ -68,13 +74,16 @@ export const decodeCampaigns = (
   describe: (path: ManifestPath, detail: string) => string,
 ): Result.Result<CampaignsManifest, ReadonlyArray<string>> => {
   const legacy = legacyCampaignsIssue(slice.campaigns);
+
   if (legacy !== null) return Result.fail([describe(["campaigns"], legacy)]);
 
   const decoded = decode(slice);
+
   if (Result.isFailure(decoded)) {
     return Result.fail(
       flatten(decoded.failure.issue).issues.map((issue) => describe(pathOf(issue), issue.message)),
     );
   }
+
   return Result.succeed(decoded.success);
 };

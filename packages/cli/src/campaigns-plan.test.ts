@@ -22,6 +22,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "../../../.tmp-cli-plan-tests");
 
 type Phase = Record<string, unknown>;
+
 const DOMAIN: Phase = { id: "domain", objectives: ["no-io"] };
 const REPOSITORY: Phase = { id: "repository", objectives: ["no-knex"] };
 const QUIET: Phase = { id: "quiet", objectives: ["no-console"] };
@@ -118,6 +119,7 @@ const git = (...args: ReadonlyArray<string>): string =>
 
 const policyAt = (now = "2026-10-01T00:00:00Z") => {
   process.env.ARCHITECTURE_NOW = now;
+
   return loadPolicy(root);
 };
 
@@ -126,13 +128,17 @@ const capture = async (effect: Effect.Effect<void, CliFailure>) => {
   const original = process.stdout.write.bind(process.stdout);
   process.stdout.write = (chunk: string) => {
     lines.push(String(chunk));
+
     return true;
   };
+
   try {
     const exit = await Effect.runPromiseExit(effect);
+
     const failure = Exit.isFailure(exit)
       ? (Cause.squash(exit.cause) as { message?: string })
       : null;
+
     return { exit, output: lines.join(""), failure: failure?.message ?? "" };
   } finally {
     process.stdout.write = original;
@@ -146,16 +152,19 @@ const check = async () => {
       manifestPath: path.join(root, "architecture.json"),
     }),
   );
+
   return { ...result, report: JSON.parse(result.output) as CheckReport };
 };
 
 const clear = async (now: string) => {
   const cleared = await capture(objectives(await policyAt(now), ["src"], ["clear"]));
   expect(Exit.isSuccess(cleared.exit), cleared.failure).toBe(true);
+
   return cleared.output;
 };
 
 const planPath = path.join(root, ".architecture-campaigns/ported/plan.json");
+
 const plan = (): { version: number; phases: Array<{ id: string }> } =>
   JSON.parse(readFileSync(planPath, "utf8")) as ReturnType<typeof plan>;
 
@@ -222,6 +231,7 @@ describe("a phase's identity", { concurrent: false }, () => {
     const receipt = {
       concessions: [{ reason: "quiet first: it blocks the port", at: "2026-10-03" }],
     };
+
     write(
       "architecture.json",
       MANIFEST(

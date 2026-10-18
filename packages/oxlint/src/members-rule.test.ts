@@ -21,6 +21,7 @@ import { describe, it } from "vitest";
 import { makeMembersRule } from "./members-rule.js";
 
 RuleTester.describe = describe;
+
 RuleTester.it = it;
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -72,7 +73,9 @@ const config = {
 
 const policy = (): LoadedPolicy => {
   const memberRules = compileMemberRules(config.members);
+
   if (Result.isFailure(memberRules)) throw memberRules.failure;
+
   return {
     repoRoot,
     config: { resolve: config.resolve, tree: {} },
@@ -101,7 +104,9 @@ const PORT = path.join(
   repoRoot,
   "packages/server/src/modules/todos/domain/todo/todos.repository.ts",
 );
+
 const VIEW = path.join(repoRoot, "packages/web/features/todos/todos.view.tsx");
+
 const LIVE = path.join(
   repoRoot,
   "packages/server/src/modules/todos/infrastructure/todos.repository-live.ts",

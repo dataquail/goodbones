@@ -37,17 +37,20 @@ export const makeSource = (options: SourceOptions): Source => {
         if (cached === started) cached = null;
       });
     }
+
     return cached;
   };
 
   const invalidate = (files: ReadonlyArray<string>): void => {
     cached = null;
     const change: Change = { files, at: new Date().toISOString() };
+
     for (const listener of listeners) listener(change);
   };
 
   let stopWatching: (() => void) | null = null;
   let closed = false;
+
   if (options.watch === true) {
     const watching = (also: ReadonlyArray<string>, ledgerDir: string): void => {
       if (closed) return;
@@ -61,6 +64,7 @@ export const makeSource = (options: SourceOptions): Source => {
         onChange: invalidate,
       });
     };
+
     // Until the policy has loaded, every change under the roots counts.
     watching([], ".architecture-campaigns");
     void (async () => {
@@ -82,6 +86,7 @@ export const makeSource = (options: SourceOptions): Source => {
     current,
     subscribe: (listener) => {
       listeners.add(listener);
+
       return () => listeners.delete(listener);
     },
     invalidate,

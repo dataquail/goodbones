@@ -34,6 +34,7 @@ import { makeCampaignsRule } from "./campaigns/rule.js";
 RuleTester.describe = (text, fn) => {
   describe(text, { concurrent: false }, fn);
 };
+
 RuleTester.it = (text, fn) => {
   it(text, { concurrent: false }, fn);
 };
@@ -81,11 +82,13 @@ const rules: ReadonlyArray<CampaignRule> = [
 ];
 
 const compiled = compileCampaignRules(rules);
+
 if (Result.isFailure(compiled)) throw compiled.failure;
 
 // The live source's answer once a spawn was refused: the kept failure, on
 // every ask. Counted, to show the rule asks no more than the source needs.
 let asked = 0;
+
 const refused: ReportSource = {
   diagnosticsOf: () => {
     asked += 1;

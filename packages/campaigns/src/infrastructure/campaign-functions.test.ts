@@ -2,9 +2,18 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 
+import type { SourceFacts } from "@goodbones/core";
 import { afterAll, describe, expect, it } from "vitest";
 
+import type { CampaignPredicate } from "../ports/campaign-predicate.js";
 import { loadCampaignFunctions } from "./campaign-functions.js";
+
+const NOTHING: SourceFacts = {
+  specifiers: [],
+  bindings: new Map(),
+  memberSites: [],
+  exportSites: [],
+};
 
 // A campaign's `fn` module, loaded by a host that lives long: the browser's
 // server reloads the policy on every change, and must get the function as
@@ -20,13 +29,18 @@ describe("loadCampaignFunctions", () => {
   it("loads an edited module again on the next load", async () => {
     const manifestPath = path.join(scratch, "architecture.yaml");
     const module = path.join(scratch, "campaigns.mjs");
+
     const manifest = {
       campaigns: { one: { objectives: { lines: { measure: { fn: "campaigns.mjs#lines" } } } } },
     };
-    const measured = async (): Promise<unknown> => {
+
+    // The module's function reads none of its input; a measure answers a
+    // number where the map's type says a predicate's verdict.
+    const measured = async (): Promise<ReturnType<CampaignPredicate> | undefined> => {
       const { functions } = await loadCampaignFunctions(manifestPath, manifest);
-      const lines = functions.get("campaigns.mjs#lines") as unknown as () => number;
-      return lines();
+      const lines = functions.get("campaigns.mjs#lines");
+
+      return lines?.({ file: "campaigns.ts", text: "", facts: NOTHING, syntax: null });
     };
 
     writeFileSync(module, "export const lines = () => 627;\n");

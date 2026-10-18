@@ -12,6 +12,7 @@ describe("parseReport", () => {
       "/repo/src/b.ts(1,1): error TS18048: 'y' is possibly 'undefined'.",
       "error TS5042: Option 'project' cannot be mixed with source files on a command line.",
     ].join("\n");
+
     expect(parseReport("tsc", text, { repoRoot })).toEqual([
       {
         file: "src/a.ts",
@@ -45,6 +46,7 @@ describe("parseReport", () => {
         ],
       },
     ]);
+
     expect(parseReport("eslint", text, { repoRoot })).toEqual([
       {
         file: "src/a.ts",
@@ -71,6 +73,7 @@ describe("parseReport", () => {
       ],
       number_of_files: 1,
     });
+
     expect(parseReport("oxlint", text, { repoRoot })).toEqual([
       {
         file: "src/a.ts",
@@ -86,8 +89,10 @@ describe("parseReport", () => {
 
   it("reads any line format through a regex with named groups", () => {
     const pattern = "^(?<file>[^:]+):(?<line>\\d+):(?<column>\\d+): (?<code>\\S+) (?<message>.*)$";
+
     const text =
       "src/a.go:3:2: SA1019 deprecated\nnot a finding\n./src/b.go:9:1: ST1000 no package comment";
+
     expect(parseReport("regex", text, { repoRoot, pattern })).toEqual([
       { file: "src/a.go", line: 2, column: 1, code: "SA1019", message: "deprecated" },
       { file: "src/b.go", line: 8, column: 0, code: "ST1000", message: "no package comment" },
@@ -101,6 +106,7 @@ describe("parseReport", () => {
       "src/a.ts(1,1): error TS1: a\nsrc/b.ts(1,1): error TS2: b\nsrc/a.ts(2,1): error TS3: c",
       { repoRoot },
     );
+
     const indexed = indexByFile(diagnostics);
     expect([...indexed.keys()]).toEqual(["src/a.ts", "src/b.ts"]);
     expect(indexed.get("src/a.ts")?.map((one) => one.code)).toEqual(["TS1", "TS3"]);

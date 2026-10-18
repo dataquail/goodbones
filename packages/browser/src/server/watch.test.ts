@@ -55,6 +55,7 @@ describe("watchRepository", () => {
       writeFileSync(index, "one");
       writeFileSync(path.join(scratch, "ORIG_HEAD"), "x");
       const seen: Array<ReadonlyArray<string>> = [];
+
       const stop = watchRepository({
         repoRoot: scratch,
         extensions: [".ts"],
@@ -65,6 +66,7 @@ describe("watchRepository", () => {
           seen.push(files);
         },
       });
+
       try {
         // A watcher takes a moment to start, and a change made before it has
         // is not reported. So the replacement is made again until one is
@@ -76,6 +78,7 @@ describe("watchRepository", () => {
               writeFileSync(path.join(scratch, "ORIG_HEAD"), "y");
               writeFileSync(path.join(scratch, "index.lock"), "two");
               renameSync(path.join(scratch, "index.lock"), index);
+
               return seen.flat();
             },
             { timeout: 20_000, interval: 100 },

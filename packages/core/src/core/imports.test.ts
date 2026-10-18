@@ -13,7 +13,9 @@ import {
 
 const compile = (rules: ReadonlyArray<ImportRule>) => {
   const compiled = compileImportRules(rules);
+
   if (Result.isFailure(compiled)) throw compiled.failure;
+
   return compiled.success;
 };
 
@@ -27,7 +29,9 @@ const violationsOf = (
     importer,
     specifier,
   });
+
   if (Result.isFailure(outcome)) throw outcome.failure;
+
   return outcome.success.map((violation) => violation.ruleName);
 };
 
@@ -132,6 +136,7 @@ describe("evaluateImportEdge", () => {
     // `(` would throw while compiling a pattern nobody wrote.
     it("splices a capture carrying regex metacharacters as a literal", () => {
       const inMyModule = "packages/server/src/modules/my.module/commands/x.handler.ts";
+
       const metacharacterTargets = {
         own: "packages/server/src/modules/my.module/domain/a.root.ts",
         lookalike: "packages/server/src/modules/myXmodule/domain/a.root.ts",
@@ -208,6 +213,7 @@ describe("evaluateImportEdge", () => {
           package: "lodash",
         },
       };
+
       expect(violationsOf([externalOnly], vendored, from, "effect")).toEqual([]);
       expect(violationsOf([externalOnly], vendored, from, "lodash")).toEqual([
         "domain-no-external-beyond-effect",
@@ -225,6 +231,7 @@ describe("evaluateImportEdge", () => {
         toNot: ["^packages/server/src/modules/[^/]+/domain/"],
         externals: ["effect"],
       };
+
       expect(violationsOf([allowlist], targets, from, "effect")).toEqual([]);
       expect(violationsOf([allowlist], targets, from, "lodash")).toEqual(["domain/imports"]);
       expect(violationsOf([allowlist], targets, from, "local")).toEqual(["domain/imports"]);
@@ -236,6 +243,7 @@ describe("evaluateImportEdge", () => {
       importer: "packages/server/src/modules/todos/domain/todo/todo.root.ts",
       specifier: "@org/nowhere",
     });
+
     expect(Result.isFailure(outcome)).toBe(true);
   });
 });
@@ -282,6 +290,7 @@ describe("rulesFailingTheirProbe", () => {
       from: "^packages/server/src/modules/[^/]+/domain/",
       dependencyKind: "builtin",
     };
+
     expect(rulesFailingTheirProbe(compile([builtinRule]))).toEqual([]);
   });
 
@@ -293,6 +302,7 @@ describe("rulesFailingTheirProbe", () => {
       externals: ["effect"],
       probe: { from: isolation.probe.from, to: { external: "effect" } },
     };
+
     expect(rulesFailingTheirProbe(compile([vacuous])).map((rule) => rule.name)).toEqual([
       "domain-isolation",
     ]);

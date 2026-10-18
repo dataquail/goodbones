@@ -42,11 +42,14 @@ export const compileMemberRule = (
   ] as const;
 
   const compiled: Array<ReadonlyArray<RegExp>> = [];
+
   for (const [field, patterns] of fields) {
     const one = compilePatterns(rule.name, field, patterns);
+
     if (Result.isFailure(one)) return Result.fail(one.failure);
     compiled.push(one.success);
   }
+
   const [from, fromNot, inside, match, matchNot, allow] = compiled as [
     ReadonlyArray<RegExp>,
     ReadonlyArray<RegExp>,
@@ -75,11 +78,14 @@ export const compileMemberRules = (
   rules: ReadonlyArray<MemberRule>,
 ): Result.Result<ReadonlyArray<CompiledMemberRule>, PatternInvalid> => {
   const compiled: Array<CompiledMemberRule> = [];
+
   for (const rule of rules) {
     const one = compileMemberRule(rule);
+
     if (Result.isFailure(one)) return Result.fail(one.failure);
     compiled.push(one.success);
   }
+
   return Result.succeed(compiled);
 };
 
@@ -93,15 +99,20 @@ export const memberRulesSelecting = (
 
 const governs = (rule: CompiledMemberRule, site: MemberSite): boolean => {
   if (rule.subject !== site.subject) return false;
+
   if (rule.in.length > 0 && (site.in === undefined || !anyMatches(rule.in, site.in))) return false;
+
   if (
     rule.declares !== null &&
     (site.declares === undefined || !rule.declares.includes(site.declares))
   ) {
     return false;
   }
+
   if (rule.match.length > 0 && !anyMatches(rule.match, site.name)) return false;
+
   if (rule.matchNot.length > 0 && anyMatches(rule.matchNot, site.name)) return false;
+
   return true;
 };
 
@@ -110,8 +121,10 @@ export const evaluateMemberSite = (
   site: MemberSite,
 ): ReadonlyArray<Violation> => {
   const violations: Array<Violation> = [];
+
   for (const rule of selected) {
     if (!governs(rule, site)) continue;
+
     if (anyMatches(rule.allow, site.name)) continue;
 
     violations.push({
@@ -122,6 +135,7 @@ export const evaluateMemberSite = (
       subject: site.name,
     });
   }
+
   return violations;
 };
 

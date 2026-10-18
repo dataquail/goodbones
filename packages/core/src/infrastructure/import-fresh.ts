@@ -1,6 +1,11 @@
 import { statSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+// A module namespace: its exports, by name, of types only the module knows.
+type ModuleNamespace = { readonly [exportName: string]: unknown };
+
+const importModule = (href: string): Promise<ModuleNamespace> => import(href);
+
 // Imports a module by path, as it is on disk now. The module loader keeps a
 // module for the life of the process, keyed by its URL — so a host that
 // lives long (the browser's server) and imported a manifest, or a campaign's
@@ -11,14 +16,15 @@ import { pathToFileURL } from "node:url";
 //
 // Only the file named is read fresh. What it imports in turn is cached as
 // ever: a change two modules down still needs a restart.
-export const importFresh = async (file: string): Promise<unknown> => {
+export const importFresh = async (file: string): Promise<ModuleNamespace> => {
   const url = pathToFileURL(file);
+
   try {
     const { mtimeMs, size } = statSync(file);
     url.search = `?v=${String(mtimeMs)}-${String(size)}`;
   } catch {
     // A file that is not there fails in the import, with the loader's words.
   }
-  const loaded: unknown = await import(url.href);
-  return loaded;
+
+  return importModule(url.href);
 };

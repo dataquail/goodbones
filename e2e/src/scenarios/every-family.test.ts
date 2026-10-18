@@ -37,6 +37,7 @@ describe("every family fires", () => {
   it("names each family once at least, and the graph three ways", () => {
     const { json } = check(repo, EVERY_FAMILY_ROOTS);
     const byKind = new Map<string, number>();
+
     for (const one of json.violations) byKind.set(one.kind, (byKind.get(one.kind) ?? 0) + 1);
 
     expect(Object.fromEntries(byKind)).toEqual({

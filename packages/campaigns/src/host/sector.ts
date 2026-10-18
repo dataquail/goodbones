@@ -64,10 +64,12 @@ export const sectorViewOf = (
 ): SectorView | null => {
   const { rule } = evaluation;
   const state = evaluation.sectors.get(name);
+
   if (state === undefined) return null;
   const record = recordOf(policy, rule, name);
   const phase = rule.phases[state.phase];
   const hits = hitsInWindow(evaluation).filter((hit) => hit.sector === name);
+
   return {
     campaign: rule.id,
     sector: name,
@@ -94,6 +96,7 @@ export const sectorViewOf = (
       .filter((objective) => objective.measure === null)
       .map((objective) => {
         const own = hits.filter((hit) => hit.objective === objective.id);
+
         return {
           id: objective.id,
           how: objective.message,
@@ -110,6 +113,7 @@ export const sectorViewOf = (
             )
             .sort((a, b) => {
               const byFile = (a.file ?? "").localeCompare(b.file ?? "");
+
               return byFile !== 0 ? byFile : (a.line ?? 0) - (b.line ?? 0);
             }),
         };
@@ -119,6 +123,7 @@ export const sectorViewOf = (
       .map((objective) => {
         const value = state.values[objective.id] ?? Number.NaN;
         const own = measureLedgerOf(policy, rule, objective)?.sectors[name];
+
         return {
           objective: objective.id,
           value: Number.isNaN(value) ? null : value,
@@ -136,17 +141,21 @@ export const renderSectorView = (view: SectorView): ReadonlyArray<string> => {
     view.phase.id === null
       ? "past every phase"
       : `phase ${view.phase.id} (${String(view.phase.index + 1)} of ${String(view.phase.of)}${view.phase.open ? ", open" : view.phase.attested ? ", attested" : ""})`;
+
   const lines = [
     `${view.campaign} · ${view.sector} — ${at}` +
       (view.reached === null ? ", never cleared" : `, reached ${view.reached}`) +
       (view.since === null ? "" : ` since ${view.since.slice(0, 10)}`),
   ];
+
   if (view.phase.intent !== null) lines.push(`  intent: ${view.phase.intent}`);
+
   if (view.phase.attested) {
     lines.push(
       `  this phase is attested, not detected: architecture campaigns attest ${view.sector} ${view.phase.id ?? ""} --reason "…" --campaign ${view.campaign}`,
     );
   }
+
   for (const one of view.attestations) {
     lines.push(
       `  attested ${one.phase}: ${one.at.slice(0, 10)} by ${one.by} — ${one.reason}` +
@@ -155,10 +164,13 @@ export const renderSectorView = (view: SectorView): ReadonlyArray<string> => {
           : ` (revoked ${one.revoked.at.slice(0, 10)} by ${one.revoked.by}: ${one.revoked.reason})`),
     );
   }
+
   const toward = Object.entries(view.toward)
     .map(([id, n]) => `${id} ${String(n)}`)
     .join(" · ");
+
   lines.push(`  toward the next phase: ${toward === "" ? "nothing counted" : toward}`);
+
   const held = view.objectives
     .filter((objective) => objective.count > 0)
     .flatMap((objective) => [
@@ -169,14 +181,17 @@ export const renderSectorView = (view: SectorView): ReadonlyArray<string> => {
           : `    ${h.file}${h.line === null ? "" : `:${String(h.line)}`}${h.subject === null ? "" : `  ${h.subject.split("#")[0] ?? ""}`}`,
       ),
     ]);
+
   const measured = view.measures.map((measure) => {
     const bounds = [
       ...(measure.recorded === null ? ["unrecorded"] : [`held to ${String(measure.recorded)}`]),
       ...(measure.target === null ? [] : [`target ${String(measure.target)}`]),
       ...(measure.tolerance === 0 ? [] : [`tolerance ${String(measure.tolerance)}`]),
     ];
+
     return `  ${measure.objective}: ${measure.value === null ? "no number" : describeValue(measure.value)} (${bounds.join(", ")})`;
   });
+
   const notes =
     view.notes.length === 0
       ? []
@@ -187,5 +202,6 @@ export const renderSectorView = (view: SectorView): ReadonlyArray<string> => {
               `    ${one.at.slice(0, 10)} ${one.by}${one.phase === null ? "" : ` at ${one.phase}`}: ${JSON.stringify(one.text)}`,
           ),
         ];
+
   return [...lines, ...held, ...measured, ...notes];
 };

@@ -13,10 +13,12 @@ export const isSvelteComponent = (file: string): boolean => file.endsWith(".svel
 export const scriptOfSvelteComponent = (text: string): string => {
   let script = "";
   let consumed = 0;
+
   for (const block of text.matchAll(SCRIPT_BLOCK)) {
     const [whole, open = "", body = ""] = block;
     script += blank(text.slice(consumed, block.index) + open) + body;
     consumed = block.index + whole.length - (block[3]?.length ?? 0);
   }
+
   return script + blank(text.slice(consumed));
 };

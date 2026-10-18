@@ -33,6 +33,7 @@ export const cli = (
   options: CliOptions = {},
 ): CliResult => {
   const bin = options.bin ?? BIN;
+
   const run = spawnSync(process.execPath, [bin, ...argv], {
     cwd: repo.root,
     env: { ...process.env, ...options.env },
@@ -40,7 +41,9 @@ export const cli = (
     stdio: ["ignore", "pipe", "pipe"],
     ...(options.maxBuffer === undefined ? {} : { maxBuffer: options.maxBuffer }),
   });
+
   if (run.error !== undefined) throw run.error;
+
   return { code: run.status ?? -1, stdout: run.stdout, stderr: run.stderr };
 };
 
@@ -149,6 +152,7 @@ export const check = (
 ): CheckResult => {
   const result = cli(repo, ["check", "--json", ...roots], options);
   let json: CheckJson;
+
   try {
     json = JSON.parse(result.stdout) as CheckJson;
   } catch (cause) {
@@ -157,6 +161,7 @@ export const check = (
         `stdout:\n${result.stdout}\nstderr:\n${result.stderr}\n${String(cause)}`,
     );
   }
+
   return { ...result, json };
 };
 

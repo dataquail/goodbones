@@ -27,7 +27,9 @@ export const baselineOf = (violations: Iterable<Violation>): Baseline => ({
 export const decodeBaseline = (raw: unknown): Baseline => {
   if (typeof raw !== "object" || raw === null) return EMPTY_BASELINE;
   const entries = (raw as { entries?: unknown }).entries;
+
   if (!Array.isArray(entries)) return EMPTY_BASELINE;
+
   return { version: 1, entries: entries.filter((one): one is string => typeof one === "string") };
 };
 
@@ -40,6 +42,7 @@ export type BaselineFilter = {
 
 export const makeBaselineFilter = (baseline: Baseline): BaselineFilter => {
   const entries = new Set(baseline.entries);
+
   return { isBaselined: (violation) => entries.has(fingerprintOf(violation)) };
 };
 
@@ -50,6 +53,7 @@ export const staleEntriesOf = (
   violations: Iterable<Violation>,
 ): ReadonlyArray<string> => {
   const current = new Set([...violations].map(fingerprintOf));
+
   return baseline.entries.filter((entry) => !current.has(entry));
 };
 
@@ -58,5 +62,6 @@ export const unbaselined = (
   violations: Iterable<Violation>,
 ): ReadonlyArray<Violation> => {
   const { isBaselined } = makeBaselineFilter(baseline);
+
   return [...violations].filter((violation) => !isBaselined(violation));
 };

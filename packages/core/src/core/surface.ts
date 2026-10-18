@@ -39,17 +39,23 @@ export type CompiledSurfaceRule = {
 const demandOf = (rule: SurfaceRule): Result.Result<Demand, PatternInvalid> => {
   if (rule.allow !== undefined) {
     const allow = compilePatterns(rule.name, "allow", rule.allow);
+
     if (Result.isFailure(allow)) return Result.fail(allow.failure);
+
     return Result.succeed({ kind: "allow", allow: allow.success });
   }
+
   if (rule.convention !== undefined) {
     const convention = compilePatterns(rule.name, "convention", rule.convention);
+
     if (Result.isFailure(convention)) return Result.fail(convention.failure);
     const [compiled] = convention.success;
+
     return compiled === undefined
       ? Result.succeed({ kind: "forbid" })
       : Result.succeed({ kind: "convention", convention: compiled });
   }
+
   if (rule.count !== undefined) {
     return Result.succeed({
       kind: "count",
@@ -57,6 +63,7 @@ const demandOf = (rule: SurfaceRule): Result.Result<Demand, PatternInvalid> => {
       max: rule.count.max ?? Number.POSITIVE_INFINITY,
     });
   }
+
   return Result.succeed({ kind: "forbid" });
 };
 
@@ -64,14 +71,19 @@ export const compileSurfaceRule = (
   rule: SurfaceRule,
 ): Result.Result<CompiledSurfaceRule, PatternInvalid> => {
   const from = compilePatterns(rule.name, "from", rule.from);
+
   if (Result.isFailure(from)) return Result.fail(from.failure);
   const fromNot = compilePatterns(rule.name, "fromNot", rule.fromNot);
+
   if (Result.isFailure(fromNot)) return Result.fail(fromNot.failure);
   const match = compilePatterns(rule.name, "match", rule.match);
+
   if (Result.isFailure(match)) return Result.fail(match.failure);
   const matchNot = compilePatterns(rule.name, "matchNot", rule.matchNot);
+
   if (Result.isFailure(matchNot)) return Result.fail(matchNot.failure);
   const demand = demandOf(rule);
+
   if (Result.isFailure(demand)) return Result.fail(demand.failure);
 
   return Result.succeed({
@@ -93,11 +105,14 @@ export const compileSurfaceRules = (
   rules: ReadonlyArray<SurfaceRule>,
 ): Result.Result<ReadonlyArray<CompiledSurfaceRule>, PatternInvalid> => {
   const compiled: Array<CompiledSurfaceRule> = [];
+
   for (const rule of rules) {
     const one = compileSurfaceRule(rule);
+
     if (Result.isFailure(one)) return Result.fail(one.failure);
     compiled.push(one.success);
   }
+
   return Result.succeed(compiled);
 };
 
@@ -113,10 +128,15 @@ export const surfaceRulesSelecting = (
 // Whether a site is one the rule speaks to at all.
 const governs = (rule: CompiledSurfaceRule, site: ExportSite): boolean => {
   if (rule.kinds !== null && !rule.kinds.includes(site.kind)) return false;
+
   if (rule.declares !== null && !rule.declares.includes(site.declares)) return false;
+
   if (rule.reexport !== null && rule.reexport !== site.reexport) return false;
+
   if (rule.match.length > 0 && !anyMatches(rule.match, site.name)) return false;
+
   if (rule.matchNot.length > 0 && anyMatches(rule.matchNot, site.name)) return false;
+
   return true;
 };
 
@@ -129,6 +149,7 @@ export const evaluateSurface = (
   sites: ReadonlyArray<ExportSite>,
 ): ReadonlyArray<Violation> => {
   const violations: Array<Violation> = [];
+
   const report = (rule: CompiledSurfaceRule, subject: string | null): void => {
     violations.push({ kind: "surface", ruleName: rule.name, message: rule.message, file, subject });
   };
@@ -136,6 +157,7 @@ export const evaluateSurface = (
   for (const rule of selected) {
     const spoken = sites.filter((site) => governs(rule, site));
     const demand = rule.demand;
+
     switch (demand.kind) {
       case "forbid":
         for (const site of spoken) report(rule, site.name);
@@ -144,17 +166,20 @@ export const evaluateSurface = (
         for (const site of spoken) {
           if (!anyMatches(demand.allow, site.name)) report(rule, site.name);
         }
+
         break;
       case "convention":
         for (const site of spoken) {
           if (!demand.convention.test(site.name)) report(rule, site.name);
         }
+
         break;
       case "count":
         if (spoken.length < demand.min || spoken.length > demand.max) report(rule, null);
         break;
     }
   }
+
   return violations;
 };
 
@@ -167,6 +192,7 @@ export const surfaceRulesFailingTheirProbe = (
 ): ReadonlyArray<CompiledSurfaceRule> =>
   rules.filter((rule) => {
     if (firstFromMatch(rule, rule.probe.from) === null) return true;
+
     const sites: ReadonlyArray<ExportSite> =
       rule.probe.source === undefined
         ? (rule.probe.sites ?? []).map((site) => ({
@@ -177,5 +203,6 @@ export const surfaceRulesFailingTheirProbe = (
             reexport: site.reexport ?? false,
           }))
         : extractor.factsOf(rule.probe.from, rule.probe.source).exportSites;
+
     return evaluateSurface([rule], rule.probe.from, sites).length === 0;
   });

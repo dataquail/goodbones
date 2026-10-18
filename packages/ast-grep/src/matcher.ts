@@ -54,6 +54,7 @@ const kindOf = (node: SgNode): string => String(node.kind());
 const nameOf = (node: SgNode): string | null => {
   try {
     const name = (node as SgNode & { field: (name: string) => SgNode | null }).field("name");
+
     return name === null ? null : name.text();
   } catch {
     return null;
@@ -65,13 +66,17 @@ const nameOf = (node: SgNode): string | null => {
 const anchorOf = (node: SgNode): string | null => {
   if (DECLARATION_KINDS.has(kindOf(node))) {
     const own = nameOf(node);
+
     if (own !== null) return own;
   }
+
   for (const ancestor of node.ancestors()) {
     if (!DECLARATION_KINDS.has(kindOf(ancestor))) continue;
     const name = nameOf(ancestor);
+
     if (name !== null) return name;
   }
+
   return null;
 };
 
@@ -82,28 +87,36 @@ const METAVARIABLE = /\$([A-Z_][A-Z0-9_]*)/g;
 
 const metavariablesOf = (rule: unknown): ReadonlyArray<string> => {
   const found = new Set<string>();
+
   for (const match of JSON.stringify(rule).matchAll(METAVARIABLE)) {
     if (match[1] !== undefined) found.add(match[1]);
   }
+
   return [...found];
 };
 
 const capturesOf = (node: SgNode, names: ReadonlyArray<string>): ReadonlyMap<string, string> => {
   const captures = new Map<string, string>();
+
   for (const name of names) {
     const single = node.getMatch(name);
+
     if (single !== null) {
       captures.set(name, single.text());
       continue;
     }
+
     const several = node.getMultipleMatches(name);
+
     if (several.length > 0) captures.set(name, several.map((one) => one.text()).join(""));
   }
+
   return captures;
 };
 
 const matchOf = (node: SgNode, names: ReadonlyArray<string>): SyntaxMatch => {
   const range = node.range();
+
   return {
     text: node.text(),
     captures: capturesOf(node, names),
@@ -126,15 +139,19 @@ type Declared = {
 
 const declarationsOf = (root: SgNode): ReadonlyArray<Declared> => {
   const found: Array<Declared> = [];
+
   for (const kind of DECLARATION_KINDS) {
     let nodes: ReadonlyArray<SgNode>;
+
     try {
       nodes = root.findAll({ rule: { kind } });
     } catch {
       continue;
     }
+
     for (const node of nodes) {
       const name = nameOf(node);
+
       if (name === null) continue;
       const range = node.range();
       found.push({
@@ -144,6 +161,7 @@ const declarationsOf = (root: SgNode): ReadonlyArray<Declared> => {
       });
     }
   }
+
   return found;
 };
 
@@ -157,10 +175,13 @@ const contains = (one: Declared, at: Position): boolean =>
 // one that starts last.
 const anchorAtOf = (declared: ReadonlyArray<Declared>, at: Position): string | null => {
   let innermost: Declared | null = null;
+
   for (const one of declared) {
     if (!contains(one, at)) continue;
+
     if (innermost === null || before(innermost.start, one.start)) innermost = one;
   }
+
   return innermost === null ? null : innermost.name;
 };
 
@@ -170,6 +191,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const extensionOf = (file: string): string => {
   const base = file.slice(file.lastIndexOf("/") + 1);
   const dot = base.lastIndexOf(".");
+
   return dot === -1 ? "" : base.slice(dot);
 };
 
@@ -178,22 +200,27 @@ export const astGrepMatcher = (
 ): SyntaxMatcher => ({
   parse: (file, text): SyntaxTree | null => {
     const language = options.languages[extensionOf(file)];
+
     if (language === undefined) return null;
     const root = parse(language, text).root();
     let declared: ReadonlyArray<Declared> | null = null;
+
     return {
       anchorAt: (position) => {
         declared ??= declarationsOf(root);
+
         return anchorAtOf(declared, position);
       },
       findAll: (rule) => {
         if (!isRecord(rule)) {
           throw new Error(`a syntax rule is an object of ast-grep rule keys, not ${typeof rule}`);
         }
+
         // The engine refuses a rule it cannot read with its own sentence; it
         // is thrown as-is, since the probe check is what turns it into a
         // load failure that names the campaign.
         const names = metavariablesOf(rule);
+
         return root.findAll({ rule }).map((node) => matchOf(node, names));
       },
     };

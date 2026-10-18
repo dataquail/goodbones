@@ -12,10 +12,13 @@ import type { RuleTester } from "oxlint/plugins-dev";
 // are recovered from `RuleTester`'s own signature — the one public surface that
 // names them. Hand-rolling them drifts silently against an alpha API.
 export type OxlintRule = Parameters<RuleTester["run"]>[1];
+
 export type RuleContext = Parameters<Extract<OxlintRule, { createOnce: unknown }>["createOnce"]>[0];
 
 type Diagnostic = Parameters<RuleContext["report"]>[0];
+
 export type ReportableNode = Extract<Diagnostic, { node: unknown }>["node"];
+
 export type Fixer = Parameters<NonNullable<Diagnostic["fix"]>>[0];
 
 // The root of the tree oxlint hands a rule, and the one the pack's reader
@@ -38,6 +41,7 @@ const read = new WeakMap<Program, ReadFacts>();
 
 export const factsOfProgram = (file: string, program: Program): ReadFacts => {
   const found = read.get(program);
+
   if (found !== undefined) return found;
   // oxlint's node types are `@oxc-project/types`' with `parent` required on
   // every node — the same tree, generated from the same source. Each node
@@ -46,5 +50,6 @@ export const factsOfProgram = (file: string, program: Program): ReadFacts => {
   // here. The parity suite is what proves the trees are one.
   const facts = readProgram(file, program as ProgramBody);
   read.set(program, facts);
+
   return facts;
 };

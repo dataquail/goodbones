@@ -93,11 +93,15 @@ type ConformanceJson = {
 
 let repo: Repo;
 const at = (now: string) => ({ env: { ARCHITECTURE_NOW: now } });
+
 const ledger = (campaign: string, objective: string): Ledger =>
   JSON.parse(repo.read(`.architecture-campaigns/${campaign}/${objective}.json`)) as Ledger;
+
 const scopeOf = (campaign: string, objective: string): SectorLedger => {
   const scope = ledger(campaign, objective).sectors.scope;
+
   if (scope === undefined) throw new Error("no implicit sector");
+
   return scope;
 };
 
@@ -139,6 +143,7 @@ describe("an objective's ledger", { concurrent: false }, () => {
       ["objectives", "clear", "legacy-to-modern", "src"],
       at("2026-09-01T00:00:00Z"),
     );
+
     expect(first.code, first.stderr).toBe(0);
     expect(ledger("legacy-to-modern", "out-of-legacy")).toMatchObject({
       version: 2,
@@ -150,7 +155,13 @@ describe("an objective's ledger", { concurrent: false }, () => {
       cleared: 0,
       holdouts: ["src/legacy/one.ts", "src/legacy/two.ts"],
     });
-    const second = cli(repo, ["objectives", "clear", "no-throw", "src"], at("2026-09-01T00:00:00Z"));
+
+    const second = cli(
+      repo,
+      ["objectives", "clear", "no-throw", "src"],
+      at("2026-09-01T00:00:00Z"),
+    );
+
     expect(second.code, second.stderr).toBe(0);
     expect(scopeOf("no-throw", "throws").holdouts).toEqual([
       expect.stringMatching(/^src\/thrower\.ts#parse#[0-9a-f]{8}$/),
@@ -231,6 +242,7 @@ describe("an objective's ledger", { concurrent: false }, () => {
       ],
       at("2026-09-12T00:00:00Z"),
     );
+
     expect(conceded.code, conceded.stderr).toBe(0);
     expect(ledger("legacy-to-modern", "out-of-legacy").concessions).toEqual([
       {
@@ -248,6 +260,7 @@ describe("an objective's ledger", { concurrent: false }, () => {
   it("fails when the ledger does not add up", () => {
     const written = ledger("legacy-to-modern", "out-of-legacy");
     const scope = written.sectors.scope;
+
     if (scope === undefined) throw new Error("no implicit sector");
     repo.write("src/legacy/four.ts", exports("four"));
     repo.write(
@@ -368,6 +381,7 @@ const phased = (): Readonly<Record<string, unknown>> => ({
 });
 
 let ladder: Repo;
+
 // git sets GIT_DIR, GIT_INDEX_FILE and friends in the environment of every
 // hook it runs, and those WIN OVER `cwd`. Inheriting them means a fixture's
 // `git init` + `git commit` in a temp directory silently retargets whatever
@@ -475,10 +489,12 @@ describe("a campaign with sectors and phases", { concurrent: false }, () => {
   it("nudges a diff: the phase, what would move it on, and a verdict a hook reads", () => {
     const nudged = cli(ladder, ["campaigns", "status", "--changed", "--json", "src"]);
     expect(nudged.code).toBe(1);
+
     const nudge = JSON.parse(nudged.stdout) as {
       ok: boolean;
       sectors: ReadonlyArray<Record<string, unknown>>;
     };
+
     expect(nudge.ok).toBe(false);
     expect(nudge.sectors[0]).toMatchObject({
       campaign: "billing-ddd",
@@ -498,11 +514,13 @@ describe("a campaign with sectors and phases", { concurrent: false }, () => {
     git("checkout", "-q", "--", "src");
     ladder.write("src/orders/service.ts", "export const place = () => flags.dualWrite;\n");
     cli(ladder, ["objectives", "clear", "src"], at("2026-10-02T00:00:00Z"));
+
     const attested = cli(
       ladder,
       ["campaigns", "attest", "orders", "backfilled", "--reason", "ran", "--by", "me", "src"],
       at("2026-10-03T00:00:00Z"),
     );
+
     expect(attested.code, attested.stderr).toBe(0);
     // Past the attested step, the sector reaches `cutover`, where the flag
     // is a holdout — and `has-flag`'s window is shut for it for good, so
@@ -510,15 +528,19 @@ describe("a campaign with sectors and phases", { concurrent: false }, () => {
     cli(ladder, ["objectives", "clear", "src"], at("2026-10-03T12:00:00Z"));
     ladder.write("src/orders/service.ts", "export const place = () => 2;\n");
     cli(ladder, ["objectives", "clear", "src"], at("2026-10-04T00:00:00Z"));
+
     const noted = cli(
       ladder,
       ["campaigns", "note", "orders", "refunds never write invoices", "--by", "me", "src"],
       at("2026-10-05T00:00:00Z"),
     );
+
     expect(noted.code, noted.stderr).toBe(0);
+
     const snapshot = JSON.parse(
       cli(ladder, ["conformance", "--json", "src"]).stdout,
     ) as ConformanceJson;
+
     expect(snapshot.campaigns[0]?.phases.map((one) => [one.id, one.sectors])).toEqual([
       ["domain", 1],
       ["repository", 0],
@@ -528,9 +550,11 @@ describe("a campaign with sectors and phases", { concurrent: false }, () => {
       ["aggregates", 1],
     ]);
     expect(snapshot.campaigns[0]?.legacy).toEqual({ files: 1, holdouts: 1 });
+
     const record = JSON.parse(
       ladder.read(".architecture-campaigns/billing-ddd/sectors/orders.json"),
     ) as { reached: string; attested: ReadonlyArray<unknown>; notes: ReadonlyArray<unknown> };
+
     expect(record.reached).toBe("aggregates");
     expect(record.attested).toHaveLength(1);
     expect(record.notes).toHaveLength(1);

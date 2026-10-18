@@ -60,11 +60,14 @@ const compileFields = (
   fields: Fields,
 ): Result.Result<ReadonlyArray<ReadonlyArray<RegExp>>, PatternInvalid> => {
   const compiled: Array<ReadonlyArray<RegExp>> = [];
+
   for (const [field, patterns] of fields) {
     const one = compilePatterns(ruleName, field, patterns);
+
     if (Result.isFailure(one)) return Result.fail(one.failure);
     compiled.push(one.success);
   }
+
   return Result.succeed(compiled);
 };
 
@@ -75,8 +78,10 @@ const compileCycle = (
     ["within", rule.within],
     ["withinNot", rule.withinNot],
   ]);
+
   if (Result.isFailure(fields)) return Result.fail(fields.failure);
   const [within = [], withinNot = []] = fields.success;
+
   return Result.succeed({
     name: rule.name,
     message: rule.message,
@@ -94,8 +99,10 @@ const compileOrphan = (
     ["withinNot", rule.withinNot],
     ["entry", rule.entry],
   ]);
+
   if (Result.isFailure(fields)) return Result.fail(fields.failure);
   const [within = [], withinNot = [], entry = []] = fields.success;
+
   return Result.succeed({
     name: rule.name,
     message: rule.message,
@@ -116,8 +123,10 @@ const compileReach = (
     ["toNot", rule.toNot],
     ["via", rule.via],
   ]);
+
   if (Result.isFailure(fields)) return Result.fail(fields.failure);
   const [from = [], fromNot = [], to = [], toNot = [], via = []] = fields.success;
+
   return Result.succeed({
     name: rule.name,
     message: rule.message,
@@ -134,23 +143,32 @@ export const compileGraphRules = (
   config: GraphConfig | undefined,
 ): Result.Result<CompiledGraph, PatternInvalid> => {
   const cycles: Array<CompiledGraphCycleRule> = [];
+
   for (const rule of config?.cycles ?? []) {
     const one = compileCycle(rule);
+
     if (Result.isFailure(one)) return Result.fail(one.failure);
     cycles.push(one.success);
   }
+
   const orphans: Array<CompiledGraphOrphanRule> = [];
+
   for (const rule of config?.orphans ?? []) {
     const one = compileOrphan(rule);
+
     if (Result.isFailure(one)) return Result.fail(one.failure);
     orphans.push(one.success);
   }
+
   const reach: Array<CompiledGraphReachRule> = [];
+
   for (const rule of config?.reach ?? []) {
     const one = compileReach(rule);
+
     if (Result.isFailure(one)) return Result.fail(one.failure);
     reach.push(one.success);
   }
+
   return Result.succeed({ cycles, orphans, reach });
 };
 
@@ -190,6 +208,7 @@ const stronglyConnected = (
 
     for (const target of neighboursOf(graph, node)) {
       if (!members.has(target)) continue;
+
       if (!index.has(target)) {
         visit(target);
         low.set(node, Math.min(low.get(node) ?? 0, low.get(target) ?? 0));
@@ -201,17 +220,21 @@ const stronglyConnected = (
     if (low.get(node) === index.get(node)) {
       const component: Array<string> = [];
       let popped: string | undefined;
+
       do {
         popped = stack.pop();
+
         if (popped === undefined) break;
         onStack.delete(popped);
         component.push(popped);
       } while (popped !== node);
+
       components.push(component.sort());
     }
   };
 
   for (const node of [...nodes].sort()) if (!index.has(node)) visit(node);
+
   return components;
 };
 
@@ -221,6 +244,7 @@ const stronglyConnected = (
 export const cyclesIn = (graph: Graph): ReadonlyArray<ReadonlyArray<string>> =>
   stronglyConnected(graph.files, graph).filter((component) => {
     const [first] = component;
+
     return (
       first !== undefined &&
       (component.length > 1 || (graph.edges.get(first) ?? []).includes(first))
@@ -241,35 +265,47 @@ export const heightOf = (graph: Graph): ReadonlyMap<string, number> => {
   });
 
   const heights = new Map<number, number>();
+
   const measure = (index: number): number => {
     const known = heights.get(index);
+
     if (known !== undefined) return known;
     let tallest = -1;
+
     for (const file of components[index] ?? []) {
       for (const target of neighboursOf(graph, file)) {
         const other = componentOf.get(target);
+
         if (other !== undefined && other !== index) tallest = Math.max(tallest, measure(other));
       }
     }
+
     heights.set(index, tallest + 1);
+
     return tallest + 1;
   };
 
   const byFile = new Map<string, number>();
+
   for (const file of [...graph.files].sort()) {
     const index = componentOf.get(file);
+
     if (index !== undefined) byFile.set(file, measure(index));
   }
+
   return byFile;
 };
 
 const evaluateCycles = (rule: CompiledGraphCycleRule, graph: Graph): ReadonlyArray<Violation> => {
   const nodes = graph.files.filter((file) => inScope(rule, file));
   const violations: Array<Violation> = [];
+
   for (const component of stronglyConnected(nodes, graph)) {
     const [first] = component;
+
     if (first === undefined) continue;
     const isCycle = component.length > 1 || (graph.edges.get(first) ?? []).includes(first);
+
     if (!isCycle) continue;
     // The subject is the component as a set, so the entry survives an edge
     // added or removed elsewhere in the same cycle.
@@ -281,11 +317,13 @@ const evaluateCycles = (rule: CompiledGraphCycleRule, graph: Graph): ReadonlyArr
       subject: component.join(" ↔ "),
     });
   }
+
   return violations;
 };
 
 const evaluateOrphans = (rule: CompiledGraphOrphanRule, graph: Graph): ReadonlyArray<Violation> => {
   const imported = new Set<string>();
+
   for (const targets of graph.edges.values()) for (const target of targets) imported.add(target);
 
   return graph.files
@@ -317,20 +355,27 @@ const evaluateReach = (rule: CompiledGraphReachRule, graph: Graph): ReadonlyArra
 
     while (queue.length > 0) {
       const node = queue.shift();
+
       if (node === undefined) break;
+
       for (const target of neighboursOf(graph, node)) {
         if (seen.has(target)) continue;
+
         if (anyMatches(rule.via, target)) continue;
         seen.add(target);
         parent.set(target, node);
+
         if (isTarget(target) && !reported.has(target)) {
           reported.add(target);
           const route: Array<string> = [target];
           let step: string | undefined = target;
+
           while (step !== undefined && step !== origin) {
             step = parent.get(step);
+
             if (step !== undefined) route.unshift(step);
           }
+
           violations.push({
             kind: "graph",
             ruleName: rule.name,
@@ -339,10 +384,12 @@ const evaluateReach = (rule: CompiledGraphReachRule, graph: Graph): ReadonlyArra
             subject: target,
           });
         }
+
         queue.push(target);
       }
     }
   }
+
   return violations;
 };
 
@@ -356,6 +403,7 @@ export const evaluateGraph = (rules: CompiledGraph, graph: Graph): ReadonlyArray
 export const graphOf = (probe: GraphProbe): Graph => {
   const edges = new Map<string, Array<string>>();
   const files = new Set<string>(probe.files ?? []);
+
   for (const [from, to] of probe.edges) {
     files.add(from);
     files.add(to);
@@ -363,6 +411,7 @@ export const graphOf = (probe: GraphProbe): Graph => {
     targets.push(to);
     edges.set(from, targets);
   }
+
   return { files: [...files].sort(), edges };
 };
 

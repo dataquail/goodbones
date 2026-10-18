@@ -19,6 +19,7 @@ const scratch = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../.tmp-manifest-file",
 );
+
 mkdirSync(scratch, { recursive: true });
 
 afterAll(() => {
@@ -26,11 +27,14 @@ afterAll(() => {
 });
 
 let counter = 0;
+
 const repo = (files: Readonly<Record<string, string>>): string => {
   counter += 1;
   const root = path.join(scratch, `repo-${String(counter)}`);
   mkdirSync(root, { recursive: true });
+
   for (const [name, text] of Object.entries(files)) writeFileSync(path.join(root, name), text);
+
   return root;
 };
 
@@ -91,6 +95,7 @@ describe("readManifestFile", () => {
       "architecture.json":
         '{\n\t"resolve": { "scopes": [] },\n\t"tree": {\n\t\t"src/": { "children": {} }\n\t}\n}\n',
     });
+
     const read = await readManifestFile(path.join(root, "architecture.json"));
     expect(read.manifest).toEqual({ resolve: { scopes: [] }, tree: { "src/": { children: {} } } });
     expect(read.locate?.(["tree", "src/"])).toEqual({ line: 4, column: 3 });
@@ -142,6 +147,7 @@ describe("readManifestFile", () => {
       "architecture.yaml":
         'defs:\n  floor: &floor\n    allow: ["node:**"]\ntree:\n  src/:\n    imports:\n      <<: *floor\n      message: m\n',
     });
+
     const read = await readManifestFile(path.join(root, "architecture.yaml"));
     expect(
       (read.manifest as { tree: { "src/": { imports: unknown } } }).tree["src/"].imports,
@@ -162,7 +168,9 @@ describe("the YAML locator", () => {
   const locatorFor = async (text: string) => {
     const root = repo({ "architecture.yaml": text });
     const read = await readManifestFile(path.join(root, "architecture.yaml"));
+
     if (read.locate === undefined) throw new Error("no locator");
+
     return read.locate;
   };
 
@@ -189,6 +197,7 @@ describe("the YAML locator", () => {
     const locate = await locatorFor(
       "defs:\n  rule: &rule\n    subject: calls\ntree:\n  src/:\n    members:\n      - *rule\n",
     );
+
     expect(locate(["tree", "src/", "members", 0, "subject"])).toEqual({ line: 3, column: 5 });
   });
 });
@@ -198,6 +207,7 @@ describe("formatManifestYaml", () => {
     const text = formatManifestYaml({
       tree: { "src/": { members: [{ match: ["*Sync"], probe: { source: "a\nb\n" } }] } },
     });
+
     expect(text).toContain('- "*Sync"');
     expect(text).toContain("source: |\n");
   });

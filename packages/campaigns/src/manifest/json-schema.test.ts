@@ -23,11 +23,11 @@ import { CampaignsManifest } from "./spec.js";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const committed = path.join(root, "packages/core/schema/architecture.schema.json");
 
-const composedJsonSchema = () =>
-  manifestJsonSchema({ extensions: [CampaignsManifest.fields] });
+const composedJsonSchema = () => manifestJsonSchema({ extensions: [CampaignsManifest.fields] });
 
 const validator = () => {
   const ajv = new Ajv2020({ allErrors: true, strict: false });
+
   return ajv.compile(composedJsonSchema());
 };
 
@@ -252,12 +252,14 @@ describe("the composed manifest JSON Schema", () => {
 
   it("validates the campaign examples, and a ledger path", () => {
     const validate = validator();
+
     const manifest = {
       resolve: { scopes: [{ files: "", language: "typescript" }] },
       ledger: ".architecture-campaigns",
       campaigns,
       tree: {},
     };
+
     expect(validate(manifest), JSON.stringify(validate.errors, null, 2)).toBe(true);
   });
 
@@ -265,6 +267,7 @@ describe("the composed manifest JSON Schema", () => {
     const validate = validator();
     const base = { resolve: { scopes: [{ files: "", language: "typescript" }] }, tree: {} };
     const first = campaigns["react-class-components"];
+
     const withObjective = (
       objective: Record<string, unknown>,
       extra: Record<string, unknown> = {},
@@ -278,6 +281,7 @@ describe("the composed manifest JSON Schema", () => {
         },
       },
     });
+
     expect(validate(withObjective({ match: { syntaxx: { pattern: "x" } } }))).toBe(false);
     expect(validate(withObjective({ match: { content: { regexp: "x" } } }))).toBe(false);
     expect(validate(withObjective({}, { staleAfter: "30 days" }))).toBe(false);
@@ -293,4 +297,3 @@ describe("the composed manifest JSON Schema", () => {
     expect(validate({ ...base, campaigns: { one: { ...first, onTouch: "nag" } } })).toBe(false);
   });
 });
-

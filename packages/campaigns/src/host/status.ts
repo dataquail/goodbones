@@ -29,26 +29,32 @@ export const snapshotCampaignsOf = (
 ): ReadonlyArray<SnapshotCampaign> =>
   campaignReportsOf(policy, evaluations).map((report, i) => {
     const evaluation = evaluations[i];
+
     if (evaluation === undefined) throw new Error("report without evaluation");
     const { rule } = evaluation;
     const ledgers = rule.objectives.map((objective) => ledgerOf(policy, rule, objective));
+
     const scalar = new Set(
       rule.objectives.filter((one) => one.measure !== null).map((one) => one.id),
     );
+
     const objectives = rule.objectives.map((objective, j) => {
       const ledger = ledgers[j];
       const own = report.objectives[j];
       const phase = rule.phases.find((one) => one.objectives.includes(objective.id))?.id ?? null;
       const over = objective.overShared ? { over: "shared" as const } : {};
+
       if (objective.measure !== null) {
         // A scalar: the holdout counts are all 0, and the number is under
         // `measure`. Met when every sector in window is at its target.
         const measured = measureLedgerOf(policy, rule, objective);
+
         const met =
           objective.target !== null &&
           (own?.sectors ?? []).every(
             (one) => (evaluation.sectors.get(one.sector)?.counts[objective.id] ?? 1) === 0,
           );
+
         return {
           id: objective.id,
           phase,
@@ -78,6 +84,7 @@ export const snapshotCampaignsOf = (
           },
         };
       }
+
       if (ledger === undefined) {
         return {
           id: objective.id,
@@ -96,7 +103,9 @@ export const snapshotCampaignsOf = (
           ledgered: false,
         };
       }
+
       const sectors = Object.values(ledger.sectors);
+
       return {
         id: objective.id,
         phase,
@@ -117,30 +126,37 @@ export const snapshotCampaignsOf = (
         ledgered: true,
       };
     });
+
     const totalInitial = objectives.reduce(
       (sum, one) => sum + one.initial + one.allowed - one.closed,
       0,
     );
+
     const totalCount = objectives.reduce((sum, one) => sum + one.count, 0);
+
     // The legacy and the shared files stand on no rung of their own: neither is
     // among the sectors the ladder counts.
     const sectors = [...evaluation.sectors.values()].filter(
       (one) => one.name !== LEGACY_SECTOR && !isShared(rule, one.name),
     );
+
     const legacy = evaluation.sectors.get(LEGACY_SECTOR);
     const sharedFiles = rule.shared === null ? undefined : evaluation.sectors.get(SHARED_SECTOR);
     // Each sector's position on the ladder: the phases behind it, plus the
     // share of the one it stands in that the ledgers say is paid.
     const steps = stepsOf(rule);
+
     const positions = new Map(
       sectors.map((state) => [
         state.name,
         ladderPositionOf(rule, state.phase, (objectiveId) => {
           const at = rule.objectives.findIndex((one) => one.id === objectiveId);
           const objective = rule.objectives[at];
+
           if (objective === undefined) return 0;
           // A prerequisite is paid where it is ledgered: on the shared files.
           const paidBy = objective.overShared ? SHARED_SECTOR : state.name;
+
           return objective.measure !== null
             ? measureSectorProgressOf(
                 measureLedgerOf(policy, rule, objective),
@@ -151,6 +167,7 @@ export const snapshotCampaignsOf = (
         }),
       ]),
     );
+
     return {
       id: rule.id,
       ...(rule.title === null ? {} : { title: rule.title }),
@@ -176,13 +193,16 @@ export const snapshotCampaignsOf = (
       sectors: sectors.map((state) => {
         const record = recordOf(policy, rule, state.name);
         const residueTotal = Object.values(state.residue).reduce((sum, one) => sum + one, 0);
+
         const clock = [
           ...ledgers.flatMap((ledger) => {
             const own = ledger?.sectors[state.name];
+
             return own === undefined ? [] : [own.lastCleared];
           }),
           ...(record === undefined ? [] : [sectorClockOf(record)]),
         ].reduce<string | null>((a, b) => (a === null || b > a ? b : a), null);
+
         return {
           name: state.name,
           phase: phaseIdOf(rule, state.phase),
@@ -240,14 +260,19 @@ export const renderCampaignRows = (
 ): ReadonlyArray<string> => {
   const state = (one: SnapshotCampaign): string =>
     !one.ledgered ? "no ledger" : one.complete ? "complete" : one.stalled ? "stalled" : "";
+
   const ordered = [...campaigns].sort((left, right) => {
     const rank = (one: SnapshotCampaign): number =>
       one.stalled ? 0 : one.complete && one.ledgered ? 1 : 2;
+
     const byRank = rank(left) - rank(right);
+
     return byRank !== 0 ? byRank : left.progress - right.progress;
   });
+
   return ordered.flatMap((one) => {
     const width = Math.max(0, ...one.objectives.map((objective) => objective.id.length));
+
     return [
       `  ${one.id}  ${percent(one.progress).padStart(4)}  ${String(one.count).padStart(5)} left` +
         (one.owner === undefined ? "" : `  ${one.owner}`) +

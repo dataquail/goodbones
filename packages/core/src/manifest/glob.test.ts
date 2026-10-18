@@ -34,10 +34,12 @@ describe("globToRegexSource", () => {
 
   it("refers back to an ancestor's capture as the back-reference the IR wants", () => {
     const declared = globToRegexSource("{module}", {}, { declaring: true, nextGroup: 1 });
+
     const referring = globToRegexSource("modules/{module}/commands", declared.captures, {
       declaring: false,
       nextGroup: 2,
     });
+
     expect(referring.source).toBe("modules/$1/commands");
   });
 
@@ -61,6 +63,7 @@ describe("single-character wildcards and back-references", () => {
   // same segment has to appear on both sides.
   it("compiles a non-declaring capture to a back-reference to the group above", () => {
     const declared = globToRegexSource("modules/{module}/", {}, { declaring: true, nextGroup: 1 });
+
     const referenced = globToRegexSource("modules/{module}/domain", declared.captures, {
       declaring: false,
       nextGroup: 2,
@@ -89,6 +92,7 @@ describe("capturing wildcards", () => {
         capturing: true,
       },
     );
+
     expect(compiled.captures).toEqual({ module: 1 });
     expect(compiled.wildcards).toEqual([2]);
   });

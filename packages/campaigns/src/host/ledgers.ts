@@ -36,13 +36,11 @@ export const phaseIdOf = (rule: CompiledCampaign, phase: number): string | null 
   rule.phases[phase]?.id ?? null;
 
 export const entriesOf = (
-  hits: ReadonlyArray<ObjectiveHit>,
+  hits: ReadonlyArray<Pick<ObjectiveHit, "objective" | "sector" | "entry">>,
   objective: string,
   sector: string,
 ): ReadonlyArray<string> =>
-  hits
-    .filter((hit) => hit.objective === objective && hit.sector === sector)
-    .map((hit) => hit.entry);
+  hits.flatMap((hit) => (hit.objective === objective && hit.sector === sector ? [hit.entry] : []));
 
 export const sectorNames = (evaluation: CampaignEvaluation): ReadonlyArray<string> => [
   ...evaluation.sectors.keys(),

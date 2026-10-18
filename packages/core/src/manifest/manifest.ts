@@ -295,7 +295,6 @@ const Limits = Schema.Struct({
   outside: Schema.optionalKey(Globs),
 });
 
-
 const decodeTree = Schema.decodeUnknownResult(Schema.Record(Schema.String, ManifestNodeSchema), {
   errors: "all",
   onExcessProperty: "error",
@@ -308,6 +307,7 @@ export const decodeManifestTree = (
   raw: unknown,
 ): Result.Result<Readonly<Record<string, ManifestNode>>, string> => {
   const decoded = decodeTree(raw);
+
   return Result.isFailure(decoded)
     ? Result.fail(
         flatten(decoded.failure.issue)
@@ -316,7 +316,6 @@ export const decodeManifestTree = (
       )
     : Result.succeed(decoded.success);
 };
-
 
 export const Manifest = Schema.Struct({
   // How an import specifier becomes a file. Every pattern below is matched
@@ -339,16 +338,22 @@ export const Manifest = Schema.Struct({
 });
 
 export type Manifest = typeof Manifest.Type;
+
 export type ImportsSpec = typeof Imports.Type;
+
 export type ImportedBySpec = typeof ImportedBy.Type;
+
 export type MembersSpec = typeof Members.Type;
+
 export type SurfaceSpec = typeof Surface.Type;
+
 export type GraphSpec = typeof Graph.Type;
+
 export type LimitsSpec = typeof Limits.Type;
+
 export type NamingSpec = typeof Naming.Type;
+
 export type ExportRestriction = typeof ExportRestriction.Type;
-
-
 
 export const globsOf = (globs: string | ReadonlyArray<string>): ReadonlyArray<string> =>
   typeof globs === "string" ? [globs] : globs;
@@ -362,6 +367,7 @@ const decode = Schema.decodeUnknownResult(Manifest, {
   onExcessProperty: "error",
   reportInput: true,
 });
+
 const flatten = SchemaIssue.makeFormatterStandardSchemaV1();
 
 export type DecodedManifest = {
@@ -397,6 +403,7 @@ const normalizeLegacyResolve = (
   if (!isRecord(input) || !isRecord(input.resolve) || !isList(input.resolve.scopes)) {
     return { input, notices: [] };
   }
+
   const resolve = input.resolve;
   const rawScopes = input.resolve.scopes;
   const notices: Array<string> = [];
@@ -404,6 +411,7 @@ const normalizeLegacyResolve = (
   const hoisted = Object.fromEntries(
     LEGACY_RESOLVER_OPTIONS.flatMap((key) => (key in resolve ? [[key, resolve[key]]] : [])),
   );
+
   if (Object.keys(hoisted).length > 0) {
     notices.push(
       `resolve.${Object.keys(hoisted).join(", resolve.")} on \`resolve\` itself is deprecated: ` +
@@ -414,6 +422,7 @@ const normalizeLegacyResolve = (
   const scopes = rawScopes.map((scope, index) => {
     if (!isRecord(scope)) return scope;
     const { tsconfig, ...rest } = scope;
+
     if (tsconfig === undefined || "language" in scope) {
       return scope.language === "typescript" &&
         Object.keys(hoisted).length > 0 &&
@@ -421,14 +430,17 @@ const normalizeLegacyResolve = (
         ? { ...scope, options: { ...hoisted, ...scope.options } }
         : scope;
     }
+
     notices.push(
       `resolve.scopes[${String(index)}] names a \`tsconfig\` with no \`language\`. That shape is ` +
         `deprecated: write { files, language: "typescript", options: { tsconfig } }.`,
     );
+
     return { ...rest, language: "typescript", options: { ...hoisted, tsconfig } };
   });
 
   const { conditionNames: _c, extensions: _e, mainFields: _m, ...restOfResolve } = resolve;
+
   return { input: { ...input, resolve: { ...restOfResolve, scopes } }, notices };
 };
 
@@ -442,8 +454,7 @@ const normalizeLegacyMembers = (
   if (!isRecord(input) || !isRecord(input.tree)) return { input, notices: [] };
   const notices: Array<string> = [];
 
-  const node = (key: string, value: unknown): unknown => {
-    if (!isRecord(value)) return value;
+  const node = (key: string, value: Record<string, unknown>): Record<string, unknown> => {
     const members = isList(value.members)
       ? value.members.map((spec) => {
           if (!isRecord(spec) || spec.subject !== "type-members") return spec;
@@ -451,17 +462,20 @@ const normalizeLegacyMembers = (
             `"${key}" has a members rule with \`subject: "type-members"\`. That name is ` +
               `deprecated: write \`subject: "members", declares: ["type", "interface"]\`.`,
           );
+
           return { ...spec, subject: "members", declares: spec.declares ?? ["type", "interface"] };
         })
       : value.members;
+
     const children = isRecord(value.children)
       ? Object.fromEntries(
           Object.entries(value.children).map(([childKey, child]) => [
             childKey,
-            node(childKey, child),
+            isRecord(child) ? node(childKey, child) : child,
           ]),
         )
       : value.children;
+
     return {
       ...value,
       ...(members === undefined ? {} : { members }),
@@ -470,11 +484,14 @@ const normalizeLegacyMembers = (
   };
 
   const tree = Object.fromEntries(
-    Object.entries(input.tree).map(([key, value]) => [key, node(key, value)]),
+    Object.entries(input.tree).map(([key, value]) => [
+      key,
+      isRecord(value) ? node(key, value) : value,
+    ]),
   );
+
   return { input: { ...input, tree }, notices };
 };
-
 
 export type DecodeManifestOptions = {
   // Turns a path in the file into a line and column. The YAML reader supplies
@@ -500,6 +517,7 @@ const positionOf = (
   path: ManifestPath,
 ): string | null => {
   const found = locate?.(path) ?? null;
+
   return found === null
     ? null
     : `${found.file ?? file}:${String(found.line)}:${String(found.column)}`;
@@ -518,10 +536,13 @@ const describeIssue = (
   const file = fileLabelOf(configPath);
   const origin = originOf(substitutions, path);
   const at = positionOf(file, locate, origin.path);
+
   const via = origin.via.map(({ at: ref, name }) => {
     const position = positionOf(file, locate, ref);
+
     return `via \`use: ${JSON.stringify(name)}\`${position === null ? "" : ` at ${position}`}`;
   });
+
   return (
     `  ${at === null ? "" : `${at}  `}${renderManifestPath(origin.path)}: ${detail}` +
     (via.length === 0 ? "" : ` (${via.join(", ")})`)
@@ -541,6 +562,7 @@ export const decodeManifest = (
   options: DecodeManifestOptions = {},
 ): Result.Result<DecodedManifest, ConfigInvalid> => {
   const expanded = expandManifest(input);
+
   if (Result.isFailure(expanded)) {
     return Result.fail(
       new ConfigInvalid({
@@ -557,9 +579,11 @@ export const decodeManifest = (
       }),
     );
   }
+
   const { substitutions, value } = expanded.success;
 
   const extensions = options.extensions ?? [];
+
   const describe = (path: ManifestPath, detail: string): string =>
     describeIssue(configPath, options.locate, substitutions, path, detail);
 
@@ -567,9 +591,11 @@ export const decodeManifest = (
   // is left is decoded by the core's codec with excess properties refused, so
   // a key nobody claims is still the misspelling it always was.
   const claimed = new Map<string, string>();
+
   for (const extension of extensions) {
     for (const key of extension.manifestKeys) {
       const already = claimed.get(key);
+
       if (already !== undefined) {
         return Result.fail(
           new ConfigInvalid({
@@ -580,9 +606,11 @@ export const decodeManifest = (
           }),
         );
       }
+
       claimed.set(key, extension.id);
     }
   }
+
   // A key that belongs to a family the host could not load is named with
   // the package that brings it — every such key, before the core decodes
   // anything, since the core would only call each one unexpected.
@@ -598,6 +626,7 @@ export const decodeManifest = (
           ),
       )
     : [];
+
   if (uninstalled.length > 0) {
     return Result.fail(
       new ConfigInvalid({
@@ -614,10 +643,12 @@ export const decodeManifest = (
   const resolve = normalizeLegacyResolve(core);
   const members = normalizeLegacyMembers(resolve.input);
   const decoded = decode(members.input);
+
   if (Result.isFailure(decoded)) {
     const lines = flatten(decoded.failure.issue).issues.map((issue) =>
       describeIssue(configPath, options.locate, substitutions, pathOf(issue), issue.message),
     );
+
     return Result.fail(
       new ConfigInvalid({
         configPath,
@@ -630,13 +661,16 @@ export const decodeManifest = (
   // core renders its own. One family's failure is reported on its own: the
   // core's decode already succeeded, so there is nothing to collect it with.
   const decodedExtensions = new Map<string, unknown>();
+
   for (const extension of extensions) {
     const slice = isRecord(value)
       ? Object.fromEntries(
           extension.manifestKeys.flatMap((key) => (key in value ? [[key, value[key]]] : [])),
         )
       : {};
+
     const result = extension.decode(slice, describe);
+
     if (Result.isFailure(result)) {
       return Result.fail(
         new ConfigInvalid({
@@ -645,6 +679,7 @@ export const decodeManifest = (
         }),
       );
     }
+
     decodedExtensions.set(extension.id, result.success);
   }
 

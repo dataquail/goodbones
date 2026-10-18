@@ -11,20 +11,28 @@
 // Per-rule severities live in the shared tsconfig plugin config
 // (tsconfig.base.json), so what's reported here is what the editor shows.
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-// Leaf tsconfigs with a non-empty `include` (the aggregator tsconfig.json in
-// referenced packages has an empty include and would check nothing).
-const PROJECTS = [
-  "packages/authz/tsconfig.src.json",
-  "packages/authz/tsconfig.test.json",
-  "packages/cqrs/tsconfig.src.json",
-  "packages/cqrs/tsconfig.test.json",
-].filter((p) => existsSync(join(ROOT, p)));
+// Every package's leaf tsconfigs, the ones with a non-empty `include` (the
+// aggregator tsconfig.json in each package has an empty include and would
+// check nothing).
+const LEAVES = ["tsconfig.src.json", "tsconfig.test.json", "tsconfig.app.json"];
+
+const PROJECTS = readdirSync(join(ROOT, "packages"), { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .flatMap((entry) => LEAVES.map((leaf) => `packages/${entry.name}/${leaf}`))
+  .filter((p) => existsSync(join(ROOT, p)))
+  .sort();
+
+// An empty list passes silently, so it is a failure of its own.
+if (PROJECTS.length === 0) {
+  console.error("✗ no tsconfig projects found under packages/");
+  process.exit(2);
+}
 
 const GATING = new Set(["error", "warning"]);
 

@@ -78,7 +78,9 @@ const campaign = (overrides: Partial<CampaignRule>): CompiledCampaign => {
     onComplete: "keep",
     ...overrides,
   });
+
   if (Result.isFailure(compiled)) throw compiled.failure;
+
   return compiled.success;
 };
 
@@ -100,6 +102,7 @@ describe("one campaign over its files", () => {
     "src/orders/a.ts": "clean",
     "src/services/old.ts": "io knex",
   };
+
   const rule = campaign({
     perimeter: { kind: "marker", marker: "^.*/context\\.ts$" },
     phases: [phase("domain", ["no-io"]), phase("repository", ["no-knex"]), phase("done", [], "?")],
@@ -109,6 +112,7 @@ describe("one campaign over its files", () => {
       hasObjective("has-test", "test"),
     ],
   });
+
   const evaluation = evaluateCampaign(rule, {
     files: Object.keys(texts),
     inputOf: inputOf(texts),
@@ -161,6 +165,7 @@ describe("one campaign over its files", () => {
   it("reports the residue toward the next phase: the current phase's objectives with holdouts", () => {
     const billing = evaluation.sectors.get("billing");
     const orders = evaluation.sectors.get("orders");
+
     if (billing === undefined || orders === undefined) throw new Error("sectors missing");
     expect(towardNextOf(rule, billing)).toEqual({ "no-io": 1 });
     expect(towardNextOf(rule, orders)).toEqual({});
@@ -175,12 +180,14 @@ describe("one campaign over its files", () => {
         contentObjective("no-flag", "flag"),
       ],
     });
+
     const record: SectorRecord = reachedRecord(
       EMPTY_SECTOR_RECORD("c", "billing", 0),
       flagged,
       1,
       0,
     );
+
     const placed = evaluateCampaign(flagged, {
       files: ["src/billing/context.ts", "src/billing/a.ts"],
       inputOf: inputOf({ "src/billing/a.ts": "flag" }),
@@ -188,6 +195,7 @@ describe("one campaign over its files", () => {
       globToRegExp,
       recordOf: (sector: string) => (sector === "billing" ? record : undefined),
     });
+
     expect(placed.sectors.get("billing")?.phase).toBe(1);
     expect(placed.sectors.get("billing")?.residue).toEqual({ "no-flag": 1 });
   });
@@ -205,6 +213,7 @@ describe("a scalar objective over its files", () => {
     probes: { fires: [], ignores: [] },
     ...extra,
   });
+
   const texts = {
     "src/billing/context.ts": "",
     "src/billing/a.ts": "one\n\n  \ntwo\nthree\n",
@@ -212,6 +221,7 @@ describe("a scalar objective over its files", () => {
     "src/orders/context.ts": "",
     "src/services/old.ts": "x\ny\n",
   };
+
   const evaluate = (rule: CompiledCampaign, files: Readonly<Record<string, string>> = texts) =>
     evaluateCampaign(rule, {
       files: Object.keys(files),
@@ -226,6 +236,7 @@ describe("a scalar objective over its files", () => {
       perimeter: { kind: "marker", marker: "^.*/context\\.ts$" },
       objectives: [scalar("lines", {}), scalar("files", { measure: { files: true } })],
     });
+
     const evaluation = evaluate(rule);
     expect(evaluation.sectors.get("billing")?.values).toEqual({ lines: 5, files: 3 });
     expect(evaluation.sectors.get("orders")?.values).toEqual({ lines: 0, files: 1 });
@@ -250,6 +261,7 @@ describe("a scalar objective over its files", () => {
         }),
       ],
     });
+
     const evaluation = evaluateCampaign(reported, {
       files: Object.keys(texts),
       inputOf: (file) => ({
@@ -265,6 +277,7 @@ describe("a scalar objective over its files", () => {
       globToRegExp,
       recordOf: () => undefined,
     });
+
     // Two diagnostics over the sector's five non-blank lines, per thousand —
     // where the mean of its files' own ratios would be (0 + 1000) / 2.
     expect(evaluation.sectors.get("billing")?.values).toEqual({ density: 400 });
@@ -284,6 +297,7 @@ describe("a scalar objective over its files", () => {
       phases: [phase("small", ["lines"]), phase("clean", ["no-knex"])],
       objectives: [scalar("lines", { target: 2 }), contentObjective("no-knex", "knex")],
     });
+
     const evaluation = evaluate(rule);
     // billing measures 5 against a target of 2: three to go, at `small`.
     expect(evaluation.sectors.get("billing")?.phase).toBe(0);
@@ -298,6 +312,7 @@ describe("a scalar objective over its files", () => {
       phases: [phase("covered", ["files"])],
       objectives: [scalar("files", { measure: { files: true }, direction: "up", target: 4 })],
     });
+
     expect(
       evaluate(rule, { "src/a.ts": "", "src/b.ts": "" }).sectors.get("scope")?.residue,
     ).toEqual({ files: 2 });
@@ -307,6 +322,7 @@ describe("a scalar objective over its files", () => {
     const rule = campaign({
       objectives: [scalar("weight", { measure: { fn: "./weight.js#weight" } })],
     });
+
     const run = (answer: unknown) =>
       evaluateCampaign(rule, {
         files: ["src/a.ts", "src/b.ts"],
@@ -318,6 +334,7 @@ describe("a scalar objective over its files", () => {
         globToRegExp,
         recordOf: () => undefined,
       }).sectors.get("scope")?.values.weight;
+
     expect(run(2.5)).toBe(5);
     expect(run(true)).toBeNaN();
     expect(run(-1)).toBeNaN();
@@ -327,7 +344,9 @@ describe("a scalar objective over its files", () => {
     const rule = campaign({
       objectives: [scalar("bundle", { measure: { command: "du -k dist" } })],
     });
+
     const asked: Array<string> = [];
+
     const answered = evaluateCampaign(rule, {
       files: ["src/a.ts"],
       inputOf: inputOf({}),
@@ -336,9 +355,11 @@ describe("a scalar objective over its files", () => {
       recordOf: () => undefined,
       commandValueOf: (measure) => {
         if (measure.kind === "command") asked.push(measure.command);
+
         return 812;
       },
     });
+
     expect(answered.sectors.get("scope")?.values).toEqual({ bundle: 812 });
     expect(asked).toEqual(["du -k dist"]);
     expect(evaluate(rule).sectors.get("scope")?.values.bundle).toBeNaN();

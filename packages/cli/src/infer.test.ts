@@ -14,10 +14,12 @@ import { infer, type InferIo, parseInferFlags } from "./infer.js";
 import { collectFindings, run } from "./run.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+
 // Outside this repository, so the run over this repository below does not
 // find the fixture, and with a package store of its own so an external
 // resolves the way one does anywhere.
 const repoRoot = realpathSync(mkdtempSync(path.join(tmpdir(), "architecture-infer-")));
+
 // This repository, which is the acceptance test: `infer` over it describes
 // what it does, and `check` against that description finds nothing.
 const thisRepository = path.resolve(here, "../../..");
@@ -59,6 +61,7 @@ const write = (file: string, source: string) => {
 
 beforeAll(() => {
   mkdirSync(repoRoot, { recursive: true });
+
   for (const [file, source] of Object.entries(FILES)) write(file, source);
 });
 
@@ -71,15 +74,18 @@ const scripted = (answers: ReadonlyArray<boolean>, interactive = true) => {
   const asked: Array<string> = [];
   const printed: Array<string> = [];
   const errors: Array<string> = [];
+
   const io: InferIo = {
     out: (text) => printed.push(text),
     err: (line) => errors.push(line),
     ask: (question) => {
       asked.push(question);
+
       return Promise.resolve(answers[asked.length - 1] ?? false);
     },
     interactive,
   };
+
   return { io, asked, printed, errors };
 };
 
@@ -90,14 +96,18 @@ const inferIn = (root: string, argv: ReadonlyArray<string>, io: InferIo = silent
 
 const failureOf = async (root: string, argv: ReadonlyArray<string>): Promise<string> => {
   const exit = await Effect.runPromiseExit(infer(root, argv, undefined, silent));
+
   if (!Exit.isFailure(exit)) throw new Error("expected a failure");
+
   return JSON.stringify(exit.cause);
 };
 
 // What `check` would say against the inferred manifest, without writing it.
 const findingsAgainst = async (root: string, manifest: Manifest, roots: ReadonlyArray<string>) => {
   const loaded = await loadPolicyFromManifest(root, manifest);
+
   if (Result.isFailure(loaded)) throw new Error(String(loaded.failure));
+
   return collectFindings(loaded.success, roots);
 };
 
@@ -115,6 +125,7 @@ describe("parseInferFlags", () => {
       "--yes",
       "--collapse",
     ]);
+
     expect(flags).toEqual(
       Result.succeed({
         depth: 3,
@@ -245,6 +256,7 @@ describe("infer, over a repository with no manifest", () => {
 
   it("writes architecture.yaml once, and refuses to overwrite it", async () => {
     const at = path.join(repoRoot, "architecture.yaml");
+
     try {
       const { errors, io } = scripted([], false);
       await inferIn(repoRoot, ["--exhaustive", "--write"], io);

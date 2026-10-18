@@ -74,6 +74,7 @@ const filesFor = (
   files: ReadonlyArray<string>,
 ): ReadonlyArray<string> => {
   const known = new Set(policy.languages.flatMap((one) => one.extensions));
+
   return files.filter(
     (file) =>
       rule.scope.some((pattern) => pattern.test(file)) &&
@@ -88,26 +89,36 @@ export const widenedExtensions = (policy: LoadedPolicy): ReadonlyArray<string> =
 
 const readersOf = (policy: LoadedPolicy): Readers => {
   const texts = new Map<string, string>();
+
   const textOf = (file: string): string => {
     const cached = texts.get(file);
+
     if (cached !== undefined) return cached;
     let text = "";
+
     try {
       text = readFileSync(path.join(policy.repoRoot, file), "utf8");
     } catch {
       text = "";
     }
+
     texts.set(file, text);
+
     return text;
   };
+
   const parsed = new Map<string, SourceFacts>();
+
   const factsOf = (file: string): SourceFacts => {
     const cached = parsed.get(file);
+
     if (cached !== undefined) return cached;
     const facts = policy.extractor.factsOf(file, textOf(file));
     parsed.set(file, facts);
+
     return facts;
   };
+
   return { textOf, factsOf };
 };
 
@@ -122,6 +133,7 @@ const endStateViolations = (
   phase: PhaseRule,
 ): Readonly<Record<string, ReadonlyArray<Violation>>> => {
   const root = sector.roots[0] ?? "";
+
   const lowered = lowerEndState(
     phase.endState as Readonly<Record<string, unknown>>,
     root,
@@ -130,15 +142,19 @@ const endStateViolations = (
     policy.languages,
     policy.config.aliases ?? {},
   );
+
   const unwrap = <A>(compiled: Result.Result<A, { readonly message: string }>): A => {
     if (Result.isFailure(compiled)) throw new Error(compiled.failure.message);
+
     return compiled.success;
   };
+
   const imports = unwrap(compileImportRules(lowered.imports));
   const exports = unwrap(compileExportRules(lowered.exports));
   const members = unwrap(compileMemberRules(lowered.members));
   const surface = unwrap(compileSurfaceRules(lowered.surface));
   const structure = unwrap(compileStructure(lowered.structure));
+
   const found: Record<string, Array<Violation>> = {
     imports: [],
     exports: [],
@@ -146,14 +162,17 @@ const endStateViolations = (
     surface: [],
     structure: [],
   };
+
   for (const file of sector.files) {
     for (const one of evaluateStructure(structure, policy.fileSystem, file)) {
       found.structure?.push(one);
     }
+
     const selectedImports = rulesSelecting(imports, file);
     const selectedExports = exportRulesSelecting(exports, file);
     const selectedMembers = memberRulesSelecting(members, file);
     const selectedSurface = surfaceRulesSelecting(surface, file);
+
     if (
       selectedImports.length +
         selectedExports.length +
@@ -163,33 +182,42 @@ const endStateViolations = (
     ) {
       continue;
     }
+
     const facts = readers.factsOf(file);
+
     for (const one of evaluateSurface(selectedSurface, file, facts.exportSites)) {
       found.surface?.push(one);
     }
+
     for (const site of facts.memberSites) {
       for (const one of evaluateMemberSite(selectedMembers, site)) found.members?.push(one);
     }
+
     for (const specifier of facts.specifiers) {
       if (selectedImports.length > 0) {
         const resolved = policy.resolver.resolve(file, specifier);
+
         if (Result.isSuccess(resolved)) {
           for (const one of evaluateResolvedEdge(selectedImports, file, resolved.success)) {
             found.imports?.push(one);
           }
         }
       }
+
       const bound = facts.bindings.get(specifier) ?? [];
+
       const exported = evaluateSelectedBindings(selectedExports, policy.resolver, {
         importer: file,
         specifier,
         bindings: bound,
       });
+
       if (Result.isSuccess(exported)) {
         for (const { violation } of exported.success) found.exports?.push(violation);
       }
     }
   }
+
   return found;
 };
 
@@ -203,18 +231,24 @@ export const evaluateCampaigns = (
   const projects = campaignsOf(policy).campaignRules.some((rule) => rule.perimeter?.kind === "nx")
     ? listWorkspaceProjects(policy.repoRoot, roots)
     : [];
+
   const commandValueOf = commandValues(policy.repoRoot);
+
   return campaignsOf(policy).campaignRules.map((rule) => {
     const detectors = [
       ...rule.objectives.flatMap((one) => {
         const detect = detectorOf(one);
+
         return [...(detect === null ? [] : [detect]), ...measureDetectorsOf(one)];
       }),
       ...(rule.perimeter?.kind === "match" ? [rule.perimeter.detect] : []),
     ];
+
     const parses = needsSyntax(detectors);
+
     const inputOf = (file: string): CampaignInput => {
       const text = readers.textOf(file);
+
       return {
         file,
         text,
@@ -226,6 +260,7 @@ export const evaluateCampaigns = (
         reports: campaignsOf(policy).reports,
       };
     };
+
     const input = {
       files: filesFor(policy, rule, files),
       inputOf,
@@ -236,6 +271,7 @@ export const evaluateCampaigns = (
         campaignsOf(policy).sectorRecords.get(ledgerKeyOf(rule.id, sector)),
       commandValueOf,
     };
+
     if (!rule.objectives.some((one) => one.endState !== null)) return evaluateCampaign(rule, input);
     // An end state's `{ sector, via }` entries need every sector's root, so
     // the sectors are discovered first and the tree is lowered per sector
@@ -243,18 +279,22 @@ export const evaluateCampaigns = (
     // rest of that sector's, and kept for the other families' asks.
     const known = [...evaluateCampaign(rule, input).index.sectors.values()];
     const endStates = new Map<string, Readonly<Record<string, ReadonlyArray<Violation>>>>();
+
     const evaluation = evaluateCampaign(rule, {
       ...input,
       endStateOf: (sector, phase, family) => {
         const key = `${sector.name}\u0000${phase.id}`;
         let found = endStates.get(key);
+
         if (found === undefined) {
           found = endStateViolations(policy, readers, known, sector, phase);
           endStates.set(key, found);
         }
+
         return found[family] ?? [];
       },
     });
+
     return evaluation;
   });
 };
@@ -267,17 +307,21 @@ export const evaluateCampaigns = (
 // refused rather than written blank, since the record is the point.
 export const authorOf = (given: string | undefined): string | null => {
   if (given !== undefined && given !== "") return given;
+
   try {
     const email = execFileSync("git", ["config", "user.email"], {
       env: gitEnv(),
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     }).trim();
+
     if (email !== "") return email;
   } catch {
     // git absent, or no email configured
   }
+
   const fromEnvironment = process.env.GIT_AUTHOR_EMAIL;
+
   return fromEnvironment === undefined || fromEnvironment === "" ? null : fromEnvironment;
 };
 
@@ -293,21 +337,27 @@ export const attest = (
 ): Result.Result<string, string> => {
   const { rule } = evaluation;
   const state = evaluation.sectors.get(sector);
+
   if (state === undefined)
     return Result.fail(`campaign ${rule.id} has no sector named "${sector}"`);
   const phase = rule.phases.find((one) => one.id === phaseId);
+
   if (phase === undefined) return Result.fail(`campaign ${rule.id} has no phase "${phaseId}"`);
+
   if (!phase.attested)
     return Result.fail(
       `phase ${phaseId} is not an attested phase; its objectives decide when a sector leaves it.`,
     );
   const current = phaseIdOf(rule, state.phase);
+
   if (current !== phaseId) {
     return Result.fail(
       `sector ${sector} stands at ${current ?? "the end"}, not ${phaseId}. An attestation is accepted only while the sector is at that phase.`,
     );
   }
+
   const before = recordOf(policy, rule, sector) ?? EMPTY_SECTOR_RECORD(rule.id, sector, policy.now);
+
   const after = attestedRecord(before, {
     phase: phaseId,
     reason: entry.reason,
@@ -315,11 +365,13 @@ export const attest = (
     at: policy.now,
     by: entry.by,
   });
+
   writeJson(
     policy.repoRoot,
     sectorRecordPathOf(campaignsOf(policy).ledgerDir, rule.id, sector),
     serializeSectorRecord(after),
   );
+
   return Result.succeed(sectorRecordPathOf(campaignsOf(policy).ledgerDir, rule.id, sector));
 };
 
@@ -334,18 +386,22 @@ export const note = (
 ): Result.Result<string, string> => {
   const { rule } = evaluation;
   const state = evaluation.sectors.get(sector);
+
   if (state === undefined)
     return Result.fail(`campaign ${rule.id} has no sector named "${sector}"`);
   const before = recordOf(policy, rule, sector) ?? EMPTY_SECTOR_RECORD(rule.id, sector, policy.now);
+
   const after = notedRecord(before, {
     phase: phaseIdOf(rule, state.phase),
     text,
     by,
     at: policy.now,
   });
+
   if (Result.isFailure(after)) return Result.fail(after.failure);
   const at = sectorRecordPathOf(campaignsOf(policy).ledgerDir, rule.id, sector);
   writeJson(policy.repoRoot, at, serializeSectorRecord(after.success));
+
   return Result.succeed(at);
 };
 
@@ -374,8 +430,10 @@ export const historyOf = (
   const dir = `${campaignsOf(policy).ledgerDir}/${rule.id}`;
   const legacy = `${campaignsOf(policy).ledgerDir}/${rule.id}.json`;
   const commits = commitsTouching(policy.repoRoot, [dir, legacy, ...manifestPaths], since);
+
   return commits.map((commit: Commit) => {
     const counts: Record<string, number> = {};
+
     for (const objective of rule.objectives) {
       const text =
         textAt(
@@ -383,7 +441,9 @@ export const historyOf = (
           commit.sha,
           ledgerPathOf(campaignsOf(policy).ledgerDir, rule.id, objective.id),
         ) ?? (rule.objectives.length === 1 ? textAt(policy.repoRoot, commit.sha, legacy) : null);
+
       if (text === null) continue;
+
       try {
         const raw = JSON.parse(text) as {
           kind?: string;
@@ -393,6 +453,7 @@ export const historyOf = (
           >;
           entries?: Array<unknown>;
         };
+
         // A scalar's column is what its open sectors were held to.
         counts[objective.id] =
           raw.kind === "measure"
@@ -410,6 +471,7 @@ export const historyOf = (
         // an unreadable ledger at that commit contributes nothing
       }
     }
+
     return {
       sha: commit.sha.slice(0, 10),
       at: commit.at,
@@ -427,6 +489,7 @@ export const renderHistory = (
   if (rows.length === 0)
     return [`${rule.id}: no history — no commit has touched its ledgers or the manifest.`];
   const width = Math.max(...rule.objectives.map((one) => one.id.length), 4);
+
   return [
     `${rule.id}: ${count(rows.length, "commit")}`,
     "",

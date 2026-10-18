@@ -21,6 +21,7 @@ import { describe, it } from "vitest";
 import { makeImportsRule } from "./imports-rule.js";
 
 RuleTester.describe = describe;
+
 RuleTester.it = it;
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -47,7 +48,9 @@ const config = {
 
 const makePolicy = (): LoadedPolicy => {
   const importRules = compileImportRules(config.imports);
+
   if (Result.isFailure(importRules)) throw importRules.failure;
+
   return {
     repoRoot,
     config: { resolve: config.resolve, tree: {} },
@@ -79,6 +82,7 @@ const DOMAIN_FILE = path.join(
   repoRoot,
   "packages/server/src/modules/todos/domain/todo/todo.root.ts",
 );
+
 const COMMAND_FILE = path.join(
   repoRoot,
   "packages/server/src/modules/todos/commands/create-todo.handler.ts",

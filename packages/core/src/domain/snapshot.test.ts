@@ -119,6 +119,7 @@ const SAMPLE: Snapshot = {
 
 const validator = () => {
   const ajv = new Ajv2020({ allErrors: true, strict: false });
+
   return ajv.compile(snapshotJsonSchema());
 };
 
@@ -141,14 +142,17 @@ describe("the conformance snapshot", () => {
     const schema = snapshotJsonSchema() as {
       properties: Record<string, { description?: string; allOf?: Array<{ description?: string }> }>;
     };
+
     const described = (field: string): boolean => {
       const node = schema.properties[field];
+
       return (
         node !== undefined &&
         (node.description !== undefined ||
           (node.allOf ?? []).some((one) => one.description !== undefined))
       );
     };
+
     for (const field of Object.keys(SAMPLE)) expect(described(field), field).toBe(true);
     expect(Object.keys(schema.properties).sort()).toEqual(Object.keys(SAMPLE).sort());
   });
@@ -177,12 +181,16 @@ describe("the conformance snapshot", () => {
       $defs?: Record<string, unknown>;
       properties: Record<string, unknown>;
     };
+
     const campaign = SAMPLE.campaigns[0];
+
     if (campaign === undefined) throw new Error("no sample campaign");
     const text = JSON.stringify(schema);
+
     for (const field of Object.keys(campaign)) {
       expect(text.includes(`"${field}":{`), field).toBe(true);
     }
+
     const validate = validator();
     expect(validate({ ...SAMPLE, campaigns: [{ ...campaign, velocity: 1 }] })).toBe(false);
     expect(validate({ ...SAMPLE, campaigns: [{ ...campaign, onComplete: "archive" }] })).toBe(

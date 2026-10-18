@@ -25,6 +25,7 @@ const GO: WalkedLanguage = { extensions: [".go"], ignoredFiles: [/_test\.go$/] }
 
 const fixture = (files: ReadonlyArray<string>, run: (root: string) => void): void => {
   const root = mkdtempSync(path.join(tmpdir(), "architecture-walk-"));
+
   try {
     for (const file of files) writeFileSync(path.join(root, file), "");
     run(root);
@@ -85,11 +86,13 @@ describe("listPackageRoots", () => {
 
   const nested = (files: ReadonlyArray<string>, run: (root: string) => void): void => {
     const root = mkdtempSync(path.join(tmpdir(), "architecture-packages-"));
+
     try {
       for (const file of files) {
         mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
         writeFileSync(path.join(root, file), "");
       }
+
       run(root);
     } finally {
       rmSync(root, { force: true, recursive: true });

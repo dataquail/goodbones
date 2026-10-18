@@ -9,6 +9,7 @@ import { factsOf, FILES, loadFixture, locate, MANIFEST_TEXT } from "./fixture.te
 
 const atlasOf = (): Atlas => {
   const policy = loadFixture();
+
   return buildAtlas({
     policy,
     name: "repo",
@@ -24,28 +25,39 @@ const atlasOf = (): Atlas => {
 
 describe("buildAtlas", () => {
   const atlas = atlasOf();
+
   const file = (path: string) => {
     const found = atlas.files.find((one) => one.path === path);
+
     if (found === undefined) throw new Error(`no file ${path}`);
+
     return found;
   };
+
   const node = (id: string) => {
     const found = atlas.manifest.nodes.find((one) => one.id === id);
+
     if (found === undefined) throw new Error(`no node ${id}`);
+
     return found;
   };
+
   const edge = (from: string, to: string) => {
     const found = atlas.edges.find((one) => one.from === from && one.to === to);
+
     if (found === undefined) throw new Error(`no edge ${from} → ${to}`);
+
     return found;
   };
 
   it("names each node as its rules do, so the two join", () => {
     const policy = loadFixture();
     const ruleNames = new Set(policy.importRules.map((rule) => rule.name));
+
     for (const one of atlas.manifest.nodes) {
       if (one.imports !== null) expect(ruleNames.has(`${one.id}/imports`)).toBe(true);
     }
+
     expect(atlas.manifest.nodes.map((one) => one.id)).toEqual([
       "svc",
       "svc/main.go",

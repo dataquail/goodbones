@@ -15,6 +15,7 @@ type Theme = "dark" | "light";
 const storedTheme = (): Theme | null => {
   try {
     const held = window.localStorage.getItem("goodbones-theme");
+
     return held === "dark" || held === "light" ? held : null;
   } catch {
     return null;
@@ -23,6 +24,7 @@ const storedTheme = (): Theme | null => {
 
 const formatTime = (iso: string): string => {
   const date = new Date(iso);
+
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleTimeString();
 };
 
@@ -34,6 +36,7 @@ export const Browser = (): React.JSX.Element => {
   const [theme, setTheme] = useState<Theme>(() => storedTheme() ?? "dark");
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
+
     try {
       window.localStorage.setItem("goodbones-theme", theme);
     } catch {

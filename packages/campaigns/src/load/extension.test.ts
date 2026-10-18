@@ -7,7 +7,8 @@ import {
 import * as Result from "effect/Result";
 import { describe, expect, it } from "vitest";
 
-import type { CampaignPredicate } from "../ports/campaign-predicate.js";
+import type { CampaignMeasure } from "../ports/campaign-measure.js";
+import type { CampaignPredicate, CampaignPredicateInput } from "../ports/campaign-predicate.js";
 import type { ReportSource } from "../ports/report-source.js";
 import { campaignsExtension, campaignsOf } from "./extension.js";
 
@@ -73,6 +74,7 @@ const load = (input: unknown, languages: ReadonlyArray<Language>, options: LoadO
 
 const unwrap = <A, E>(result: Result.Result<A, E>): A => {
   if (Result.isFailure(result)) throw result.failure;
+
   return result.success;
 };
 
@@ -88,6 +90,7 @@ describe("loadPolicy with campaigns", () => {
     probes: { fires: [{ path: "svc/legacy/util.js" }], ignores: [{ path: "svc/main.go" }] },
     ...overrides,
   });
+
   const campaign = (
     objectiveOverrides: Record<string, unknown> = {},
     overrides: Record<string, unknown> = {},
@@ -99,11 +102,13 @@ describe("loadPolicy with campaigns", () => {
     objectives: { "port-it": objective(objectiveOverrides) },
     ...overrides,
   });
+
   const withCampaigns = (campaigns: Record<string, unknown>, ledger?: string) => ({
     ...manifest(),
     ...(ledger === undefined ? {} : { ledger }),
     campaigns,
   });
+
   const one = (
     objectiveOverrides: Record<string, unknown> = {},
     overrides: Record<string, unknown> = {},
@@ -141,10 +146,12 @@ describe("loadPolicy with campaigns", () => {
     expect(Result.isFailure(listed) && listed.failure.message).toMatch(
       /`campaigns` is a list. A campaign is now a map keyed by its id/,
     );
+
     const flat = load(
       withCampaigns({ "js-to-go": { detect: { path: { file: "x" } }, unit: "file" } }),
       [go()],
     );
+
     expect(Result.isFailure(flat) && flat.failure.message).toMatch(
       /campaign "js-to-go" carries a `detect` and no `objectives`/,
     );
@@ -165,6 +172,7 @@ describe("loadPolicy with campaigns", () => {
       }),
       [go()],
     );
+
     expect(Result.isFailure(outcome) && outcome.failure.message).toMatch(
       /ignores probe svc\/main.go fired, admitted by `path \/main\/`/,
     );
@@ -185,6 +193,7 @@ describe("loadPolicy with campaigns", () => {
       }),
       [go()],
     );
+
     expect(Result.isFailure(outcome) && outcome.failure.message).toMatch(
       /`syntax` term in a scope whose language has no syntax matcher: campaign\/js-to-go\/port-it \(svc\/a.go: go carries no syntax matcher\)/,
     );
@@ -198,6 +207,7 @@ describe("loadPolicy with campaigns", () => {
       }),
       [go()],
     );
+
     expect(Result.isFailure(outcome) && outcome.failure.message).toMatch(
       /predicate function the host did not load: \.\/campaigns\/x\.mjs#isLegacy/,
     );
@@ -221,6 +231,7 @@ describe("loadPolicy with campaigns", () => {
       },
       concessions: [],
     };
+
     const record = {
       version: 1,
       campaign: "js-to-go",
@@ -230,6 +241,7 @@ describe("loadPolicy with campaigns", () => {
       attested: [],
       notes: [],
     };
+
     const files = makeFileSystemFake([], {
       "ledgers/js-to-go/port-it.json": JSON.stringify(ledger),
       "ledgers/js-to-go/sectors/scope.json": JSON.stringify(record),
@@ -239,9 +251,11 @@ describe("loadPolicy with campaigns", () => {
         phases: [],
       }),
     });
+
     const withDir = stateOf(
       unwrap(load(withCampaigns({ "js-to-go": campaign() }, "ledgers"), [go()], { files })),
     );
+
     expect(withDir.ledgers.get("js-to-go/port-it")?.sectors.scope?.holdouts).toEqual([
       "svc/legacy/util.js",
     ]);
@@ -252,9 +266,11 @@ describe("loadPolicy with campaigns", () => {
     const malformed = makeFileSystemFake([], {
       "ledgers/js-to-go/port-it.json": '{"sectors": {}}',
     });
+
     const outcome = load(withCampaigns({ "js-to-go": campaign() }, "ledgers"), [go()], {
       files: malformed,
     });
+
     expect(Result.isFailure(outcome) && outcome.failure.message).toMatch(
       /the ledger ledgers\/js-to-go\/port-it.json does not decode/,
     );
@@ -271,10 +287,13 @@ describe("loadPolicy with campaigns", () => {
       regressions: [],
       entries: ["svc/legacy/util.js"],
     };
+
     const files = makeFileSystemFake([], { "ledgers/js-to-go.json": JSON.stringify(old) });
+
     const policy = unwrap(
       load(withCampaigns({ "js-to-go": campaign() }, "ledgers"), [go()], { files }),
     );
+
     const ledger = stateOf(policy).ledgers.get("js-to-go/port-it");
     expect(ledger?.objective).toBe("port-it");
     expect(ledger?.sectors.scope?.holdouts).toEqual(["svc/legacy/util.js"]);
@@ -288,6 +307,7 @@ describe("loadPolicy with campaigns", () => {
         fires: [{ path: "svc/a.go", report: [{ line: 1, code: "TS2551", message: "m" }] }],
       },
     });
+
     const refused = load(tsc, [go()]);
     expect(Result.isFailure(refused) && refused.failure.message).toMatch(
       /hold a `report` term and the host provided no report source: campaign\/js-to-go/,
@@ -300,9 +320,12 @@ describe("loadPolicy with campaigns", () => {
   it("refuses a report term naming both a command and a file, or neither, and a regex one without a pattern", () => {
     const detailOf = (manifest: unknown): string => {
       const loaded = load(manifest, [go()]);
+
       if (!Result.isFailure(loaded)) throw new Error("expected the manifest to be refused");
+
       return loaded.failure.detail;
     };
+
     expect(
       detailOf(one({ match: { report: { command: "x", file: "y", format: "tsc" } } })),
     ).toMatch(/exactly one of `command`/);
@@ -323,9 +346,12 @@ describe("loadPolicy with campaigns", () => {
   it("refuses an objective with both match and sector, or a sector holdout on a match", () => {
     const detailOf = (manifest: unknown): string => {
       const loaded = load(manifest, [go()]);
+
       if (!Result.isFailure(loaded)) throw new Error("expected the manifest to be refused");
+
       return loaded.failure.detail;
     };
+
     expect(detailOf(one({ sector: { oneRoot: true } }))).toMatch(/exactly one of `match`/);
     expect(detailOf(one({ holdout: "sector" }))).toMatch(
       /holdout is `file`, `declaration` or `match`/,
@@ -337,12 +363,15 @@ describe("loadPolicy with campaigns", () => {
     const detailOf = (manifest: unknown): string => {
       try {
         const loaded = load(manifest, [go()]);
+
         if (!Result.isFailure(loaded)) throw new Error("expected the manifest to be refused");
+
         return loaded.failure.detail;
       } catch (cause) {
         return String(cause);
       }
     };
+
     expect(detailOf(one({ over: "shared" }))).toMatch(
       /is `over: shared`, and the campaign declares no `shared`/,
     );
@@ -367,6 +396,7 @@ describe("loadPolicy with campaigns", () => {
         }),
       ),
     ).toMatch(/is `over: shared` and runs `until: b`/);
+
     // Written properly, it lowers, and carries what it is read over.
     const policy = unwrap(
       load(
@@ -385,6 +415,7 @@ describe("loadPolicy with campaigns", () => {
         [go()],
       ),
     );
+
     const [rule] = stateOf(policy).campaignRules;
     expect(rule?.shared?.map((one) => one.source)).toHaveLength(1);
     expect(rule?.objectives[0]?.overShared).toBe(true);
@@ -404,15 +435,19 @@ describe("loadPolicy with campaigns", () => {
           },
         },
       });
+
     const detailOf = (manifest: unknown): string => {
       try {
         const loaded = load(manifest, [go()]);
+
         if (!Result.isFailure(loaded)) throw new Error("expected the manifest to be refused");
+
         return loaded.failure.detail;
       } catch (cause) {
         return String(cause);
       }
     };
+
     expect(detailOf(ladder([{ id: "a", objectives: ["port-it"], grows: ["nope"] }]))).toMatch(
       /phase "a" grows an objective "nope" the campaign does not declare/,
     );
@@ -451,6 +486,7 @@ describe("loadPolicy with campaigns", () => {
           ),
         ),
       ).campaignRules[0]?.phases;
+
     expect(phasesOf(["lines"])?.[0]?.grows).toEqual(["lines"]);
     // What a phase grows is part of what it asks: adding it is a plan change.
     expect(phasesOf(["lines"])?.[0]?.hash).not.toBe(phasesOf()?.[0]?.hash);
@@ -480,19 +516,24 @@ describe("loadPolicy with campaigns", () => {
           },
         },
       });
+
     const detailOf = (manifest: unknown): string => {
       try {
         const loaded = load(manifest, [go()]);
+
         if (!Result.isFailure(loaded)) throw new Error("expected the manifest to be refused");
+
         return loaded.failure.detail;
       } catch (cause) {
         return String(cause);
       }
     };
+
     const LADDER = [
       { id: "a", objectives: ["port-it"] },
       { id: "b", objectives: ["no-shim"] },
     ];
+
     expect(detailOf(ladder(LADDER, { lines: { onAhead: "ignore" } }))).toMatch(
       /objective "lines" sets `onAhead` and is a scalar objective/,
     );
@@ -519,8 +560,10 @@ describe("loadPolicy with campaigns", () => {
       settings: Record<string, Record<string, unknown>> = {},
       extra: Record<string, unknown> = {},
     ) => stateOf(unwrap(load(ladder(LADDER, settings, extra), [go()]))).campaignRules[0];
+
     const hashesOf = (...args: Parameters<typeof policyOf>) =>
       policyOf(...args)?.phases.map((phase) => phase.hash);
+
     expect(policyOf({ "no-shim": { onAhead: "ignore" } })?.objectives[1]).toMatchObject({
       id: "no-shim",
       onAhead: "ignore",
@@ -556,15 +599,19 @@ describe("loadPolicy with campaigns", () => {
           },
         },
       });
+
     const detailOf = (manifest: unknown): string => {
       try {
         const loaded = load(manifest, [go()]);
+
         if (!Result.isFailure(loaded)) throw new Error("expected the manifest to be refused");
+
         return loaded.failure.detail;
       } catch (cause) {
         return String(cause);
       }
     };
+
     expect(
       detailOf(
         ladder([
@@ -609,6 +656,7 @@ describe("loadPolicy with campaigns", () => {
         ),
       ),
     ).toMatch(/runs `until: a`, which is not after it/);
+
     // A well-formed ladder loads, defined and open apart.
     const policy = unwrap(
       load(
@@ -620,6 +668,7 @@ describe("loadPolicy with campaigns", () => {
         [go()],
       ),
     );
+
     expect(
       stateOf(policy).campaignRules[0]?.phases.map((phase) => [phase.id, phase.objectives]),
     ).toEqual([
@@ -658,6 +707,7 @@ describe("loadPolicy with campaigns", () => {
           ),
         ),
       ).campaignRules[0]?.phases.map((phase) => phase.hash);
+
     expect(hashesOf("the files are Go")).toEqual(hashesOf("every file is Go"));
     expect(hashesOf("the files are Go")).toEqual(
       hashesOf("the files are Go", { intent: "A shim is a file that is Go in name only." }),
@@ -677,6 +727,7 @@ describe("loadPolicy with campaigns", () => {
           objectives: { "port-it": objective() },
         },
       });
+
     const exporting = go({
       "export A": {
         exportSites: [
@@ -684,10 +735,12 @@ describe("loadPolicy with campaigns", () => {
         ],
       },
     });
+
     const refused = load(perimeter([{ path: "svc/a.js", source: "export A" }]), [exporting]);
     expect(Result.isFailure(refused) && refused.failure.message).toMatch(
       /campaign\/js-to-go\/perimeter \(no fires probe is a sector in its end shape/,
     );
+
     const policy = unwrap(
       load(
         perimeter([
@@ -697,6 +750,7 @@ describe("loadPolicy with campaigns", () => {
         [exporting],
       ),
     );
+
     expect(stateOf(policy).campaignRules[0]?.perimeter?.kind).toBe("match");
   });
 
@@ -722,6 +776,7 @@ describe("loadPolicy with campaigns", () => {
         objectives: { "port-it": objective() },
       },
     });
+
     const policy = unwrap(load(withEnd, [go()]));
     const [rule] = stateOf(policy).campaignRules;
     expect(rule?.phases.map((phase) => [phase.id, phase.objectives])).toEqual([
@@ -752,11 +807,15 @@ describe("loadPolicy with campaigns", () => {
       direction: "down",
       ...overrides,
     });
+
     const detailOf = (manifest: unknown): string => {
       const loaded = load(manifest, [go()]);
+
       if (!Result.isFailure(loaded)) throw new Error("expected the manifest to be refused");
+
       return loaded.failure.detail;
     };
+
     const withScalar = (
       overrides: Record<string, unknown> = {},
       campaignOverrides: Record<string, unknown> = {},
@@ -773,6 +832,7 @@ describe("loadPolicy with campaigns", () => {
       const policy = unwrap(
         load(withScalar({ tolerance: 2, target: 0, how: "Delete it." }), [go()]),
       );
+
       const [objective] = stateOf(policy).campaignRules[0]?.objectives ?? [];
       expect(objective).toMatchObject({
         measure: { kind: "sum", of: { kind: "lines" } },
@@ -788,6 +848,7 @@ describe("loadPolicy with campaigns", () => {
       const undirected = withCampaigns({
         "js-to-go": { scope: ["svc/**"], objectives: { lines: { measure: { lines: true } } } },
       });
+
       expect(detailOf(undirected)).toMatch(
         /states which way is better: `direction: down` or `direction: up`/,
       );
@@ -821,11 +882,17 @@ describe("loadPolicy with campaigns", () => {
     });
 
     it("proves a function source on its probes: above zero, the value stated, and zero where it ignores", () => {
-      const weigh: CampaignPredicate = ((input: { text: string }) =>
-        input.text.length) as unknown as CampaignPredicate;
+      // A measure, held where the host holds every `fn` term's function.
+      const weigh = ((
+        input: CampaignPredicateInput,
+      ): ReturnType<CampaignPredicate> | ReturnType<CampaignMeasure> =>
+        input.text.length) as CampaignPredicate;
+
       const functions = new Map([["./m.mjs#weigh", weigh]]);
+
       const proven = (probes: unknown) =>
         load(withScalar({ measure: { fn: "./m.mjs#weigh" }, probes }), [go()], { functions });
+
       expect(
         Result.isSuccess(
           proven({
@@ -838,13 +905,16 @@ describe("loadPolicy with campaigns", () => {
       expect(Result.isFailure(wrong) && wrong.failure.message).toMatch(
         /campaign\/js-to-go\/lines \(fires probe svc\/a.go measured 3, not 4\)/,
       );
+
       const silent = proven({
         fires: [{ path: "svc/a.go", source: "abc" }],
         ignores: [{ path: "svc/b.go", source: "x" }],
       });
+
       expect(Result.isFailure(silent) && silent.failure.message).toMatch(
         /ignores probe svc\/b.go measured 1, not 0/,
       );
+
       const unloaded = load(
         withScalar({
           measure: { fn: "./m.mjs#other" },
@@ -853,6 +923,7 @@ describe("loadPolicy with campaigns", () => {
         [go()],
         { functions },
       );
+
       expect(Result.isFailure(unloaded) && unloaded.failure.message).toMatch(
         /did not load: \.\/m\.mjs#other/,
       );
@@ -878,9 +949,11 @@ describe("loadPolicy with campaigns", () => {
         },
         concessions: [],
       };
+
       const files = makeFileSystemFake([], {
         "ledgers/js-to-go/lines.json": JSON.stringify(measured),
       });
+
       const policy = unwrap(load({ ...withScalar(), ledger: "ledgers" }, [go()], { files }));
       expect(stateOf(policy).measureLedgers.get("js-to-go/lines")?.sectors.scope?.recorded).toBe(
         120,
@@ -890,6 +963,7 @@ describe("loadPolicy with campaigns", () => {
       const flipped = load({ ...withScalar({ direction: "up" }), ledger: "ledgers" }, [go()], {
         files,
       });
+
       expect(Result.isFailure(flipped) && flipped.failure.message).toMatch(
         /records js-to-go\/lines with `direction: down`, and the manifest now says `up`/,
       );
@@ -897,9 +971,11 @@ describe("loadPolicy with campaigns", () => {
       const holdout = makeFileSystemFake([], {
         "ledgers/js-to-go/port-it.json": JSON.stringify({ ...measured, objective: "port-it" }),
       });
+
       const crossed = load(withCampaigns({ "js-to-go": campaign() }, "ledgers"), [go()], {
         files: holdout,
       });
+
       expect(Result.isFailure(crossed) && crossed.failure.message).toMatch(
         /is a scalar objective's, and js-to-go\/port-it holds out file/,
       );

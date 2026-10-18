@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { ArchitectureBrowser } from "./ArchitectureBrowser.js";
 import { atlas, edge, file, folder } from "./fixture.test-helper.js";
@@ -11,13 +11,18 @@ import { atlas, edge, file, folder } from "./fixture.test-helper.js";
 
 afterEach(cleanup);
 
-// jsdom lays nothing out, so it has no scrolling to do.
-Element.prototype.scrollIntoView = () => undefined;
+// jsdom lays nothing out, so it has no scrolling to do; each call is counted.
+const scrolls = { count: 0 };
+
+Element.prototype.scrollIntoView = () => {
+  scrolls.count += 1;
+};
 
 // The tree starts with only its roots open; these tests read the whole of it.
 const renderOpen = (ui: React.JSX.Element) => {
   const result = render(ui);
   fireEvent.click(within(result.container).getByText("expand"));
+
   return result;
 };
 
@@ -30,6 +35,7 @@ describe("ArchitectureBrowser", { concurrent: false }, () => {
     const { container } = render(
       <ArchitectureBrowser atlas={atlas()} selection={null} onSelect={() => undefined} />,
     );
+
     expect([...container.querySelectorAll<HTMLElement>("li.row")].map((row) => row.title)).toEqual([
       "svc",
       "svc/adapters",
@@ -42,6 +48,7 @@ describe("ArchitectureBrowser", { concurrent: false }, () => {
     const { container } = render(
       <ArchitectureBrowser atlas={atlas()} selection="svc/domain" onSelect={() => undefined} />,
     );
+
     const rows = within(container);
     expect(rows.getByTitle("svc/domain/repo.go")).toBeTruthy();
     expect(rows.queryByTitle("svc/adapters/pg.go")).toBeNull();
@@ -53,9 +60,11 @@ describe("ArchitectureBrowser", { concurrent: false }, () => {
       folders: [...atlas().folders, folder("svc/domain/model", { node: "svc/domain" })],
       files: [...atlas().files, file("svc/domain/model/user.go", { node: "svc/domain" })],
     };
+
     const { container, rerender } = render(
       <ArchitectureBrowser atlas={deep} selection={null} onSelect={() => undefined} />,
     );
+
     expect(within(container).queryByTitle("svc/domain/model")).toBeNull();
     rerender(
       <ArchitectureBrowser atlas={deep} selection="svc/domain/model" onSelect={() => undefined} />,
@@ -68,6 +77,7 @@ describe("ArchitectureBrowser", { concurrent: false }, () => {
     const { container } = renderOpen(
       <ArchitectureBrowser atlas={atlas()} selection={null} onSelect={() => undefined} />,
     );
+
     expect(container.querySelectorAll("li.row")).toHaveLength(7);
     expect(arcs(container)).toHaveLength(3);
     expect(arcs(container).every((arc) => arc.classList.contains("dim"))).toBe(true);
@@ -78,6 +88,7 @@ describe("ArchitectureBrowser", { concurrent: false }, () => {
     const { container } = renderOpen(
       <ArchitectureBrowser atlas={atlas()} selection={null} onSelect={() => undefined} />,
     );
+
     const main = within(container).getByTitle("svc/main.go");
     fireEvent.mouseEnter(main);
     const classes = arcs(container).map((arc) => arc.getAttribute("class"));
@@ -101,7 +112,9 @@ describe("ArchitectureBrowser", { concurrent: false }, () => {
     const { container } = renderOpen(
       <ArchitectureBrowser atlas={atlas()} selection={null} onSelect={() => undefined} />,
     );
+
     const domainLine = container.querySelector('li.line[data-line="4"]');
+
     if (domainLine === null) throw new Error("no line 4");
     fireEvent.mouseEnter(domainLine);
     const rows = within(container);
@@ -115,25 +128,28 @@ describe("ArchitectureBrowser", { concurrent: false }, () => {
   });
 
   it("does not scroll the manifest to a node hovered in the manifest", () => {
-    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    scrolls.count = 0;
+
     const { container } = renderOpen(
       <ArchitectureBrowser atlas={atlas()} selection={null} onSelect={() => undefined} />,
     );
+
     const domainLine = container.querySelector('li.line[data-line="5"]');
+
     if (domainLine === null) throw new Error("no line 5");
     fireEvent.mouseEnter(domainLine);
-    expect(scrolled).not.toHaveBeenCalled();
+    expect(scrolls.count).toBe(0);
     // A file hovered in the tree still brings its node into view.
     fireEvent.mouseLeave(container.querySelector(".manifest") as Element);
     fireEvent.mouseEnter(within(container).getByTitle("svc/domain/repo.go"));
-    expect(scrolled).toHaveBeenCalled();
-    scrolled.mockRestore();
+    expect(scrolls.count).toBeGreaterThan(0);
   });
 
   it("marks each folder that declares a node, lit along the focus's chain", () => {
     const { container } = renderOpen(
       <ArchitectureBrowser atlas={atlas()} selection={null} onSelect={() => undefined} />,
     );
+
     const pills = () => [...container.querySelectorAll(".node-pill")];
     expect(pills().map((pill) => pill.textContent)).toEqual(["§", "§"]);
     fireEvent.mouseEnter(within(container).getByTitle("svc/domain/repo.go"));
@@ -147,9 +163,11 @@ describe("ArchitectureBrowser", { concurrent: false }, () => {
       ...atlas(),
       edges: [...atlas().edges, edge("svc/domain/model.go", "svc/main.go")],
     };
+
     const { container } = render(
       <ArchitectureBrowser atlas={both} selection={null} onSelect={() => undefined} />,
     );
+
     fireEvent.mouseEnter(within(container).getByTitle("svc/main.go"));
     const domain = within(container).getByTitle("svc/domain");
     expect(domain.classList.contains("both")).toBe(true);
@@ -157,12 +175,18 @@ describe("ArchitectureBrowser", { concurrent: false }, () => {
   });
 
   it("reports a click as the selection, and shows the detail for it", () => {
-    const onSelect = vi.fn();
+    const selections: Array<string | null> = [];
+
+    const onSelect = (selection: string | null): void => {
+      selections.push(selection);
+    };
+
     const { container, rerender } = renderOpen(
       <ArchitectureBrowser atlas={atlas()} selection={null} onSelect={onSelect} />,
     );
+
     fireEvent.click(within(container).getByTitle("svc/adapters/pg.go"));
-    expect(onSelect).toHaveBeenCalledWith("svc/adapters/pg.go");
+    expect(selections).toContain("svc/adapters/pg.go");
     rerender(
       <ArchitectureBrowser atlas={atlas()} selection="svc/adapters/pg.go" onSelect={onSelect} />,
     );

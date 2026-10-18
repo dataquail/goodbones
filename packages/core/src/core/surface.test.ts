@@ -1,3 +1,4 @@
+import * as Match from "effect/Match";
 import * as Result from "effect/Result";
 import { describe, expect, it } from "vitest";
 
@@ -13,17 +14,26 @@ import {
 
 const compile = (rules: ReadonlyArray<SurfaceRule>) => {
   const compiled = compileSurfaceRules(rules);
+
   if (Result.isFailure(compiled)) throw compiled.failure;
+
   return compiled.success;
 };
 
 const HANDLER = "packages/server/src/modules/todos/commands/create-todo.handler.ts";
 const BARREL = "packages/server/src/modules/todos/index.ts";
 
+const kindOf = (name: string): ExportSite["kind"] =>
+  Match.value(name).pipe(
+    Match.when("default", (): ExportSite["kind"] => "default"),
+    Match.when("*", (): ExportSite["kind"] => "namespace"),
+    Match.orElse((): ExportSite["kind"] => "named"),
+  );
+
 const site = (name: string, overrides: Partial<ExportSite> = {}): ExportSite => ({
   file: HANDLER,
   name,
-  kind: name === "default" ? "default" : name === "*" ? "namespace" : "named",
+  kind: kindOf(name),
   declares: "variable",
   reexport: false,
   ...overrides,
@@ -163,6 +173,7 @@ describe("surfaceRulesFailingTheirProbe", () => {
 
   describe("with a source", () => {
     const DEFAULTED = "export default function main() {}";
+
     const parser = makeFactExtractorFake({
       [DEFAULTED]: {
         exportSites: [
@@ -181,6 +192,7 @@ describe("surfaceRulesFailingTheirProbe", () => {
         ...noDefault,
         probe: { from: HANDLER, source: "const x = 1;" },
       };
+
       expect(surfaceRulesFailingTheirProbe(compile([sourced]), parser).map((r) => r.name)).toEqual([
         "no-default-exports",
       ]);

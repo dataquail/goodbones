@@ -89,7 +89,9 @@ const config: StructureConfig = {
 
 const compiled = () => {
   const outcome = compileStructure(config);
+
   if (Result.isFailure(outcome)) throw outcome.failure;
+
   return outcome.success;
 };
 
@@ -180,7 +182,9 @@ describe("evaluateStructure parity", () => {
 describe("requiredSiblingsOf", () => {
   const parityRule = (name: string) => {
     const rule = compiled().parity.find((one) => one.name === name);
+
     if (rule === undefined) throw new Error(`no parity rule named ${name}`);
+
     return rule;
   };
 
@@ -220,7 +224,9 @@ describe("structureRulesFailingTheirProbe", () => {
         rule.name === "commands-folder" ? { ...rule, files: [".*"] } : rule,
       ),
     };
+
     const outcome = compileStructure(widened);
+
     if (Result.isFailure(outcome)) throw outcome.failure;
     expect(structureRulesFailingTheirProbe(outcome.success)).toEqual(["commands-folder"]);
   });
@@ -232,7 +238,9 @@ describe("structureRulesFailingTheirProbe", () => {
         rule.name === "endpoint-test" ? { ...rule, file: "^never-matches/" } : rule,
       ),
     };
+
     const outcome = compileStructure(drifted);
+
     if (Result.isFailure(outcome)) throw outcome.failure;
     expect(structureRulesFailingTheirProbe(outcome.success)).toEqual(["endpoint-test"]);
   });
@@ -251,7 +259,9 @@ describe("structureRulesFailingTheirProbe", () => {
         },
       ],
     };
+
     const outcome = compileStructure(covered);
+
     if (Result.isFailure(outcome)) throw outcome.failure;
     expect(structureRulesFailingTheirProbe(outcome.success)).toContain("server-module-taxonomy");
   });
@@ -358,7 +368,9 @@ describe("evaluateStructure naming", () => {
         },
       ],
     });
+
     if (Result.isFailure(compiled)) throw compiled.failure;
+
     return compiled.success;
   };
 
@@ -435,6 +447,7 @@ describe("structureRulesFailingTheirProbe for naming", () => {
         },
       ],
     });
+
     if (Result.isFailure(compiled)) throw compiled.failure;
     expect(structureRulesFailingTheirProbe(compiled.success)).toEqual(["vacuous"]);
   });
@@ -442,6 +455,7 @@ describe("structureRulesFailingTheirProbe for naming", () => {
 
 describe("compileStructure naming failures", () => {
   const broken = "^packages/(unclosed";
+
   const valid: StructureNaming = {
     name: "concept-name",
     message: "x",
@@ -465,6 +479,7 @@ describe("compileStructure naming failures", () => {
   it("reports a name whose sameAs group the pattern never fills", () => {
     const { convention: _unused, ...withoutConvention } = valid;
     const compiled = compileStructure({ naming: [{ ...withoutConvention, sameAs: 7 }] });
+
     if (Result.isFailure(compiled)) throw compiled.failure;
     expect(
       evaluateStructure(compiled.success, ALL_PRESENT, "a/thing.ts").map((one) => one.subject),
@@ -475,6 +490,7 @@ describe("compileStructure naming failures", () => {
     const compiled = compileStructure({
       naming: [{ ...valid, file: ["^a/[^/]+$"], subject: 1 }],
     });
+
     if (Result.isFailure(compiled)) throw compiled.failure;
     expect(evaluateStructure(compiled.success, ALL_PRESENT, "a/thing.ts")).toEqual([]);
   });

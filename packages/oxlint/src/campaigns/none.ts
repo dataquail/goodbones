@@ -19,6 +19,7 @@ const UNINSTALLED: UninstalledExtension = {
 // the first file, rather than on every file of the run.
 export const notInstalledRule = (): OxlintRule => {
   let said = false;
+
   return {
     meta: {
       type: "problem" as const,

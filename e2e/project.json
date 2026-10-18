@@ -27,7 +27,8 @@
       "cache": true,
       "options": {
         "command": "pnpm exec oxlint --type-aware --quiet e2e",
-        "cwd": "{workspaceRoot}"
+        "cwd": "{workspaceRoot}",
+        "env": { "NODE_OPTIONS": "--experimental-strip-types --no-warnings" }
       }
     }
   },

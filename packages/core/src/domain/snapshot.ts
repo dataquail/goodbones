@@ -1,3 +1,4 @@
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
 import type { ViolationKind } from "./violation.js";
@@ -437,13 +438,21 @@ export const Snapshot = Schema.Struct({
 });
 
 export type Snapshot = typeof Snapshot.Type;
+
 export type SnapshotViolation = typeof SnapshotViolation.Type;
+
 export type SnapshotSlack = typeof SnapshotSlack.Type;
+
 export type SnapshotConcentration = typeof SnapshotConcentration.Type;
+
 export type SnapshotVacancy = typeof SnapshotVacancy.Type;
+
 export type SnapshotCampaign = typeof SnapshotCampaign.Type;
+
 export type SnapshotObjective = typeof SnapshotObjective.Type;
+
 export type SnapshotPhase = typeof SnapshotPhase.Type;
+
 export type SnapshotSector = typeof SnapshotSector.Type;
 
 // Decodes a document some other run wrote — the base of a pull request, a
@@ -456,17 +465,25 @@ export const decodeSnapshot = Schema.decodeUnknownResult(Snapshot, {
 });
 
 type JsonValue = string | number | boolean | null | JsonObject | ReadonlyArray<JsonValue>;
+
 type JsonObject = { readonly [key: string]: JsonValue };
+
+// The generator types its document as records of `unknown`; it writes JSON,
+// and is read back as JSON here rather than asserted to be.
+const decodeJsonObject = Schema.decodeUnknownResult(Schema.Record(Schema.String, Schema.Json));
+
+const jsonObjectOf = (value: unknown): JsonObject => Result.getOrThrow(decodeJsonObject(value));
 
 // The document's shape as a JSON Schema, generated from the same codec, so
 // the two cannot disagree. Published beside the manifest's.
 export const snapshotJsonSchema = (): JsonObject => {
-  const generated = Schema.toJsonSchemaDocument(Snapshot, {
-    onExcessProperty: "error",
-  }) as unknown as {
-    readonly schema: JsonObject;
-    readonly definitions: JsonObject;
+  const document = Schema.toJsonSchemaDocument(Snapshot, { onExcessProperty: "error" });
+
+  const generated = {
+    schema: jsonObjectOf(document.schema),
+    definitions: jsonObjectOf(document.definitions),
   };
+
   return {
     $schema: "https://json-schema.org/draft/2020-12/schema",
     $id: SNAPSHOT_SCHEMA_ID,

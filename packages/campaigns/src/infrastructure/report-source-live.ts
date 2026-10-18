@@ -37,6 +37,7 @@ const MAX_BUFFER = 256 * 1024 * 1024;
 
 const fileTextOf = (repoRoot: string, file: string): string => {
   const at = path.resolve(repoRoot, file);
+
   try {
     return readFileSync(at, "utf8");
   } catch (cause) {
@@ -52,9 +53,11 @@ const commandTextSync = (repoRoot: string, command: string): string => {
     maxBuffer: MAX_BUFFER,
     stdio: ["ignore", "pipe", "pipe"],
   });
+
   if (run.error !== undefined) {
     throw new ReportUnavailable({ kind: "command", source: command, detail: run.error.message });
   }
+
   return run.stdout;
 };
 
@@ -65,10 +68,12 @@ const commandText = (repoRoot: string, command: string): Promise<string> =>
       shell: true,
       stdio: ["ignore", "pipe", "pipe"],
     });
+
     const chunks: Array<Buffer> = [];
     let size = 0;
     child.stdout.on("data", (chunk: Buffer) => {
       size += chunk.length;
+
       if (size > MAX_BUFFER) {
         child.kill();
         reject(
@@ -78,8 +83,10 @@ const commandText = (repoRoot: string, command: string): Promise<string> =>
             detail: `stdout exceeded ${String(MAX_BUFFER)} bytes`,
           }),
         );
+
         return;
       }
+
       chunks.push(chunk);
     });
     child.stderr.resume();
@@ -99,6 +106,7 @@ const inLanes = async <A, B>(
 ): Promise<ReadonlyArray<B>> => {
   const answers = new Array<B>(items.length);
   let next = 0;
+
   const lane = async (): Promise<void> => {
     while (next < items.length) {
       const index = next;
@@ -106,7 +114,9 @@ const inLanes = async <A, B>(
       answers[index] = await work(items[index] as A);
     }
   };
+
   await Promise.all(Array.from({ length: Math.min(lanes, items.length) }, lane));
+
   return answers;
 };
 
@@ -141,6 +151,7 @@ export const makeReportSourceLive = (repoRoot: string): ReportSource => {
       const texts = reportSourcesOf(spec).map((source) =>
         spec.file === undefined ? commandTextSync(repoRoot, source) : fileTextOf(repoRoot, source),
       );
+
       return indexOf(spec, texts);
     } catch (cause) {
       if (cause instanceof ReportUnavailable) return cause;
@@ -151,12 +162,14 @@ export const makeReportSourceLive = (repoRoot: string): ReportSource => {
   const answer = async (spec: ReportSpec): Promise<Indexed | ReportUnavailable> => {
     try {
       const sources = reportSourcesOf(spec);
+
       const texts =
         spec.file === undefined
           ? await inLanes(sources, availableParallelism(), (command) =>
               commandText(repoRoot, command),
             )
           : sources.map((file) => fileTextOf(repoRoot, file));
+
       return indexOf(spec, texts);
     } catch (cause) {
       if (cause instanceof ReportUnavailable) return cause;
@@ -166,14 +179,19 @@ export const makeReportSourceLive = (repoRoot: string): ReportSource => {
 
   const read = (spec: ReportSpec): Promise<void> => {
     const key = keyOf(spec);
+
     if (cache.has(key)) return Promise.resolve();
     const pending = reading.get(key);
+
     if (pending !== undefined) return pending;
+
     const started = answer(spec).then((found) => {
       cache.set(key, found);
       reading.delete(key);
     });
+
     reading.set(key, started);
+
     return started;
   };
 
@@ -182,11 +200,14 @@ export const makeReportSourceLive = (repoRoot: string): ReportSource => {
     diagnosticsOf: (spec, file) => {
       const key = keyOf(spec);
       let found = cache.get(key);
+
       if (found === undefined) {
         found = answerSync(spec);
         cache.set(key, found);
       }
+
       if (found instanceof ReportUnavailable) throw found;
+
       return found.get(file) ?? [];
     },
   };

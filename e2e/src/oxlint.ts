@@ -73,16 +73,19 @@ export const oxlint = (
       2,
     )}\n`,
   );
+
   const run = spawnSync(OXLINT, ["--format", "json", "-c", ".oxlintrc.json", ...roots], {
     cwd: repo.root,
     env: { ...process.env, ...options.env },
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
+
   if (run.error !== undefined) throw run.error;
 
   let diagnostics: ReadonlyArray<Diagnostic> = [];
   let loaded = false;
+
   try {
     const parsed = JSON.parse(run.stdout) as { readonly diagnostics: ReadonlyArray<RawDiagnostic> };
     loaded = true;
@@ -95,5 +98,6 @@ export const oxlint = (
   } catch {
     // Not JSON: oxlint failed before linting, and said why in prose.
   }
+
   return { code: run.status ?? -1, stdout: run.stdout, stderr: run.stderr, loaded, diagnostics };
 };

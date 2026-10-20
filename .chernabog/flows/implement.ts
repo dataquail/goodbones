@@ -19,25 +19,28 @@ export default defineFlow({
     Effect.gen(function* () {
       const issue = yield* Implement.issueOf(item);
       const { branch } = yield* Implement.claim(issue);
-      const worktree = yield* Implement.prepareWorktree(branch);
-      const outcome = yield* Implement.implementWithAgent(issue, worktree);
-
-      if (outcome.status === 'needs-clarification') return yield* Implement.askForClarification(issue, outcome).pipe(Effect.flatMap(Implement.endForPerson));
-
       let pullRequest = Option.none<number>();
+      const toPerson = (reason: string) => Implement.handToHuman(issue, reason, pullRequest).pipe(Effect.flatMap(Implement.endForPerson));
 
       return yield* Effect.gen(function* () {
-        yield* Implement.localGate(worktree);
-        yield* Implement.push('push', worktree, branch);
-        const opened = yield* Implement.openPullRequest(issue, outcome);
-        pullRequest = Option.some(opened.number);
-        yield* Implement.waitForCi(opened.number, worktree, { ...Implement.thisRunsSession, branch });
+        const worktree = yield* Implement.prepareWorktree(branch);
+        const outcome = yield* Implement.implementWithAgent(issue, worktree);
 
-        return yield* Implement.handOff(issue, opened, outcome);
+        if (outcome.status === 'needs-clarification') return yield* Implement.askForClarification(issue, outcome).pipe(Effect.flatMap(Implement.endForPerson));
+
+        return yield* Effect.gen(function* () {
+          yield* Implement.localGate(worktree);
+          yield* Implement.push('push', worktree, branch);
+          const opened = yield* Implement.openPullRequest(issue, outcome);
+          pullRequest = Option.some(opened.number);
+          yield* Implement.waitForCi(opened.number, worktree, { ...Implement.thisRunsSession, branch });
+
+          return yield* Implement.handOff(issue, opened, outcome);
+        }).pipe(Effect.catchTag('NeedsHuman', (needsHuman) => toPerson(needsHuman.reason)));
       }).pipe(
-        Effect.catchTag('NeedsHuman', (needsHuman) =>
-          Implement.handToHuman(issue, needsHuman.reason, pullRequest).pipe(Effect.flatMap(Implement.endForPerson)),
-        ),
+        // Any other failure once the issue is claimed hands it to a person, rather
+        // than leaving it claimed with nobody working on it.
+        Effect.catchTag('StepFailed', (failed) => toPerson(`${failed.step}: ${failed.message}`)),
       );
     }),
 });

@@ -37,7 +37,13 @@ notes:
 # Per flow: schedule, concurrency, enabled, and agent. A reviewer on another
 # agent than the one that wrote the code avoids a model approving its own work;
 # it runs under that agent's account in machine config.
-# flows:
+#
+# Review checks every few minutes, so a pull request is reviewed soon after
+# implement hands it off rather than at the next hourly tick. The check is one
+# GitHub call when nothing is waiting.
+flows:
+  review:
+    schedule: "*/5 * * * *"
 #   review:
 #     agent: codex
 

@@ -21,6 +21,10 @@
       "not": {},
       "description": "launcher commands can only be defined in machine config (~/.config/chernabog/config.yaml)"
     },
+    "runners": {
+      "not": {},
+      "description": "runners is the team's choice, in .chernabog/config.yaml; to run a flow here anyway, set flows.<flow>.enabled: true"
+    },
     "flows": {
       "type": "object",
       "additionalProperties": {
@@ -39,6 +43,52 @@
           },
           "agent": {
             "type": "string"
+          },
+          "assignee": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ],
+                "description": "Start only work items whose assignees include one of these: @me for this machine's GitHub login, a login, or none for nobody. null clears the team's."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reviewRequested": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ],
+                "description": "Start only work items whose requested reviewers include one of these: @me for this machine's GitHub login, a login, or none for nobody. null clears the team's."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "runners": {
+            "not": {},
+            "description": "runners is the team's choice, in .chernabog/config.yaml; to run a flow here anyway, set flows.<flow>.enabled: true"
           }
         },
         "additionalProperties": true

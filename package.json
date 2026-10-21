@@ -48,7 +48,7 @@
     "local-registry": "nx local-registry"
   },
   "devDependencies": {
-    "@commitlint/cli": "^19.8.0",
+    "@commitlint/cli": "^21.2.4",
     "@commitlint/config-conventional": "^19.8.0",
     "@effect/tsgo": "^0.53.4",
     "@effect/vitest": "4.0.5",

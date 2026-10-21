@@ -18,7 +18,7 @@
     "@goodbones/core": "workspace:*",
     "@goodbones/oxlint": "workspace:*",
     "@goodbones/typescript": "workspace:*",
-    "@types/node": "^25.9.4",
+    "@types/node": "^26.6.5",
     "fast-check": "^4.9.0",
     "oxlint": "1.88.0",
     "vitest": "^5.0.5",

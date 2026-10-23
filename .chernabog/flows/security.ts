@@ -15,7 +15,7 @@
 //
 // The alerts stay open on GitHub; this flow never dismisses one.
 
-import { activity, Agent, defineFlow, GitHub, Implement, type Json, printJson, renderPrompt, Repo, Run, RunLog, StepFailed, type WorkItem, Worktree } from '@chernabog/sdk';
+import { activity, Agent, defineFlow, GitHub, Implement, type Json, printJson, renderPrompt, Repo, reportAs, Run, RunLog, StepFailed, type WorkItem, Worktree } from '@chernabog/sdk';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
 import * as Rec from 'effect/Record';
@@ -105,6 +105,7 @@ const trigger = untriagedAlerts.pipe(
 
     return [{ key: 'security-alerts', title: `Triage ${alerts.length} security alert(s)`, data: { alerts: alerts.map((alert) => alert.key) } }];
   }),
+  reportAs('trigger'),
 );
 
 const Decision = Schema.Literals(['fix', 'person', 'dismiss']);

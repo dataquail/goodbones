@@ -11,7 +11,9 @@
 // run in flight resumes by, so renaming one restarts that step.
 
 import {
+  activity,
   defineFlow,
+  GitHub,
   PullRequest,
   Repo,
   reportAs,
@@ -21,6 +23,7 @@ import {
 } from "@chernabog/sdk";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 
 // Pull requests that ask this persona again after it reviewed them, one item
 // per request, unless a person has them (auto:needs-human): asking again
@@ -38,8 +41,32 @@ const trigger = Effect.gen(function* () {
   );
 }).pipe(reportAs("trigger"));
 
+const MergeState = Schema.Struct({ mergeable_state: Schema.String });
+
+// Whether GitHub says the pull request conflicts with its base. Recorded, so
+// a run that resumes takes the same path.
+const conflicts = (pullRequest: number) =>
+  activity(
+    `conflicts-pr-${pullRequest}`,
+    Effect.gen(function* () {
+      const repo = yield* Repo;
+      const pull = yield* (yield* GitHub).request(
+        "GET",
+        `/repos/${repo.slug}/pulls/${pullRequest}`,
+        Option.none(),
+      );
+
+      return Schema.decodeUnknownOption(MergeState)(pull).pipe(
+        Option.exists((state) => state.mergeable_state === "dirty"),
+      );
+    }),
+    Schema.Boolean,
+  );
+
 // Chernabog merges only pull requests on the automated path (auto:ship), and
-// only when that's safe; a person merges any other.
+// only when that's safe; a person merges any other. One refused because it
+// conflicts with its base is left to resolve-conflicts, which merges the base
+// in and asks for this review again.
 const mergeIfShipping = (pullRequest: number) =>
   Effect.gen(function* () {
     if (!(yield* PullRequest.shipping(pullRequest))) {
@@ -48,7 +75,13 @@ const mergeIfShipping = (pullRequest: number) =>
 
     return yield* PullRequest.merge(pullRequest, { method: "squash" }).pipe(
       Effect.catchTag("MergeRefused", (refused) =>
-        PullRequest.handToPerson(pullRequest, refused.message),
+        Effect.flatMap(conflicts(pullRequest), (conflicting) =>
+          conflicting
+            ? Effect.succeed(
+                `#${pullRequest} approved, but it conflicts with its base; resolve-conflicts takes it`,
+              )
+            : PullRequest.handToPerson(pullRequest, refused.message),
+        ),
       ),
     );
   });

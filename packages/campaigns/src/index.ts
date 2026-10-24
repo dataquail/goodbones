@@ -197,6 +197,7 @@ export {
   type CampaignsExtensionOptions,
   campaignsOf,
   ledgerKeyOf,
+  type LedgerRepositories,
 } from "./load/extension.js";
 export {
   END_STATE_ROOT,
@@ -220,6 +221,8 @@ export {
   type SectorTermSpec,
   type SyntaxTermSpec,
 } from "./manifest/spec.js";
+export { LedgerUnreadable } from "./modules/ledgers/domain/ledger/ledger.errors.js";
+export type { LedgerId } from "./modules/ledgers/domain/ledger/ledger.id.js";
 export {
   type Concession,
   EMPTY_LEDGER,
@@ -264,8 +267,13 @@ export {
   measureStandingOf,
   recordedOf,
 } from "./modules/ledgers/domain/measure-ledger/measure-ledger.root-ops.js";
+export { PlanUnreadable } from "./modules/ledgers/domain/plan/plan.errors.js";
 export type { PlanRecord } from "./modules/ledgers/domain/plan/plan.root.js";
 export { type PlanDiff, planDiffOf, planOf } from "./modules/ledgers/domain/plan/plan.root-ops.js";
+export type { ObjectiveLedgersRepository } from "./modules/ledgers/domain/ports/repositories/objective-ledgers.repository.js";
+export type { PlansRepository } from "./modules/ledgers/domain/ports/repositories/plans.repository.js";
+export type { SectorRecordsRepository } from "./modules/ledgers/domain/ports/repositories/sector-records.repository.js";
+export { SectorRecordUnreadable } from "./modules/ledgers/domain/sector-record/sector-record.errors.js";
 export {
   type Attestation,
   EMPTY_SECTOR_RECORD,

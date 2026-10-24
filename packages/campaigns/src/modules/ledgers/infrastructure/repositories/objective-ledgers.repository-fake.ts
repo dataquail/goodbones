@@ -15,11 +15,17 @@ const keyOf = ({ campaign, objective }: LedgerId): string =>
   objective === null ? campaign : `${campaign}/${objective}`;
 
 // In memory: a test states the ledgers there are, and reads back what was
-// saved. A ledger is stored under the objective it names.
+// saved. A ledger is stored under the objective it names; a ledger in the
+// family's first layout, which names its campaign as its objective, is
+// seeded under `firstLayout` and found by `{ campaign, objective: null }`.
 export const makeObjectiveLedgersRepositoryFake = (
   seed: ReadonlyArray<Ledger | MeasureLedger> = [],
+  firstLayout: ReadonlyArray<Ledger> = [],
 ): ObjectiveLedgersRepositoryFake => {
-  const stored = new Map(seed.map((one) => [keyOf(one), one] as const));
+  const stored = new Map<string, Ledger | MeasureLedger>([
+    ...seed.map((one) => [keyOf(one), one] as const),
+    ...firstLayout.map((one) => [keyOf({ campaign: one.campaign, objective: null }), one] as const),
+  ]);
 
   return {
     stored,

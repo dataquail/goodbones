@@ -1,6 +1,7 @@
 # 1. Use-cases behind ports in the CLI
 
-Status: accepted, 2026-10-23.
+Status: accepted, 2026-10-23. Decisions 1, 2 and 9 superseded by
+[ADR 2](0002-modules-of-use-cases-over-a-domain.md).
 
 ## Context
 

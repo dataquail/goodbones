@@ -7,8 +7,11 @@
 // another flow waiting on the pull request's CI, such as implement's, carries
 // on from there.
 //
-// A pull request labelled auto:needs-human is a person's and is left alone,
-// as is one that a run of another flow owns.
+// A pull request that was already approved goes back to its reviewer, whose
+// re-review merges it if it's on the automated path: review and re-review
+// leave an approved pull request that can't merge for a conflict to this flow
+// rather than to a person. A pull request labelled auto:needs-human is a
+// person's and is left alone, as is one that a run of another flow owns.
 
 import {
   activity,
@@ -23,10 +26,12 @@ import {
   reportAs,
   Review,
   Run,
+  Skip,
   StepFailed,
   type Json,
   type WorkItem,
 } from "@chernabog/sdk";
+import * as Arr from "effect/Array";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -141,6 +146,28 @@ const resolve = (conflict: ConflictItem, worktree: string, sessionId: string) =>
     Resolution,
   );
 
+// When the pull request's latest approval or request for changes is an
+// approval, asks its reviewer to review again.
+const askApproverAgain = (pullRequest: number) =>
+  activity(
+    "ask-approver-again",
+    Effect.gen(function* () {
+      const approval = Option.filter(
+        Arr.last(yield* Review.decisiveReviews(pullRequest)),
+        (review) => review.state === "APPROVED",
+      );
+
+      if (Option.isNone(approval)) {
+        return Option.none<string>();
+      }
+
+      yield* (yield* GitHub).requestReviewers(pullRequest, [approval.value.author]);
+
+      return Option.some(approval.value.author);
+    }),
+    Schema.Option(Schema.String),
+  );
+
 const unstick = (conflict: ConflictItem) =>
   Effect.gen(function* () {
     const run = yield* Run;
@@ -170,7 +197,16 @@ const unstick = (conflict: ConflictItem) =>
       { id: "resolve" },
     );
 
-    return `#${conflict.pullRequest}: merged ${conflict.baseRef} and resolved its conflicts`;
+    // An approval was of the code before the merge: its reviewer looks again,
+    // and re-review merges an auto:ship pull request it approves.
+    const approver = yield* askApproverAgain(conflict.pullRequest);
+
+    return Option.match(approver, {
+      onNone: () =>
+        `#${conflict.pullRequest}: merged ${conflict.baseRef} and resolved its conflicts`,
+      onSome: (login) =>
+        `#${conflict.pullRequest}: merged ${conflict.baseRef}, resolved its conflicts and asked ${login} to review again`,
+    });
   });
 
 const workflow = (item: WorkItem) =>
@@ -181,7 +217,7 @@ const workflow = (item: WorkItem) =>
 
     const toPerson = (reason: string) => PullRequest.handToPerson(conflict.pullRequest, reason);
 
-    // Anything that stops it hands the pull request to a person.
+    // Anything that stops it hands the pull request to a person, unless it closed meanwhile.
     return yield* unstick(conflict).pipe(
       Effect.catchTags({
         NeedsHuman: (needsHuman) => toPerson(needsHuman.reason),
@@ -190,6 +226,7 @@ const workflow = (item: WorkItem) =>
           toPerson(`the agent committed no merge on ${nothing.branch}`),
         PushRejected: (rejected) => toPerson(rejected.message),
         CiTimedOut: (timedOut) => toPerson(timedOut.message),
+        PullRequestClosed: (closed) => Effect.fail(new Skip({ reason: closed.message })),
       }),
     );
   });

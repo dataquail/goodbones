@@ -31,7 +31,7 @@ notes:
     `updateDependents` is `never` (see `RELEASE.md`), so pick each commit's type
     for what it does to that package's users.
   - Pull requests are squash-merged, so the pull request title becomes the
-    commit on main that release reads: give it the conventional type and scope
+    commit on main that release reads, so give it the conventional type and scope
     of what the change does to that package's users.
 
 # Default schedule for every flow, as cron. Unset spreads repos across the hour.

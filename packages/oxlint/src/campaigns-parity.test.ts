@@ -17,6 +17,11 @@ import {
   sectorEntryOf,
 } from "@goodbones/campaigns";
 import {
+  makeObjectiveLedgersRepositoryFake,
+  makePlansRepositoryFake,
+  makeSectorRecordsRepositoryFake,
+} from "@goodbones/campaigns/testing";
+import {
   EMPTY_BASELINE,
   EMPTY_GRAPH_RULES,
   EMPTY_STRUCTURE,
@@ -153,6 +158,11 @@ const policyWith = (ledgers: CampaignPolicy["ledgers"]): LoadedPolicy => ({
         sectorRecords: new Map(),
         plans: new Map(),
         ledgerDir: ".architecture-campaigns",
+        repositories: {
+          ledgers: makeObjectiveLedgersRepositoryFake(),
+          sectorRecords: makeSectorRecordsRepositoryFake(),
+          plans: makePlansRepositoryFake(),
+        },
         functions: new Map(),
         reports: NO_REPORTS,
       } satisfies CampaignPolicy,

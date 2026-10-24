@@ -75,6 +75,8 @@ children:
             - "@camp/ports/**"
             - "@camp/core/**"
             - "@camp/infrastructure/*-fake.ts"
+            # A sector's position is read off its record.
+            - "@camp/modules/ledgers/domain/sector-record/**"
 
       "manifest/":
         message: "manifest/ is this family's slice of the manifest: the codec that decodes `campaigns` and `ledger`, and the lowering that resolves their globs with the same primitives the core's own lowering uses."
@@ -85,13 +87,13 @@ children:
           allow: ["@core/index.ts", "@camp/domain/**", "@camp/manifest/**"]
 
       "load/":
-        message: "load/ is the extension a host composes into `loadPolicy`: decode this family's keys, lower them, compile and probe every rule, and read the ledgers through the file system port."
+        message: "load/ is the extension a host composes into `loadPolicy`: decode this family's keys, lower them, compile and probe every rule, and read the ledgers through their repositories — which it builds over the host's file system port, as the family's composition point."
         layout: open
         children: {}
         members:
           - use: no-file-system-calls
         imports:
-          message: "load/ composes this family's pure tiers. It reaches the core's barrel, the domain, the ports, the core and the manifest compiler; a live adapter reaches it only as an argument."
+          message: "load/ composes this family's pure tiers. It reaches the core's barrel, the domain, the ports, the core and the manifest compiler, and the ledgers' domain and live repositories, which it builds; any other live adapter reaches it only as an argument."
           allow:
             - "@core/index.ts"
             - "@core/testing.ts"
@@ -99,6 +101,9 @@ children:
             - "@camp/core/**"
             - "@camp/manifest/**"
             - "@camp/load/**"
+            - "@camp/modules/ledgers/domain/**"
+            - "@camp/modules/ledgers/infrastructure/repositories/*-live.ts"
+            - "@camp/modules/ledgers/infrastructure/repositories/ledger.mapper.ts"
 
       "infrastructure/":
         message: "infrastructure/ holds the fake for this family's report source, and the two things it does on this host: importing the `fn` terms' modules, and running a `report` term's command."
@@ -121,6 +126,93 @@ children:
             - "@camp/manifest/**"
             - "@camp/load/**"
             - "@camp/host/**"
+            # The ledgers' rules, and — for the nudge, which reads HEAD's
+            # ledgers through git rather than the file system — their codec.
+            - "@camp/modules/ledgers/domain/**"
+            - "@camp/modules/ledgers/infrastructure/repositories/*.mapper.ts"
+
+      # The shape this package is moving to (docs/adr/0002-modules-of-use-cases-over-a-domain.md):
+      # one folder per module — the aggregates goodbones owns and writes, the
+      # ports its verbs load and save them through, and the adapters behind
+      # those ports. The tiers beside this one empty into modules as they move.
+      "modules/{module}/":
+        message: "A module admits domain/ (its aggregates and the ports over them) and infrastructure/ (the adapters behind those ports)."
+        name: kebab-case
+        children:
+          "domain/":
+            message: "domain/ is a container: one folder per aggregate, named for it, and ports/ for the repositories the verbs load and save through. No files live directly in domain/."
+            members:
+              - use: no-talking
+              - use: no-file-system-calls
+            children:
+              "ports/":
+                message: "domain/ports/ is a container: repositories/, the module's own stores."
+                children:
+                  "repositories/":
+                    imports:
+                      reset: true
+                      message: "A repository port is a declaration over its module's aggregates: it names them and effect, and nothing else."
+                      external: [effect]
+                      allow: ["@camp/modules/{module}/domain/**"]
+                    children:
+                      "*.repository.ts":
+                        message: "A repository port needs its live adapter, its fake and the live adapter's test in ../../../infrastructure/repositories/."
+                        surface: [{ use: port-declares-no-value }]
+                        members: [{ use: repository-vocabulary }]
+                        requires:
+                          - "../../../infrastructure/repositories/{base}-live.ts"
+                          - "../../../infrastructure/repositories/{base}-fake.ts"
+                          - "../../../infrastructure/repositories/{base}-live.test.ts"
+
+              # One folder per aggregate. ports/ above is matched first, so
+              # this catch-all is only ever an aggregate.
+              "{aggregate}/":
+                message: "An aggregate's folder admits its root (*.root.ts), its operations (*.root-ops.ts, pure functions), its id (*.id.ts), its value objects (*.value-object.ts) and its errors (*.errors.ts). A free-standing helper is an op that hasn't found its root."
+                imports:
+                  reset: true
+                  message: "An aggregate sees itself, the core's barrel and effect. It does not reach another aggregate or the ports: composing aggregates is a use-case's job. Until this package has a kernel, it may also name the old pure tiers (domain/, core/) for the primitives that still live there."
+                  external: [effect]
+                  allow:
+                    - "@camp/modules/{module}/domain/{aggregate}/**"
+                    - "@core/index.ts"
+                    - "@camp/domain/**"
+                    - "@camp/core/**"
+                children:
+                  # The folder is the aggregate, so its files carry its name.
+                  "*.root.ts": { name: { like: "{aggregate}" } }
+                  "*.root-ops.ts":
+                    name: { like: "{aggregate}" }
+                    message: "An aggregate's operations own its invariants, so they carry the test obligation: add the sibling *.root-ops.test.ts."
+                    requires: ["{base}.test.ts"]
+                  "*.id.ts": { name: { like: "{aggregate}" } }
+                  "*.errors.ts": { name: { like: "{aggregate}" } }
+                  "*.root-ops.test.ts":
+                    imports:
+                      message: "An aggregate's test names its subject, the old pure tiers it builds fixtures from, effect and the test framework."
+                      external: [vitest]
+
+          "infrastructure/":
+            message: "infrastructure/ is a container mirroring domain/ports/: repositories/. No files live directly in infrastructure/."
+            children:
+              "repositories/":
+                imports:
+                  reset: true
+                  message: "A repository adapts its module's aggregates to their storage — JSON under the ledger directory, read through the core's file system port. It names its module's domain, its sibling adapters, the core's barrel, the file system and effect; until this package has a kernel, the old core/ tier for the reserved sector names."
+                  external: [effect]
+                  allow:
+                    - "node:**"
+                    - "@core/index.ts"
+                    - "@camp/modules/{module}/domain/**"
+                    - "@camp/modules/{module}/infrastructure/**"
+                    - "@camp/core/sectors.ts"
+                children:
+                  "*.repository-live.ts": {}
+                  "*.repository-fake.ts": {}
+                  "*.mapper.ts": {}
+                  "*.repository-live.test.ts":
+                    imports:
+                      message: "A live repository's test drives it over a scratch directory: it names its module, the core's barrel, node, effect and the test framework."
+                      external: [vitest]
 
       # The two barrels: the public surface, and the fake.
       "*.ts":

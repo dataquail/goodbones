@@ -58,74 +58,6 @@ export {
   valueOfParts,
 } from "./core/campaigns.js";
 export {
-  allowedOf,
-  type Attestation,
-  attestedRecord,
-  clearedMeasure,
-  clearedOf,
-  clearedSector,
-  closedOf,
-  concededMeasure,
-  concededSector,
-  type Concession,
-  type ConcessionRecord,
-  decodeLedger,
-  decodeMeasureLedger,
-  decodePlanRecord,
-  decodeSectorRecord,
-  deltaOf,
-  EMPTY_LEDGER,
-  EMPTY_MEASURE_LEDGER,
-  EMPTY_SECTOR_RECORD,
-  encodeSectorName,
-  holdoutsOf,
-  initialOf,
-  isComplete,
-  isLegacyLedger,
-  isMeasureLedger,
-  isStalled,
-  lastClearedOf,
-  lastImprovedOf,
-  type Ledger,
-  ledgerArithmeticHolds,
-  ledgerPathOf,
-  Ledger as LedgerSchema,
-  legacyLedgerPathOf,
-  measureArithmeticHolds,
-  type MeasureConcession,
-  type MeasureLedger,
-  measureLedgerArithmeticHolds,
-  MeasureLedger as MeasureLedgerSchema,
-  measureProgressOf,
-  type MeasureSectorLedger,
-  measureStandingOf,
-  type Note,
-  NOTE_CAP,
-  NOTE_LENGTH,
-  notedRecord,
-  type PlanDiff,
-  planDiffOf,
-  planOf,
-  planPathOf,
-  type PlanRecord,
-  positionOf,
-  progressOf,
-  reachedRecord,
-  rebaselinedSector,
-  reconcileSector,
-  type Reconciliation,
-  recordedOf,
-  sectorArithmeticHolds,
-  sectorClockOf,
-  type SectorLedger,
-  type SectorRecord,
-  sectorRecordPathOf,
-  serializeLedger,
-  serializeMeasureLedger,
-  serializePlanRecord,
-  serializeSectorRecord,
-} from "./core/ledger.js";
-export {
   compareResidue,
   derivePhase,
   type Direction,
@@ -265,6 +197,7 @@ export {
   type CampaignsExtensionOptions,
   campaignsOf,
   ledgerKeyOf,
+  type LedgerRepositories,
 } from "./load/extension.js";
 export {
   END_STATE_ROOT,
@@ -288,6 +221,95 @@ export {
   type SectorTermSpec,
   type SyntaxTermSpec,
 } from "./manifest/spec.js";
+export { LedgerUnreadable } from "./modules/ledgers/domain/ledger/ledger.errors.js";
+export type { LedgerId } from "./modules/ledgers/domain/ledger/ledger.id.js";
+export {
+  type Concession,
+  EMPTY_LEDGER,
+  type Ledger,
+  Ledger as LedgerSchema,
+  type SectorLedger,
+} from "./modules/ledgers/domain/ledger/ledger.root.js";
+export {
+  allowedOf,
+  clearedOf,
+  clearedSector,
+  closedOf,
+  concededSector,
+  type ConcessionRecord,
+  deltaOf,
+  holdoutsOf,
+  initialOf,
+  isComplete,
+  isStalled,
+  lastClearedOf,
+  ledgerArithmeticHolds,
+  progressOf,
+  rebaselinedSector,
+  reconcileSector,
+  type Reconciliation,
+  sectorArithmeticHolds,
+} from "./modules/ledgers/domain/ledger/ledger.root-ops.js";
+export {
+  EMPTY_MEASURE_LEDGER,
+  type MeasureConcession,
+  type MeasureLedger,
+  MeasureLedger as MeasureLedgerSchema,
+  type MeasureSectorLedger,
+} from "./modules/ledgers/domain/measure-ledger/measure-ledger.root.js";
+export {
+  clearedMeasure,
+  concededMeasure,
+  lastImprovedOf,
+  measureArithmeticHolds,
+  measureLedgerArithmeticHolds,
+  measureProgressOf,
+  measureStandingOf,
+  recordedOf,
+} from "./modules/ledgers/domain/measure-ledger/measure-ledger.root-ops.js";
+export { PlanUnreadable } from "./modules/ledgers/domain/plan/plan.errors.js";
+export type { PlanRecord } from "./modules/ledgers/domain/plan/plan.root.js";
+export { type PlanDiff, planDiffOf, planOf } from "./modules/ledgers/domain/plan/plan.root-ops.js";
+export type { ObjectiveLedgersRepository } from "./modules/ledgers/domain/ports/repositories/objective-ledgers.repository.js";
+export type { PlansRepository } from "./modules/ledgers/domain/ports/repositories/plans.repository.js";
+export type { SectorRecordsRepository } from "./modules/ledgers/domain/ports/repositories/sector-records.repository.js";
+export { SectorRecordUnreadable } from "./modules/ledgers/domain/sector-record/sector-record.errors.js";
+export {
+  type Attestation,
+  EMPTY_SECTOR_RECORD,
+  type Note,
+  type SectorRecord,
+} from "./modules/ledgers/domain/sector-record/sector-record.root.js";
+export {
+  attestedRecord,
+  NOTE_CAP,
+  NOTE_LENGTH,
+  notedRecord,
+  positionOf,
+  reachedRecord,
+  sectorClockOf,
+} from "./modules/ledgers/domain/sector-record/sector-record.root-ops.js";
+export {
+  decodeLedger,
+  decodeMeasureLedger,
+  isLegacyLedger,
+  isMeasureLedger,
+  ledgerPathOf,
+  legacyLedgerPathOf,
+  serializeLedger,
+  serializeMeasureLedger,
+} from "./modules/ledgers/infrastructure/repositories/ledger.mapper.js";
+export {
+  decodePlanRecord,
+  planPathOf,
+  serializePlanRecord,
+} from "./modules/ledgers/infrastructure/repositories/plan.mapper.js";
+export {
+  decodeSectorRecord,
+  encodeSectorName,
+  sectorRecordPathOf,
+  serializeSectorRecord,
+} from "./modules/ledgers/infrastructure/repositories/sector-record.mapper.js";
 export { type CampaignMeasure } from "./ports/campaign-measure.js";
 export {
   type CampaignPredicate,

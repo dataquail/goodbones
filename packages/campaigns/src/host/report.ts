@@ -6,22 +6,24 @@ import {
   type ObjectiveHit,
 } from "../core/campaign-state.js";
 import type { CompiledCampaign, CompiledObjective } from "../core/campaigns.js";
-import {
-  isComplete,
-  isStalled,
-  lastImprovedOf,
-  ledgerArithmeticHolds,
-  type MeasureLedger,
-  measureLedgerArithmeticHolds,
-  measureStandingOf,
-  planDiffOf,
-  reconcileSector,
-  sectorArithmeticHolds,
-  sectorClockOf,
-} from "../core/ledger.js";
 import { isBehind, ledgeredFor, type Residue as ResidueVector } from "../core/phases.js";
 import { isShared } from "../core/sectors.js";
 import { campaignsOf } from "../load/extension.js";
+import {
+  isComplete,
+  isStalled,
+  ledgerArithmeticHolds,
+  reconcileSector,
+  sectorArithmeticHolds,
+} from "../modules/ledgers/domain/ledger/ledger.root-ops.js";
+import type { MeasureLedger } from "../modules/ledgers/domain/measure-ledger/measure-ledger.root.js";
+import {
+  lastImprovedOf,
+  measureLedgerArithmeticHolds,
+  measureStandingOf,
+} from "../modules/ledgers/domain/measure-ledger/measure-ledger.root-ops.js";
+import { planDiffOf } from "../modules/ledgers/domain/plan/plan.root-ops.js";
+import { sectorClockOf } from "../modules/ledgers/domain/sector-record/sector-record.root-ops.js";
 import { growsFor } from "./ledger-phase.js";
 import {
   count,

@@ -17,11 +17,14 @@ imports:
     - "@ts/index.ts"
     - "@ag/index.ts"
     - "@camp/index.ts"
+    # The campaigns family's fakes: a test that builds a campaign policy by
+    # hand hands it the ledgers' repositories.
+    - "@camp/testing.ts"
     - "@ox/**"
   # The campaigns family and the syntax matcher are optional peers: a user who
   # never runs a campaign installs neither, and the plugin must still load.
   deny:
-    - match: "@camp/index.ts"
+    - match: ["@camp/index.ts", "@camp/testing.ts"]
       except: ["@ox/campaigns/**", "**/*.test.ts"]
       message: "@goodbones/campaigns is an optional peer. Only src/campaigns/ names it, and the composition root reaches that folder through importOptional, so a repository without the package lints with every other rule."
     - match: "@ag/index.ts"

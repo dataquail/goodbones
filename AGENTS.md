@@ -17,7 +17,8 @@ all under `packages/`:
   not own: a refactor as objectives with ledgers, over sectors, through phases. It is laid out as
   the core is — `domain/`, its own two `ports/` (`CampaignPredicate`, `ReportSource`), the pure
   `core/` evaluators, the `manifest/` slice it decodes and lowers, the `load/` extension a host
-  composes, `infrastructure/`, and the `host/` glue the CLI drives. It depends on the core and on
+  composes, `infrastructure/`, and the `host/` glue the CLI drives — and is moving into
+  `modules/` (see "Architecture" below), starting with `modules/ledgers/`. It depends on the core and on
   nothing else in the repository.
 - **`@goodbones/typescript`** (`packages/typescript`) — the TypeScript language pack: facts read
   through oxc-parser, specifiers resolved through `unrs-resolver`, behind the core's
@@ -372,6 +373,49 @@ reaches the JSON Schema only if it carries the `u` flag.
   package; a second library gets its own directory and its own sidebar group rather than being folded
   into this one.
 
+## Architecture
+
+`core`, `campaigns` and the CLI are moving to modules of use-cases over a domain, with the
+file system and other programs behind ports, as
+[ADR 2](docs/adr/0002-modules-of-use-cases-over-a-domain.md) decides (it supersedes ADR 1's scope
+and layout). The shape is chernabog's, with ports kept as plain types passed as arguments. Each
+package's `architecture.yaml` polices a tier from its first file.
+
+- **Who owns the data decides its model.** State goodbones owns and writes (the campaign ledgers,
+  sector records and plans; the baseline; the manifest) is an aggregate behind a repository.
+  What it only reads (the user's source, git, a `report` term's output, a `fn` module) comes in
+  through a client port as value objects. Derived things (compiled rules, violations, sectors,
+  phases) are value objects, and a pure rule that belongs to no entity is a domain service.
+- **The layout.** `src/modules/<module>/` holds `domain/<aggregate>/` (`x.root.ts`, the codec;
+  `x.root-ops.ts`, pure operations in an `XRootOps` bag; `.id.ts`, `.errors.ts`,
+  `.value-object.ts`), `domain/ports/{repositories,clients}/` (a plain `type`, no values),
+  `use-cases/` (one `<verbNoun>UseCase` per `<verb-noun>.use-case.ts`, which never prints, never
+  sets an exit code and never imports another use-case) and `infrastructure/{repositories,clients}/`
+  (`-live.ts`, `-fake.ts`, `-live.test.ts`, `.mapper.ts`). Primitives several modules share go in
+  `src/kernel/`, client ports several share in `src/ports/`. Filenames are dot-delimited
+  stereotypes, kebab-case in front.
+- **What reaches what.** An aggregate names itself, the core's barrel and effect, never another
+  aggregate; until a package has a kernel it may also name that package's old pure tiers. A
+  repository port speaks `findAll`, `findOne`, `save` and `remove` only: a finder that answers a
+  question is an op. Nothing under a `domain/` prints, exits or touches the file system, and
+  `campaigns-domain-reaches-no-adapter` holds that through any number of hops.
+- **Obligations.** A `.root-ops.ts` owes a sibling `.test.ts`; a repository port owes its
+  `-live.ts`, `-fake.ts` and `-live.test.ts`. The lint names what is missing.
+- **The ledgers are the first module** (`packages/campaigns/src/modules/ledgers/`): `Ledger`,
+  `MeasureLedger`, `SectorRecord` and `PlanRecord`, behind `ObjectiveLedgersRepository` (both
+  ledger kinds share a path, and the first layout is `objective: null`),
+  `SectorRecordsRepository` and `PlansRepository`. The live repositories read through the core's
+  `FileSystem` port, so the plugin and the browser read ledgers as they read any file, and write
+  with `node:fs`; the mappers own the bytes on disk. The extension's `load` builds them as the
+  family's composition point inside `loadPolicy` and carries them on `CampaignPolicy.repositories`,
+  which is what every verb saves through. The nudge still reads HEAD's ledgers through git with
+  the mappers' codec, until a git client takes that over. The fakes are exported from
+  `@goodbones/campaigns/testing`.
+- **What is left**, one layer per pull request, in the order ADR 2 gives: `campaigns/host/` into
+  use-cases and a presentation tier; the manifest aggregate; the baseline aggregate; one CLI
+  use-case per verb over client ports; the core's `kernel/` and policy module; optionally one core
+  module per rule family.
+
 ## Architecture notes
 
 `@goodbones/core` is laid out hexagonally, and the layering is the thing to preserve:
@@ -379,7 +423,7 @@ reaches the JSON Schema only if it carries the `u` flag.
 - `src/domain/` — the manifest schema, the error types, the `Violation` and its line-independent
   fingerprint. No I/O.
 - `src/core/` — the pure evaluators (`imports`, `exports`, `members`, `surface`, `structure`, `graph`,
-  `campaigns`, `sectors`, `phases`, `campaign-state`, `coverage`, `baseline`, `ledger`, `patterns`).
+  `coverage`, `baseline`, `bound`, `slack`, `patterns`).
   Given facts, they return violations; they never read a file.
 - `src/manifest/` — compiling the manifest tree down to flat, resolved rules (`lowerManifest`).
 - `src/load/` — `loadPolicy`: decode, lower, compile and probe a manifest the host has already
@@ -394,7 +438,8 @@ reaches the JSON Schema only if it carries the `u` flag.
 
 `@goodbones/campaigns` repeats that shape for a family the core does not own — `domain/`,
 `ports/`, `core/`, `manifest/`, `load/`, `infrastructure/`, and a `host/` tier above them for the
-glue that runs git and writes ledgers. Two graph rules in the root policy pin it:
+glue that runs git and saves ledgers through their repositories — with `modules/ledgers/` the
+first of the modules it is moving into. Two graph rules in the root policy pin it:
 `campaigns-reaches-only-the-core` (it reaches the core and no peer, so a second such family is a
 second package) and `campaigns-pure-tiers-reach-no-adapter`. Two couplings are kept on purpose:
 `Violation.kind` still carries `"campaign"`, and `domain/snapshot.ts` still declares the
@@ -433,7 +478,8 @@ Two properties are load-bearing and pinned by tests:
 ### @goodbones/cli
 
 The CLI is moving from verbs inline in `packages/cli/src/run.ts` to use-cases behind ports, as
-[ADR 1](docs/adr/0001-use-cases-behind-ports-in-the-cli.md) decides. Its target tiers are
+[ADR 1](docs/adr/0001-use-cases-behind-ports-in-the-cli.md) decided; ADR 2 widens that to modules
+(above), and these tiers become the CLI's modules in its layer. Its target tiers are
 `domain/` (pure types and functions, no I/O), `ports/` (plain `type`s passed as arguments, as the
 core's are), `infrastructure/` (one `*-live.ts` and one `*-fake.ts` per port), `use-cases/` (one
 `<verbNoun>UseCase` per `<verb-noun>.use-case.ts`, which never prints and never imports another

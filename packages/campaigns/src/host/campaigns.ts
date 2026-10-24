@@ -33,20 +33,19 @@ import {
   measureDetectorsOf,
   needsSyntax,
 } from "../core/campaigns.js";
-import {
-  attestedRecord,
-  EMPTY_SECTOR_RECORD,
-  ledgerPathOf,
-  notedRecord,
-  sectorRecordPathOf,
-  serializeSectorRecord,
-} from "../core/ledger.js";
 import { type Sector } from "../core/sectors.js";
 import type { PhaseRule } from "../domain/config.js";
 import { campaignsOf, ledgerKeyOf } from "../load/extension.js";
 import { lowerEndState } from "../manifest/lower.js";
+import { EMPTY_SECTOR_RECORD } from "../modules/ledgers/domain/sector-record/sector-record.root.js";
+import {
+  attestedRecord,
+  notedRecord,
+} from "../modules/ledgers/domain/sector-record/sector-record.root-ops.js";
+import { ledgerPathOf } from "../modules/ledgers/infrastructure/repositories/ledger.mapper.js";
+import { sectorRecordPathOf } from "../modules/ledgers/infrastructure/repositories/sector-record.mapper.js";
 import { type Commit, commitsTouching, gitEnv, readDiff, textAt } from "./diff.js";
-import { count, phaseIdOf, recordOf, writeJson } from "./ledgers.js";
+import { count, phaseIdOf, recordOf } from "./ledgers.js";
 import { commandValues } from "./measure-command.js";
 
 // The campaigns family, as the CLI runs it: every campaign evaluated over
@@ -366,11 +365,7 @@ export const attest = (
     by: entry.by,
   });
 
-  writeJson(
-    policy.repoRoot,
-    sectorRecordPathOf(campaignsOf(policy).ledgerDir, rule.id, sector),
-    serializeSectorRecord(after),
-  );
+  campaignsOf(policy).repositories.sectorRecords.save(after);
 
   return Result.succeed(sectorRecordPathOf(campaignsOf(policy).ledgerDir, rule.id, sector));
 };
@@ -400,7 +395,7 @@ export const note = (
 
   if (Result.isFailure(after)) return Result.fail(after.failure);
   const at = sectorRecordPathOf(campaignsOf(policy).ledgerDir, rule.id, sector);
-  writeJson(policy.repoRoot, at, serializeSectorRecord(after.success));
+  campaignsOf(policy).repositories.sectorRecords.save(after.success);
 
   return Result.succeed(at);
 };

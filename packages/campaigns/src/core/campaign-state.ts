@@ -1,6 +1,8 @@
 import type { Violation } from "@goodbones/core";
 
 import type { PhaseRule } from "../domain/config.js";
+import type { SectorRecord } from "../modules/ledgers/domain/sector-record/sector-record.root.js";
+import { positionOf } from "../modules/ledgers/domain/sector-record/sector-record.root-ops.js";
 import {
   addParts,
   type CampaignHit,
@@ -18,8 +20,6 @@ import {
   valueOfParts,
   ZERO_PARTS,
 } from "./campaigns.js";
-import type { SectorRecord } from "./ledger.js";
-import { positionOf } from "./ledger.js";
 import {
   derivePhase,
   donePhaseOf,

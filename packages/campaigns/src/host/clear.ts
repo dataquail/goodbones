@@ -1,40 +1,32 @@
-import { rmSync } from "node:fs";
-import * as path from "node:path";
-
 import type { LoadedPolicy } from "@goodbones/core";
 
 import { type CampaignEvaluation, hitsInWindow } from "../core/campaign-state.js";
 import type { CompiledObjective } from "../core/campaigns.js";
-import {
-  clearedMeasure,
-  clearedSector,
-  concededMeasure,
-  EMPTY_LEDGER,
-  EMPTY_MEASURE_LEDGER,
-  EMPTY_SECTOR_RECORD,
-  type Ledger,
-  ledgerPathOf,
-  measureStandingOf,
-  planDiffOf,
-  planOf,
-  planPathOf,
-  positionOf,
-  reachedRecord,
-  rebaselinedSector,
-  reconcileSector,
-  recordedOf,
-  sectorRecordPathOf,
-  serializeLedger,
-  serializeMeasureLedger,
-  serializePlanRecord,
-  serializeSectorRecord,
-} from "../core/ledger.js";
 import { isBehind, isDefinedPhase, ledgeredFor } from "../core/phases.js";
 import { isShared, LEGACY_SECTOR } from "../core/sectors.js";
 import type { PhaseRule } from "../domain/config.js";
 import { campaignsOf } from "../load/extension.js";
+import { EMPTY_LEDGER, type Ledger } from "../modules/ledgers/domain/ledger/ledger.root.js";
+import {
+  clearedSector,
+  rebaselinedSector,
+  reconcileSector,
+} from "../modules/ledgers/domain/ledger/ledger.root-ops.js";
+import { EMPTY_MEASURE_LEDGER } from "../modules/ledgers/domain/measure-ledger/measure-ledger.root.js";
+import {
+  clearedMeasure,
+  concededMeasure,
+  measureStandingOf,
+  recordedOf,
+} from "../modules/ledgers/domain/measure-ledger/measure-ledger.root-ops.js";
+import { planDiffOf, planOf } from "../modules/ledgers/domain/plan/plan.root-ops.js";
+import { EMPTY_SECTOR_RECORD } from "../modules/ledgers/domain/sector-record/sector-record.root.js";
+import {
+  positionOf,
+  reachedRecord,
+} from "../modules/ledgers/domain/sector-record/sector-record.root-ops.js";
 import { growsFor, ledgerPhaseOf } from "./ledger-phase.js";
-import { entriesOf, ledgerOf, measureLedgerOf, recordOf, writeJson } from "./ledgers.js";
+import { entriesOf, ledgerOf, measureLedgerOf, recordOf } from "./ledgers.js";
 
 // `objectives clear`: the ledgers reconciled with the code wherever that is
 // not a regression, the furthest phase each sector has reached, and the plan.
@@ -179,11 +171,7 @@ const clearMeasure = (
   }
 
   if (ledger !== before || existing === undefined) {
-    writeJson(
-      policy.repoRoot,
-      ledgerPathOf(campaignsOf(policy).ledgerDir, rule.id, objective.id),
-      serializeMeasureLedger(ledger),
-    );
+    campaignsOf(policy).repositories.ledgers.save(ledger);
   }
 
   return {
@@ -296,11 +284,7 @@ export const clear = (
     });
 
     if (ledger !== before || ledgerOf(policy, rule, objective) === undefined) {
-      writeJson(
-        policy.repoRoot,
-        ledgerPathOf(campaignsOf(policy).ledgerDir, rule.id, objective.id),
-        serializeLedger(ledger),
-      );
+      campaignsOf(policy).repositories.ledgers.save(ledger);
     }
   }
 
@@ -312,22 +296,15 @@ export const clear = (
       const after = reachedRecord(before, rule, state.phase, policy.now);
 
       if (after !== before || recordOf(policy, rule, name) === undefined) {
-        writeJson(
-          policy.repoRoot,
-          sectorRecordPathOf(campaignsOf(policy).ledgerDir, rule.id, name),
-          serializeSectorRecord(after),
-        );
+        campaignsOf(policy).repositories.sectorRecords.save(after);
       }
     }
 
-    writeJson(
-      policy.repoRoot,
-      planPathOf(campaignsOf(policy).ledgerDir, rule.id),
-      serializePlanRecord(planOf(rule)),
-    );
-    const legacy = campaignsOf(policy).legacyLedgers.get(rule.id);
+    campaignsOf(policy).repositories.plans.save(planOf(rule));
 
-    if (legacy !== undefined) rmSync(path.resolve(policy.repoRoot, legacy), { force: true });
+    if (campaignsOf(policy).legacyLedgers.has(rule.id)) {
+      campaignsOf(policy).repositories.ledgers.remove({ campaign: rule.id, objective: null });
+    }
   }
 
   return outcomes;

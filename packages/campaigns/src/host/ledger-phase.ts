@@ -1,10 +1,13 @@
 import type { LoadedPolicy } from "@goodbones/core";
 
 import { type CompiledCampaign, distanceToTarget } from "../core/campaigns.js";
-import { type Ledger, type MeasureLedger, positionOf, type SectorRecord } from "../core/ledger.js";
 import { derivePhase, donePhaseOf, growsAt, LEGACY_PHASE, windowOf } from "../core/phases.js";
 import { isShared, LEGACY_SECTOR, SHARED_SECTOR } from "../core/sectors.js";
 import { campaignsOf, ledgerKeyOf } from "../load/extension.js";
+import type { Ledger } from "../modules/ledgers/domain/ledger/ledger.root.js";
+import type { MeasureLedger } from "../modules/ledgers/domain/measure-ledger/measure-ledger.root.js";
+import type { SectorRecord } from "../modules/ledgers/domain/sector-record/sector-record.root.js";
+import { positionOf } from "../modules/ledgers/domain/sector-record/sector-record.root-ops.js";
 
 // The phase the ledgers place a sector at: derived from what the last
 // `clear` wrote — each objective's holdouts for it, a scalar's record, its

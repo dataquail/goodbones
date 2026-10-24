@@ -1,9 +1,9 @@
 import type { LoadedPolicy } from "@goodbones/core";
 
 import { type CampaignEvaluation, hitsInWindow, towardNextOf } from "../core/campaign-state.js";
-import { positionOf } from "../core/ledger.js";
 import { isOpenPhase, type Residue as ResidueVector } from "../core/phases.js";
 import { SECTOR_HOLDOUT } from "../core/sectors.js";
+import { positionOf } from "../modules/ledgers/domain/sector-record/sector-record.root-ops.js";
 import { count, describeValue, measureLedgerOf, phaseIdOf, recordOf } from "./ledgers.js";
 
 // `campaigns status --sector <name>`: where one sector stands and what holds

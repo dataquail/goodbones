@@ -3,21 +3,18 @@ import * as Result from "effect/Result";
 
 import { type CampaignEvaluation, hitsInWindow } from "../core/campaign-state.js";
 import type { CompiledCampaign, CompiledObjective } from "../core/campaigns.js";
+import { campaignsOf } from "../load/extension.js";
+import {
+  concededSector,
+  reconcileSector,
+} from "../modules/ledgers/domain/ledger/ledger.root-ops.js";
 import {
   concededMeasure,
-  concededSector,
-  ledgerPathOf,
   measureStandingOf,
-  reconcileSector,
-  revokedRecord,
-  sectorRecordPathOf,
-  serializeLedger,
-  serializeMeasureLedger,
-  serializeSectorRecord,
-} from "../core/ledger.js";
-import { campaignsOf } from "../load/extension.js";
+} from "../modules/ledgers/domain/measure-ledger/measure-ledger.root-ops.js";
+import { revokedRecord } from "../modules/ledgers/domain/sector-record/sector-record.root-ops.js";
 import { type LedgerOverrides, ledgerPhaseOf } from "./ledger-phase.js";
-import { entriesOf, ledgerOf, measureLedgerOf, phaseIdOf, recordOf, writeJson } from "./ledgers.js";
+import { entriesOf, ledgerOf, measureLedgerOf, phaseIdOf, recordOf } from "./ledgers.js";
 
 // `concede`: the one way growth enters a ledger, with a reason and an
 // author. A concession can send a sector back a phase — its holdouts are
@@ -65,10 +62,8 @@ export const sendBack = (
     );
 
     if (revoked.length > 0) {
-      writeJson(
-        policy.repoRoot,
-        sectorRecordPathOf(campaignsOf(policy).ledgerDir, rule.id, sector),
-        serializeSectorRecord(revokedRecord(record, revoked, revocation)),
+      campaignsOf(policy).repositories.sectorRecords.save(
+        revokedRecord(record, revoked, revocation),
       );
     }
 
@@ -167,11 +162,7 @@ export const concede = (
   for (const [name, entries] of bySector) ledger = concededSector(ledger, name, entries, record);
 
   if (wanted.length > 0) {
-    writeJson(
-      policy.repoRoot,
-      ledgerPathOf(campaignsOf(policy).ledgerDir, rule.id, objective.id),
-      serializeLedger(ledger),
-    );
+    campaignsOf(policy).repositories.ledgers.save(ledger);
   }
 
   return Result.succeed({
@@ -233,11 +224,7 @@ export const concedeMeasure = (
   }
 
   if (conceded.length > 0) {
-    writeJson(
-      policy.repoRoot,
-      ledgerPathOf(campaignsOf(policy).ledgerDir, rule.id, objective.id),
-      serializeMeasureLedger(ledger),
-    );
+    campaignsOf(policy).repositories.ledgers.save(ledger);
   }
 
   return Result.succeed({

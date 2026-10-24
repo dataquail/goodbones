@@ -5,9 +5,13 @@ import { describe, expect, it } from "vitest";
 
 import type { CampaignRule, ObjectiveRule } from "../domain/config.js";
 import { makeReportSourceFake } from "../infrastructure/report-source-fake.js";
+import {
+  EMPTY_SECTOR_RECORD,
+  type SectorRecord,
+} from "../modules/ledgers/domain/sector-record/sector-record.root.js";
+import { reachedRecord } from "../modules/ledgers/domain/sector-record/sector-record.root-ops.js";
 import { evaluateCampaign, hitsInWindow, towardNextOf } from "./campaign-state.js";
 import { type CampaignInput, compileCampaignRule, type CompiledCampaign } from "./campaigns.js";
-import { EMPTY_SECTOR_RECORD, reachedRecord, type SectorRecord } from "./ledger.js";
 import { LEGACY_SECTOR } from "./sectors.js";
 
 // The manifest's glob translation is the manifest tier's; a core test

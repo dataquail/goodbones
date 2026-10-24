@@ -7,20 +7,6 @@ import * as Result from "effect/Result";
 import { type CampaignEvaluation, hitsInWindow, towardNextOf } from "../core/campaign-state.js";
 import { type CompiledCampaign, distanceToTarget } from "../core/campaigns.js";
 import {
-  concededSector,
-  decodeLedger,
-  decodeMeasureLedger,
-  decodeSectorRecord,
-  type Ledger,
-  ledgerPathOf,
-  type MeasureLedger,
-  reconcileEntries,
-  reconcileSector,
-  type SectorRecord,
-  sectorRecordPathOf,
-  serializeLedger,
-} from "../core/ledger.js";
-import {
   type Direction,
   directionOf,
   growsAt,
@@ -42,6 +28,23 @@ import {
 } from "../core/sectors.js";
 import type { OnAhead, OnTouch } from "../domain/config.js";
 import { campaignsOf } from "../load/extension.js";
+import type { Ledger } from "../modules/ledgers/domain/ledger/ledger.root.js";
+import {
+  concededSector,
+  reconcileEntries,
+  reconcileSector,
+} from "../modules/ledgers/domain/ledger/ledger.root-ops.js";
+import type { MeasureLedger } from "../modules/ledgers/domain/measure-ledger/measure-ledger.root.js";
+import type { SectorRecord } from "../modules/ledgers/domain/sector-record/sector-record.root.js";
+import {
+  decodeLedger,
+  decodeMeasureLedger,
+  ledgerPathOf,
+} from "../modules/ledgers/infrastructure/repositories/ledger.mapper.js";
+import {
+  decodeSectorRecord,
+  sectorRecordPathOf,
+} from "../modules/ledgers/infrastructure/repositories/sector-record.mapper.js";
 import { evaluateCampaigns, widenedExtensions } from "./campaigns.js";
 import { concedeMeasure, sendBack } from "./concede.js";
 import { commitOf, type Diff, distanceToHunks, materializeTree, textAt } from "./diff.js";
@@ -54,7 +57,6 @@ import {
   measureLedgerOf,
   phaseIdOf,
   recordOf,
-  writeJson,
 } from "./ledgers.js";
 
 // The nudge, `campaigns status --changed`: what a diff touches, which
@@ -849,11 +851,7 @@ export const nudgeOf = (
           const next = concededSector(ledger, name, unrecorded, receipt);
 
           written.set(objective.id, next);
-          writeJson(
-            policy.repoRoot,
-            ledgerPathOf(campaignsOf(policy).ledgerDir, rule.id, objective.id),
-            serializeLedger(next),
-          );
+          campaignsOf(policy).repositories.ledgers.save(next);
         }
 
         const [moved] = sendBack(policy, rule, [name], { ledgers: written }, receipt);

@@ -7,7 +7,6 @@ import {
   ConfigInvalid,
   exportRulesFailingTheirProbe,
   type ExtensionContext,
-  type FileSystem,
   type LoadedExtension,
   type LoadedPolicy,
   type LoweredRules,
@@ -30,22 +29,21 @@ import {
   leafTermsOf,
   measureDetectorsOf,
 } from "../core/campaigns.js";
+import { END_STATE_ROOT, lowerCampaigns, lowerEndState } from "../manifest/lower.js";
+import type { Ledger } from "../modules/ledgers/domain/ledger/ledger.root.js";
+import type { MeasureLedger } from "../modules/ledgers/domain/measure-ledger/measure-ledger.root.js";
+import type { PlanRecord } from "../modules/ledgers/domain/plan/plan.root.js";
+import type { ObjectiveLedgersRepository } from "../modules/ledgers/domain/ports/repositories/objective-ledgers.repository.js";
+import type { PlansRepository } from "../modules/ledgers/domain/ports/repositories/plans.repository.js";
+import type { SectorRecordsRepository } from "../modules/ledgers/domain/ports/repositories/sector-records.repository.js";
+import type { SectorRecord } from "../modules/ledgers/domain/sector-record/sector-record.root.js";
 import {
-  decodeLedger,
-  decodeMeasureLedger,
-  decodePlanRecord,
-  decodeSectorRecord,
-  isLegacyLedger,
-  isMeasureLedger,
-  type Ledger,
   ledgerPathOf,
   legacyLedgerPathOf,
-  type MeasureLedger,
-  planPathOf,
-  type PlanRecord,
-  type SectorRecord,
-} from "../core/ledger.js";
-import { END_STATE_ROOT, lowerCampaigns, lowerEndState } from "../manifest/lower.js";
+} from "../modules/ledgers/infrastructure/repositories/ledger.mapper.js";
+import { makeObjectiveLedgersRepositoryLive } from "../modules/ledgers/infrastructure/repositories/objective-ledgers.repository-live.js";
+import { makePlansRepositoryLive } from "../modules/ledgers/infrastructure/repositories/plans.repository-live.js";
+import { makeSectorRecordsRepositoryLive } from "../modules/ledgers/infrastructure/repositories/sector-records.repository-live.js";
 import type { CampaignPredicate } from "../ports/campaign-predicate.js";
 import { NO_REPORTS, type ReportSource } from "../ports/report-source.js";
 import { type CampaignsManifest, decodeCampaigns, DEFAULT_LEDGER_DIR } from "./decode.js";
@@ -67,6 +65,13 @@ export const CAMPAIGNS_EXTENSION_ID = "campaigns";
 export const ledgerKeyOf = (campaign: string, objective: string): string =>
   `${campaign}/${objective}`;
 
+// Where every ledger, sector record and plan is loaded from and saved to.
+export type LedgerRepositories = {
+  readonly ledgers: ObjectiveLedgersRepository;
+  readonly sectorRecords: SectorRecordsRepository;
+  readonly plans: PlansRepository;
+};
+
 export type CampaignPolicy = {
   // Evaluated by both hosts, one file at a time; the ledgers say which hits
   // are already counted. An objective with no ledger, or a sector no ledger
@@ -86,10 +91,24 @@ export type CampaignPolicy = {
   readonly plans: ReadonlyMap<string, PlanRecord>;
   // Repo-relative; `<ledgerDir>/<campaign>/<objective>.json` is a ledger.
   readonly ledgerDir: string;
+  // What the verbs that write a ledger, a record or a plan save through.
+  readonly repositories: LedgerRepositories;
   // The predicate functions the host imported for the `fn` terms.
   readonly functions: ReadonlyMap<string, CampaignPredicate>;
   // Answers the `report` terms: the host's live source, or nothing.
   readonly reports: ReportSource;
+};
+
+// A policy with no campaigns has no ledger to read, and no verb that saves
+// one: there is nothing for a verb to iterate.
+const NO_LEDGERS: LedgerRepositories = {
+  ledgers: {
+    findOne: () => Result.succeed(null),
+    save: () => undefined,
+    remove: () => undefined,
+  },
+  sectorRecords: { findAll: () => Result.succeed([]), save: () => undefined },
+  plans: { findOne: () => Result.succeed(null), save: () => undefined },
 };
 
 // A campaign-free policy, for a host that loaded the extension against a
@@ -102,6 +121,7 @@ const NOTHING: CampaignPolicy = {
   sectorRecords: new Map(),
   plans: new Map(),
   ledgerDir: DEFAULT_LEDGER_DIR,
+  repositories: NO_LEDGERS,
   functions: new Map(),
   reports: NO_REPORTS,
 };
@@ -157,33 +177,15 @@ type ReadLedgers = {
   readonly plans: ReadonlyMap<string, PlanRecord>;
 };
 
-const readJson = (
-  configPath: string,
-  fileSystem: FileSystem,
-  at: string,
-): Result.Result<unknown | null, ConfigInvalid> => {
-  const text = fileSystem.readText(at);
-
-  if (text === null) return Result.succeed(null);
-
-  try {
-    return Result.succeed(JSON.parse(text) as unknown);
-  } catch (cause) {
-    return Result.fail(
-      new ConfigInvalid({ configPath, detail: `the ledger ${at} is not JSON: ${String(cause)}` }),
-    );
-  }
-};
-
-// The ledgers, read through the port. An absent file is an objective with no
-// ledger yet; a malformed one is refused, since reading it as empty would
-// report every hit as unrecorded growth. A file in the family's first layout
-// — one per campaign, `<dir>/<campaign>.json` — is read as the ledger of the
-// campaign's one objective, under the implicit sector, and remembered so
-// `clear` can rewrite it where it now belongs.
+// The ledgers, read through their repositories. An absent file is an
+// objective with no ledger yet; a malformed one is refused, since reading it
+// as empty would report every hit as unrecorded growth. A file in the
+// family's first layout — one per campaign, `<dir>/<campaign>.json` — is read
+// as the ledger of the campaign's one objective, under the implicit sector,
+// and remembered so `clear` can rewrite it where it now belongs.
 const readLedgers = (
   configPath: string,
-  fileSystem: FileSystem,
+  repositories: LedgerRepositories,
   ledgerDir: string,
   campaigns: ReadonlyArray<CompiledCampaign>,
 ): Result.Result<ReadLedgers, ConfigInvalid> => {
@@ -192,177 +194,113 @@ const readLedgers = (
   const legacy = new Map<string, string>();
   const sectorRecords = new Map<string, SectorRecord>();
   const plans = new Map<string, PlanRecord>();
+  const refuse = (detail: string) => Result.fail(new ConfigInvalid({ configPath, detail }));
 
   for (const campaign of campaigns) {
     for (const objective of campaign.objectives) {
       const at = ledgerPathOf(ledgerDir, campaign.id, objective.id);
-      let raw = readJson(configPath, fileSystem, at);
+      const measured = objective.measure !== null;
 
-      if (Result.isFailure(raw)) return Result.fail(raw.failure);
+      // Either kind in the other's place is refused by name: read as the
+      // wrong one it would be a decode error that says nothing about why.
+      const wrongKind = (from: string) =>
+        refuse(
+          measured
+            ? `the ledger ${from} is a holdout ledger, and ${campaign.id}/${objective.id} is a scalar objective. Remove it and run \`objectives clear\` to record the number.`
+            : `the ledger ${from} is a scalar objective's, and ${campaign.id}/${objective.id} holds out ${objective.holdout ?? "matches"}. Remove it and run \`objectives clear\`.`,
+        );
+
+      let found = repositories.ledgers.findOne({ campaign: campaign.id, objective: objective.id });
       let from = at;
 
-      if (raw.success === null && campaign.objectives.length === 1) {
+      if (Result.isSuccess(found) && found.success === null && campaign.objectives.length === 1) {
         from = legacyLedgerPathOf(ledgerDir, campaign.id);
-        raw = readJson(configPath, fileSystem, from);
+        found = repositories.ledgers.findOne({ campaign: campaign.id, objective: null });
 
-        if (Result.isFailure(raw)) return Result.fail(raw.failure);
+        if (Result.isSuccess(found) && found.success !== null) legacy.set(campaign.id, from);
+      }
 
-        if (raw.success !== null && !isLegacyLedger(raw.success)) {
-          return Result.fail(
-            new ConfigInvalid({
-              configPath,
-              detail:
-                `the ledger ${from} is not in the family's first layout, and an objective's ` +
+      if (Result.isFailure(found)) {
+        const { failure } = found;
+
+        switch (failure.reason) {
+          case "not-json":
+            return refuse(`the ledger ${failure.at} is not JSON: ${failure.detail}`);
+          case "not-first-layout":
+            return refuse(
+              `the ledger ${from} is not in the family's first layout, and an objective's ` +
                 `ledger is ${at}. Move it.`,
-            }),
-          );
-        }
+            );
+          case "undecodable":
+            if (failure.measure !== measured) return wrongKind(from);
 
-        if (raw.success !== null) legacy.set(campaign.id, from);
-      }
+            return refuse(`the ledger ${from} does not decode:\n${failure.detail}`);
+          case "misplaced":
+            if (failure.measure !== measured) return wrongKind(from);
 
-      if (raw.success === null) continue;
-
-      // A scalar objective's ledger is the second schema. Either kind in the
-      // other's place is refused by name: read as the wrong one it would be
-      // a decode error that says nothing about why.
-      if ((objective.measure !== null) !== isMeasureLedger(raw.success)) {
-        return Result.fail(
-          new ConfigInvalid({
-            configPath,
-            detail:
-              objective.measure !== null
-                ? `the ledger ${from} is a holdout ledger, and ${campaign.id}/${objective.id} is a scalar objective. Remove it and run \`objectives clear\` to record the number.`
-                : `the ledger ${from} is a scalar objective's, and ${campaign.id}/${objective.id} holds out ${objective.holdout ?? "matches"}. Remove it and run \`objectives clear\`.`,
-          }),
-        );
-      }
-
-      if (objective.measure !== null) {
-        const measured = decodeMeasureLedger(raw.success);
-
-        if (Result.isFailure(measured)) {
-          return Result.fail(
-            new ConfigInvalid({
-              configPath,
-              detail: `the ledger ${from} does not decode:\n${measured.failure}`,
-            }),
-          );
-        }
-
-        if (
-          measured.success.campaign !== campaign.id ||
-          measured.success.objective !== objective.id
-        ) {
-          return Result.fail(
-            new ConfigInvalid({
-              configPath,
-              detail:
-                `the ledger ${from} says it belongs to "${measured.success.campaign}/${measured.success.objective}", ` +
+            return refuse(
+              `the ledger ${from} says it belongs to "${failure.detail}", ` +
                 `not "${campaign.id}/${objective.id}".`,
-            }),
+            );
+        }
+      }
+
+      const ledger = found.success;
+
+      if (ledger === null) continue;
+
+      if ("kind" in ledger !== measured) return wrongKind(from);
+
+      if ("kind" in ledger) {
+        if (ledger.direction !== objective.direction) {
+          return refuse(
+            `the ledger ${from} records ${campaign.id}/${objective.id} with \`direction: ${ledger.direction}\`, ` +
+              `and the manifest now says \`${objective.direction}\`. A number that changed which way is better is a new objective: ` +
+              `remove the ledger and run \`objectives clear\`.`,
           );
         }
 
-        if (measured.success.direction !== objective.direction) {
-          return Result.fail(
-            new ConfigInvalid({
-              configPath,
-              detail:
-                `the ledger ${from} records ${campaign.id}/${objective.id} with \`direction: ${measured.success.direction}\`, ` +
-                `and the manifest now says \`${objective.direction}\`. A number that changed which way is better is a new objective: ` +
-                `remove the ledger and run \`objectives clear\`.`,
-            }),
-          );
-        }
-
-        measureLedgers.set(ledgerKeyOf(campaign.id, objective.id), measured.success);
+        measureLedgers.set(ledgerKeyOf(campaign.id, objective.id), ledger);
         continue;
       }
 
-      const decoded = decodeLedger(raw.success);
-
-      if (Result.isFailure(decoded)) {
-        return Result.fail(
-          new ConfigInvalid({
-            configPath,
-            detail: `the ledger ${from} does not decode:\n${decoded.failure}`,
-          }),
-        );
-      }
-
-      const ledger = decoded.success;
-      const expected = from === at ? objective.id : campaign.id;
-
-      if (ledger.campaign !== campaign.id || ledger.objective !== expected) {
-        return Result.fail(
-          new ConfigInvalid({
-            configPath,
-            detail:
-              `the ledger ${from} says it belongs to "${ledger.campaign}/${ledger.objective}", ` +
-              `not "${campaign.id}/${objective.id}".`,
-          }),
-        );
-      }
-
-      ledgers.set(ledgerKeyOf(campaign.id, objective.id), {
-        ...ledger,
-        objective: objective.id,
-      });
+      ledgers.set(ledgerKeyOf(campaign.id, objective.id), { ...ledger, objective: objective.id });
     }
 
-    const sectorsDir = `${ledgerDir}/${campaign.id}/sectors`;
+    const records = repositories.sectorRecords.findAll(campaign.id);
 
-    for (const name of fileSystem.list(sectorsDir)) {
-      if (!name.endsWith(".json")) continue;
-      const at = `${sectorsDir}/${name}`;
-      const raw = readJson(configPath, fileSystem, at);
+    if (Result.isFailure(records)) {
+      const { at, detail, reason } = records.failure;
 
-      if (Result.isFailure(raw)) return Result.fail(raw.failure);
-
-      if (raw.success === null) continue;
-      const decoded = decodeSectorRecord(raw.success);
-
-      if (Result.isFailure(decoded)) {
-        return Result.fail(
-          new ConfigInvalid({
-            configPath,
-            detail: `the sector record ${at} does not decode:\n${decoded.failure}`,
-          }),
-        );
+      switch (reason) {
+        case "not-json":
+          return refuse(`the ledger ${at} is not JSON: ${detail}`);
+        case "undecodable":
+          return refuse(`the sector record ${at} does not decode:\n${detail}`);
+        case "misplaced":
+          return refuse(
+            `the sector record ${at} says it belongs to "${detail}", not "${campaign.id}".`,
+          );
       }
-
-      if (decoded.success.campaign !== campaign.id) {
-        return Result.fail(
-          new ConfigInvalid({
-            configPath,
-            detail: `the sector record ${at} says it belongs to "${decoded.success.campaign}", not "${campaign.id}".`,
-          }),
-        );
-      }
-
-      sectorRecords.set(ledgerKeyOf(campaign.id, decoded.success.sector), decoded.success);
     }
 
-    const planAt = planPathOf(ledgerDir, campaign.id);
-    const rawPlan = readJson(configPath, fileSystem, planAt);
-
-    if (Result.isFailure(rawPlan)) return Result.fail(rawPlan.failure);
-
-    if (rawPlan.success !== null) {
-      const decoded = decodePlanRecord(rawPlan.success);
-
-      if (Result.isFailure(decoded)) {
-        return Result.fail(
-          new ConfigInvalid({
-            configPath,
-            detail: `the plan record ${planAt} does not decode:\n${decoded.failure}`,
-          }),
-        );
-      }
-
-      plans.set(campaign.id, decoded.success);
+    for (const record of records.success) {
+      sectorRecords.set(ledgerKeyOf(campaign.id, record.sector), record);
     }
+
+    const plan = repositories.plans.findOne(campaign.id);
+
+    if (Result.isFailure(plan)) {
+      const { at, detail, reason } = plan.failure;
+
+      return refuse(
+        reason === "not-json"
+          ? `the ledger ${at} is not JSON: ${detail}`
+          : `the plan record ${at} does not decode:\n${detail}`,
+      );
+    }
+
+    if (plan.success !== null) plans.set(campaign.id, plan.success);
   }
 
   return Result.succeed({ ledgers, measureLedgers, legacy, sectorRecords, plans });
@@ -372,7 +310,8 @@ const load = (
   options: CampaignsExtensionOptions,
   context: ExtensionContext<CampaignsManifest>,
 ): Result.Result<LoadedExtension<CampaignPolicy>, ConfigInvalid | PatternInvalid> => {
-  const { config, configPath, extractor, fileSystem, languages, routeFor, spec } = context;
+  const { config, configPath, extractor, fileSystem, languages, repoRoot, routeFor, spec } =
+    context;
 
   // Lowering refuses a shape the schema cannot — a phase naming an objective
   // that is not there, an `endState` over a multi-root perimeter — and it
@@ -552,7 +491,17 @@ const load = (
   ];
 
   const ledgerDir = spec.ledger ?? DEFAULT_LEDGER_DIR;
-  const ledgers = readLedgers(configPath, fileSystem, ledgerDir, campaignRules.success);
+  // The family's composition point inside `loadPolicy`: the ledgers are read
+  // through the host's file system, and written under its repository root.
+  const store = { fileSystem, repoRoot, ledgerDir };
+
+  const repositories: LedgerRepositories = {
+    ledgers: makeObjectiveLedgersRepositoryLive(store),
+    sectorRecords: makeSectorRecordsRepositoryLive(store),
+    plans: makePlansRepositoryLive(store),
+  };
+
+  const ledgers = readLedgers(configPath, repositories, ledgerDir, campaignRules.success);
 
   if (Result.isFailure(ledgers)) return Result.fail(ledgers.failure);
 
@@ -565,6 +514,7 @@ const load = (
       sectorRecords: ledgers.success.sectorRecords,
       plans: ledgers.success.plans,
       ledgerDir,
+      repositories,
       functions,
       reports: options.reports ?? NO_REPORTS,
     },

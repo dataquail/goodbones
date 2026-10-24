@@ -76,6 +76,7 @@ exports:
       - "@ts/resolver.ts"
       - "@ts/index.ts"
       - "@camp/infrastructure/report-source-live.ts"
+      - "@camp/modules/*/infrastructure/repositories/*.repository-live.ts"
       - "@camp/index.ts"
       - "@ag/matcher.ts"
       - "@ag/index.ts"
@@ -84,11 +85,16 @@ exports:
       - makeModuleResolverLive
       - makeFactExtractorLive
       - makeReportSourceLive
+      - makeObjectiveLedgersRepositoryLive
+      - makeSectorRecordsRepositoryLive
+      - makePlansRepositoryLive
       - astGrepMatcher
     # The three hosts' composition roots, and the hosts' campaigns glue,
     # which a root loads only when the family is installed; the barrels that
-    # re-export them; and the pack, which assembles its own extractor and
-    # resolver.
+    # re-export them; the pack, which assembles its own extractor and
+    # resolver; and the campaigns extension, which builds the ledgers'
+    # repositories over the host's file system as the family's composition
+    # point inside `loadPolicy`.
     except:
       - "@cli/config-loader.ts"
       - "@cli/campaigns/live.ts"
@@ -96,6 +102,7 @@ exports:
       - "@ox/campaigns/live.ts"
       - "@br/server/compose.ts"
       - "@br/server/campaigns/live.ts"
+      - "@camp/load/extension.ts"
       - "@core/index.ts"
       - "@ts/index.ts"
       - "@ag/index.ts"
@@ -243,6 +250,19 @@ graph:
         - "@camp/infrastructure/report-source-live.ts"
         - "@camp/host/**"
 
+    # A module's domain is the model: it reaches no adapter of its own module
+    # or any other, and none of the host glue, through any number of hops.
+    - name: campaigns-domain-reaches-no-adapter
+      message: "A module's domain transitively reaches an adapter. The domain names its own aggregates, the core's barrel and, until this package has a kernel, the old pure tiers; a route from it to an infrastructure/ adapter, the extension or the host glue means a file on the route has widened past what the domain may know."
+      from: "@camp/modules/*/domain/**"
+      fromNot: "**/*.test.ts"
+      to:
+        - "@camp/modules/*/infrastructure/**"
+        - "@camp/infrastructure/campaign-functions.ts"
+        - "@camp/infrastructure/report-source-live.ts"
+        - "@camp/load/**"
+        - "@camp/host/**"
+
     # The pack never names the matcher: a host composes the two, so a second
     # engine is a second package the pack need not know about.
     - name: pack-never-reaches-the-matcher
@@ -310,6 +330,38 @@ defs:
     kinds: [default]
     probe:
       source: "export default function main() {}"
+
+  # A use-case and the domain answer with a result; saying it, or ending the
+  # process, is the adapter's (docs/adr/0002-modules-of-use-cases-over-a-domain.md).
+  # Ported from chernabog's policy.
+  no-talking:
+    message: "`{name}` talks to a person or ends the process. A use-case and the domain return a result and fail with tagged errors; the adapter that called them prints and sets the exit code."
+    subject: calls
+    match: [log, warn, error, info, exit]
+    probe:
+      source: 'export const zzUseCase = () => console.log("done");'
+      name: log
+
+  # A port is a declaration: the shape its adapters implement. A value beside
+  # it is an implementation, which belongs in infrastructure/.
+  port-declares-no-value:
+    message: "A port declares a shape. `{name}` is a value: an implementation belongs in infrastructure/ behind the port."
+    declares: [function, variable]
+    probe:
+      source: "export const zz = () => 1;"
+
+  # A repository stores aggregates and reads them back; what they mean is the
+  # domain's. A finder that answers a question, or a verb, is a rule that
+  # belongs on the aggregate's ops.
+  repository-vocabulary:
+    message: 'Repository port member "{name}" is not in the persistence vocabulary: findAll, findOne, save and remove. Read the aggregates and let an op answer the question, or put the verb on the aggregate and have the use-case save the result.'
+    subject: members
+    declares: [type, interface]
+    in: "*Repository*"
+    allow: [findAll, findOne, save, remove]
+    probe:
+      source: "export type ZzRepository = { readonly pausedSlugs: () => void };"
+      name: pausedSlugs
 
   named-reexports-only:
     message: "Re-export by name, so a barrel says what the module is. `export *` takes every export at once and launders a restricted name through the barrel."

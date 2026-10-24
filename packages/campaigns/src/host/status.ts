@@ -1,19 +1,21 @@
 import type { LoadedPolicy, SnapshotCampaign } from "@goodbones/core";
 
 import type { CampaignEvaluation } from "../core/campaign-state.js";
+import { isDefinedPhase, ladderPositionOf, stepsOf } from "../core/phases.js";
+import { isShared, LEGACY_SECTOR, SHARED_SECTOR } from "../core/sectors.js";
 import {
   isComplete,
   lastClearedOf,
+  progressOf,
+  sectorProgressOf,
+} from "../modules/ledgers/domain/ledger/ledger.root-ops.js";
+import {
   lastImprovedOf,
   measureProgressOf,
   measureSectorProgressOf,
-  progressOf,
   recordedOf,
-  sectorClockOf,
-  sectorProgressOf,
-} from "../core/ledger.js";
-import { isDefinedPhase, ladderPositionOf, stepsOf } from "../core/phases.js";
-import { isShared, LEGACY_SECTOR, SHARED_SECTOR } from "../core/sectors.js";
+} from "../modules/ledgers/domain/measure-ledger/measure-ledger.root-ops.js";
+import { sectorClockOf } from "../modules/ledgers/domain/sector-record/sector-record.root-ops.js";
 import { count, ledgerOf, measureLedgerOf, phaseIdOf, recordOf } from "./ledgers.js";
 import { campaignReportsOf } from "./report.js";
 

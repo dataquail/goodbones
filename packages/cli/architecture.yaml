@@ -13,7 +13,6 @@ imports:
     - "node:**"
     - vitest.shared.ts
     - "@core/index.ts"
-    - "@core/testing.ts"
     - "@ts/index.ts"
     - "@ag/index.ts"
     - "@camp/index.ts"
@@ -31,6 +30,16 @@ children:
   "src/":
     layout: open
     children: {}
+    members:
+      # The CLI prints through one seam and fails through one value, so a
+      # verb can be driven by a test that reads what it reported. Stated as a
+      # rule about calls, so it holds in every module here, the tests included.
+      - message: "`{name}` prints or exits. The CLI writes through output.ts's `report` and fails through a `CliFailure`; main.ts alone decides the exit code."
+        subject: calls
+        match: [log, warn, error, info, debug, trace, exit]
+        probe:
+          source: 'console.log("x");'
+          name: log
     surface:
       - use: no-default-exports
       - use: named-reexports-only

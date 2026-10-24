@@ -1,0 +1,485 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+An Nx + pnpm monorepo publishing architecture-policy tooling: a policy written as one manifest of
+the repository (`architecture.yaml`), enforced by an oxlint plugin and a CLI. Seven packages,
+all under `packages/`:
+
+- **`@goodbones/core`** (`packages/core`) — the manifest schema, the evaluators for the five
+  per-file families (`imports`, `exports`, `members`, `surface`, `structure`), the `graph` family
+  (cycles, orphans, transitive reach), the `limits` ratchets, the ports a language pack implements,
+  a fake per port under `@goodbones/core/testing`, and `loadPolicy`. It names no language, and it
+  does not know the `campaigns` family exists.
+- **`@goodbones/campaigns`** (`packages/campaigns`) — the `campaigns` family, which the core does
+  not own: a refactor as objectives with ledgers, over sectors, through phases. It is laid out as
+  the core is — `domain/`, its own two `ports/` (`CampaignPredicate`, `ReportSource`), the pure
+  `core/` evaluators, the `manifest/` slice it decodes and lowers, the `load/` extension a host
+  composes, `infrastructure/`, and the `host/` glue the CLI drives. It depends on the core and on
+  nothing else in the repository.
+- **`@goodbones/typescript`** (`packages/typescript`) — the TypeScript language pack: facts read
+  through oxc-parser, specifiers resolved through `unrs-resolver`, behind the core's
+  `Language` port.
+- **`@goodbones/cli`** (`packages/cli`) — the `architecture` bin: `check`, `conformance`, `baseline`,
+  `campaigns`, `objectives`, `coverage`, `explain`, `facts`, `init`, `infer`, `migrate`. Being the one
+  host that sees every file at once, it is where the graph family is evaluated, where a campaign's
+  sectors are discovered and its sector-level objectives answered, where the nudge
+  (`campaigns status --changed`) is computed, and where the conformance snapshot (residue, slack,
+  cycle count, leaf-first violations, per-sector phases; schema in
+  `packages/core/schema/conformance.schema.json`) is built.
+- **`@goodbones/ast-grep`** (`packages/ast-grep`) — the syntax matcher: the core's `SyntaxMatcher`
+  port over `@ast-grep/napi`, for the `campaigns` family's `syntax` term. A host composes it into
+  the TypeScript pack (`typescriptLanguage({ syntax: astGrepMatcher() })`) when it is installed;
+  the pack never names it.
+- **`@goodbones/oxlint`** (`packages/oxlint`) — the plugin: six oxlint rules over the same manifest.
+- **`@goodbones/browser`** (`packages/browser`) — the third host: the Architecture Browser (the
+  tree with every edge drawn beside it and `architecture.yaml` rendered line for line, each file and
+  node lighting the other up) and the Campaign Browser (every campaign's ladder of phases,
+  objectives and sectors, with the ledgers, records and the working tree's nudge under the
+  pointer). An Astro page with two React islands, prebuilt into `build/site` by `astro build` and
+  served by the `goodbones-browser` bin from whichever repository it is run in, with a feed
+  (`__goodbones/events`, server-sent) that redraws the page when a source file, a manifest or a
+  ledger changes; `goodbones-browser build --out <dir>` writes a static snapshot. Its runtime
+  dependencies are the core and the pack, with campaigns and the matcher as optional peers, and
+  nothing else — React and Astro are bundled or dev-only — and it is laid out as `model/` (the two models, pure), `server/` (the composition
+  root, the walk, the routes, the watcher, the bin) and `app/` (the page). `pnpm --filter
+@goodbones/browser dev` runs `astro dev` over this repository with the routes mounted on Vite.
+
+The three hosts depend on the core and the pack, take the campaigns family and the matcher as
+optional peers, and never depend on each other. `website/` is an Astro + Starlight
+docs site deployed to GitHub Pages at <https://dataquail.github.io/goodbones>.
+
+**The repository enforces its own architecture with the packages it publishes.**
+`architecture.yaml` at the root is a real policy over `packages/`, wired into `.oxlintrc.json` as
+the `architecture` JS plugin, so `pnpm lint` fails on a layering violation. That makes the policy the
+packages' largest test: a change that breaks lowering or resolution breaks the lint run here first.
+Every family is in it, deliberately — `imports` and `structure` for the layering, `members` for
+"`core/` and `domain/` never touch the file system" and "a port member is camelCase", `exports` for
+"a live adapter is constructed only at the composition root" and "no namespace import or `export *`
+between tiers", `surface` for "no default exports, no `export *`", `graph` for no cycles, no dead
+modules, "the pure tiers reach no adapter", "the core reaches no other package" and "the two hosts
+never reach each other", `limits` with both adoption ceilings at zero, coverage floors at the
+numbers the day they were written, an `unreached` ceiling (the same reach as a count, which
+deleting files cannot move) and conformance ceilings (residue, vacant, slack, concentration) at
+theirs, and one `campaigns` entry with a real ledger — so a family whose
+extraction quietly narrows breaks this lint run, not a user's.
+
+**The campaigns family tracks a refactor as an object.** A campaign (`campaigns.<id>` in the
+manifest; the design is `docs/scratch/DESIGN-campaigns.md`) owns `objectives`, each a detector —
+`match`: `all`/`any`/`not` over `path`, `imports`, `exports`, `members`, `requires`, `content`,
+`syntax` (an ast-grep rule), `report` (another program's diagnostics — `tsc`, `eslint`/`oxlint` JSON,
+or a `regex` — run once per process through `infrastructure/report-source-live.ts` and anchored on
+declarations through `SyntaxTree.anchorAt`) and `fn` (`module#export`) terms; or `sector`: `has`,
+`oneRoot`, `oneHost` over a sector's files — with a `holdout` (`file`, `declaration`, `match`,
+`sector`), probes, and a ledger under `.architecture-campaigns/<campaign>/<objective>.json` of every
+place the pattern still occurs, per sector, keyed relative to the sector's root. A **sector** is born
+by the campaign's `perimeter` (`marker`, `glob`, `match`, `file`, `nx`; the scope itself when there is
+none, named `scope`; the unclaimed remainder is `legacy`, pinned at the first phase) —
+`core/sectors.ts`. A campaign's `shared` globs name the files every sector shares and none
+owns: taken out before any sector is born, on no phase, ledgered under the reserved sector name
+`shared`; an objective with `over: shared` is a prerequisite, and a phase naming one holds every
+sector there until the shared files meet it (their count is each sector's count in
+`core/campaign-state.ts`). **Phases** are ordered groups of objectives, defined or open (intent only, and
+then last); a sector's phase is derived (first phase with residue — `core/phases.ts`), `until` opens
+a window, `attested: true` is left by `campaigns attest`, and the per-sector record
+(`sectors/<sector>.json`: `reached`, attestations, notes) plus `plan.json` are written by
+`objectives clear`. A phase is hashed by what it asks, never by its index, so inserting one changes
+no other; `plan.json` is version 2, a version 1 plan is compared with the old positional digest, and
+a phase moved past another is a change (`planDiffOf`). A phase's `grows` names scalars it is expected
+to raise: for a sector the ledgers place there, `check` reports a rise as stale and `clear` records
+it with a concession naming the phase — `onTouch` governs the nudge only. The ledger only shrinks on its own: `objectives clear` reconciles (stale leave,
+drift rewritten — a renamed declaration's match pairs by file and hash — entering sectors recorded
+with their initial, passed windows closed, entries _behind_ a window a regression sent the sector
+below held, never closed, a receipted phase change re-baselined), `objectives concede --reason` is
+the one way a holdout is added (a concession that sends a sector back below an attested phase
+revokes that attestation — `host/concede.ts`), and
+`check` verifies per sector `holdouts.length === initial + Σ delta − cleared − closed`; a defined
+phase changed without a `concessions` entry fails `check`. **The nudge**, `campaigns status
+--changed [--base <ref>] [--json] [--hotfix]` (`host/nudge.ts`, `host/diff.ts`), is the
+family's deliverable: per touched sector, the phase and what would move it on, `ask`/`verdict`
+enumerated, non-zero under `ratchet`/`paydown`, and under `onAhead: ratchet` for work paid ahead
+of the plan (an objective whose phase lies past where the sector stands after the diff, read
+against the base tree or HEAD's evaluated tree). A diff is judged by the phase the sector stood at
+before it — the base tree's with `--base`, else the one the ledgers place it at, never below
+HEAD's ledgers' (`host/ledger-phase.ts`; an objective with no ledger entry for the sector is met
+only up to its `reached`) — so entering a later window is "now counted", never growth, and a
+concession in the head's ledger is a receipt in both modes. At an open judged phase, what went
+back is held by the `onTouch` of the phase that named it. A campaign's progress is its sectors'
+positions on the ladder (`ladderPositionOf`), not cleared-over-ledgered, which fell at every phase
+entry. The host glue is one module per verb (`clear`, `concede`, `report`, `status`, `sector`, `nudge`,
+`explain`, over `ledgers.ts`); `host/campaigns.ts` is held to its line count by `host-campaigns-shrinks`, so a new
+verb is a new module. The plugin reads membership off the perimeter and
+the phase off the ledgers (a sector no `clear` has placed stands at the first phase) and parses
+`sourceCode.text` with the same ast-grep matcher the CLI uses — the only family the plugin parses
+with anything but oxlint's tree — so its parity contract is "one engine", pinned by
+`packages/oxlint/src/campaigns-parity.test.ts` and `campaigns-phases.test.ts`. An `endState` is a
+sector-relative node tree lowered per sector (`lowerEndState`), CLI-only. This repository runs two
+campaigns on itself (`lowering-reports-not-throws`, the minimal shape, and the scalar
+`host-campaigns-shrinks`); their ledgers are committed, and
+changing the count means clearing or conceding, in the open. `ARCHITECTURE_NOW` pins the clock the
+stall check reads. A campaign's `scope.extensions` widens the walk (`.js` for a JS→TS campaign);
+only that campaign sees the widened files. A `.mjs` manifest and a `fn` module
+are imported through `importFresh` (the file's mtime and size in the URL's query), so a host that
+lives long — the browser's server — sees an edited one; a module either imports in turn is still
+cached for the life of the process.
+
+## Commands
+
+```bash
+# Build (tsc -b -> build/esm + build/dts), in dependency order
+pnpm run build:packages
+pnpm exec nx build @goodbones/core
+
+# Test
+pnpm run test:packages
+pnpm exec nx test @goodbones/oxlint
+
+# Typecheck (tsc -b, src and tests)
+pnpm run check:all
+pnpm exec nx check @goodbones/cli
+
+# Lint — oxlint, type-aware. Warnings are tolerated; errors are not.
+pnpm lint
+pnpm run lint:fix
+
+# Effect language-service diagnostics (separate from lint)
+pnpm run check:effect
+
+# The same policy through the CLI, with no linter in the loop
+pnpm run lint:architecture
+pnpm run architecture:explain packages/core/src/core/imports.ts
+pnpm run architecture:facts packages/core/src/core/imports.ts   # what the parser read
+pnpm run architecture:coverage                                                     # how much of the tree the policy reaches
+
+# Everything, as the pre-commit hook runs it
+pnpm run precommit
+
+# The end-to-end suite: generated repositories through the built bin and oxlint (not in precommit)
+pnpm run e2e
+FC_NUM_RUNS=3 FC_END_ON_FAILURE=1 pnpm run e2e   # the property tier, quickly
+FC_SEED=<n> FC_NUM_RUNS=1 pnpm run e2e           # replay one property failure
+
+# Docs site
+pnpm run dev:website
+pnpm run build:website
+```
+
+## Things that will bite you
+
+**Every package's tsconfigs reset `paths` to `{}` on purpose.** oxlint and Node load the emitted
+JavaScript with bare imports, and tsc does not rewrite path aliases on emit — a `@/…` specifier that
+typechecks would be a runtime `ERR_MODULE_NOT_FOUND`. Relative specifiers run within a package; across
+packages a bare `@goodbones/core` runs, resolved through the pnpm workspace link to the sibling's
+`build/`. The `paths` in `tsconfig.base.json` are for the root typecheck only. Each package's
+`tsconfig.src.json` and `tsconfig.build.json` carry a `references` entry per dependency so `tsc -b`
+builds the dependency's declarations first — and `references` is not inherited through `extends`, so
+both files repeat it.
+
+**A cross-package import goes through the barrel.** `@goodbones/core` is `packages/core/src/index.ts`
+and `@goodbones/core/testing` is the fakes; the root policy refuses a deep import into a sibling's
+`src/`, as a consumer outside the repo would find one refused by the `exports` map. Tests alias the
+bare names to `src` (`vitest.shared.ts`); `TEST_DIST=1` points them at `build/esm`.
+
+**`@goodbones/ast-grep` is a native dependency.** `@ast-grep/napi` ships a platform binary as an
+optional dependency and is in `pnpm.onlyBuiltDependencies`; a fresh checkout on an unsupported platform
+fails at install, not at lint. That is half of why it, like `@goodbones/campaigns`, is an optional
+peer of every host rather than a dependency: a user who runs no campaign installs neither. The package has never been published and goes through First Publish
+before any host version that depends on it is released, as `@goodbones/explorer` did.
+
+**`packages/oxlint/build/esm/plugin.js` is the plugin entrypoint**, the package's default export (and
+its `./plugin` subpath). `packages/cli/build/esm/main.js` is the `architecture` bin, and
+`packages/browser/build/esm/main.js` is the `goodbones-browser` bin. All three are in the
+`exports`/`bin` maps, so renaming or moving those source files is a breaking change.
+
+**The browser's page is built by Astro, not tsc, and the two must not see each other's files.**
+`packages/browser/src/app/` is Astro's `srcDir`; `tsconfig.src.json` and `tsconfig.build.json`
+exclude it, and `tsconfig.app.json` typechecks its `.tsx` with the DOM lib against the `src`
+project's declarations. `astro build` runs after `tsc -b` in the package's `build` script and
+writes `build/site`, which is in `files`; a stale or missing `build/site` is what the bin refuses
+to serve. The page never imports a server module (a `reach` rule says so): it fetches
+`__goodbones/*` relative to itself, so the served page and a static export are one build. Slack
+in the repo policy is at its ceiling: every allowance the browser's node states is used by a
+source file or a test, so adding one means using it.
+
+**The plugin must be built before any lint.** oxlint imports JavaScript, so a stale `build/` enforces a
+stale policy while still linting green, and a missing one fails every package's lint with "Failed to
+load JS plugin". Two things close that: the `lint` script builds every package first, and `nx.json`'s
+`targetDefaults.lint` declares `dependsOn: ["build", { projects: ["@goodbones/oxlint"], target:
+"build" }]`, so linting `core` on a clean checkout builds the plugin (and, through `^build`, the core
+and the pack) before oxlint starts. Depending on a project's own build alone is what passed locally
+and failed in CI.
+
+**`tsconfig.resolve.json` is not part of any build.** It exists so the architecture plugin can resolve
+specifiers, and it mirrors `tsconfig.base.json`'s `paths` _without_ the trailing extension those carry —
+a mapped target is a template, so a `.ts`-suffixed mapping would make `pkg/x.js` look for `x.js.ts`.
+Changing `paths` in one file and not the other is how rules silently stop resolving.
+
+**Adding a layer means adding a node to `architecture.yaml`, and so does adding a package.** A
+new folder under a `src/` that no node governs trips the taxonomy-root catch-all rather than being
+quietly unpoliced; a new package under `packages/` is a new `~/<name>/` node with its own import
+allowlist (written in `packages/<name>/architecture.yaml` and included from the root, like the
+six that exist), plus a `paths` pair in `tsconfig.base.json` and `tsconfig.resolve.json`, an entry in
+`test.projects` in the root `vitest.config.ts`, an alias in `vitest.shared.ts`, a reference in the root `tsconfig.json` and
+`tsconfig.build.json`, a `references` entry in each dependent's `tsconfig.src.json` _and_
+`tsconfig.build.json`, an alias in the root manifest, an entry in the `no-dead-modules` graph rule
+for each of its barrels, and — if a host installs it — `PACKAGES` in `e2e/src/install.ts` _and_ a
+`workspace:*` devDependency in `e2e/package.json`: the e2e target builds its dependencies through
+`^build`, so a package the suite packs but does not depend on is packed unbuilt on a clean CI
+checkout (how #67 broke `main`). Before
+trusting a rule you just wrote, plant the violation it exists to catch and watch `pnpm lint` fail — the
+probe check proves a rule _can_ fire, not that it fires on what you meant.
+
+**`@goodbones/campaigns` and `@goodbones/ast-grep` are optional peers of every host, so no module a
+host loads up front may import either at run time.** Each host keeps everything that names the family
+in one folder — `cli/src/campaigns/`, `oxlint/src/campaigns/`, `browser/src/server/campaigns/` (plus
+`browser/src/model/campaigns.ts`, which only the glue imports) — behind an interface the host defines
+(`host.ts`): `live.ts` implements it over the package, `none.ts` without it. The composition root
+loads `live.ts`, and the matcher, through the core's `importOptional(load, peer)`, which answers
+`null` only when `peer` itself is missing; with `none` it passes `loadPolicy` an `uninstalled` entry,
+so a `campaigns:` key is refused naming the package. Everywhere else, import the family's _types_
+only (`import type`), through the host's `campaigns/host.ts`. Three things hold this: a `deny` in
+each host's node of the policy (which sees type imports as edges too, hence the folder), an
+`optional.test.ts` in each glue folder that fails on any static value import of either package
+outside it (the graph cannot tell `import()` from `import`), and the e2e `bare-install` scenario,
+which installs the hosts without either peer. Each host's package keeps both as `workspace:*`
+devDependencies, so this repository — which runs campaigns on itself — always has them, and the
+peers publish as `^<version>`.
+
+**A family the core does not own arrives as a `PolicyExtension`, and `campaigns` is the one.**
+`loadPolicy({ …, extensions: [campaignsExtension({ functions, reports })] })` is how a host composes
+it; `campaignsOf(policy)` reads its state back off `LoadedPolicy.extensions`, which the core carries
+opaquely. An extension declares the top-level manifest keys it claims (`campaigns` and `ledger`),
+and `decodeManifest` splits those off the expanded manifest before decoding what is left — so the
+core's codec, which still refuses an excess property, never learns a word of the family's
+vocabulary, and a key _no_ extension claims is the misspelling it always was — unless the host
+names it in `loadPolicy`'s `uninstalled`, when the refusal names the package to install instead. The extension decodes
+its slice through the `describe` the core hands it, so its errors carry the same line, path and
+`use` trail a tree node's do, and it returns its own probe failures to be merged into the one
+"these rules do not report their own probe" refusal. `decode` and `load` are declared as _methods_
+rather than function properties on purpose: the loader holds every extension at one erased type
+once their specs are decoded, and method signatures are what make that assignable. Adding a second
+such family means a second package, not an edit to the core.
+
+**The manifest is a data file, and `packages/core/schema/architecture.schema.json` is generated from
+its codec.** `readManifestFile` reads `architecture.yaml`/`.yml`/`.json` through the `yaml` parser
+(YAML 1.2 core schema, merge keys on, unknown tags refused) and `.mjs` through `import()`; both
+hosts discover the file by name in that order and refuse a repository holding two. `defs`/`use`
+are expanded on the raw value before decoding (`manifest/expand.ts`), so they work in every form.
+The JSON Schemas are emitted by `pnpm run schema:manifest`. `architecture.schema.json` is the
+_composed_ one — the core's keys generated together with those of every family the bin loads, which
+today is `campaigns` — so the test that pins it lives in `packages/campaigns/src/manifest/
+json-schema.test.ts`, the one place that can see both codecs; the core's own
+`manifest/json-schema.test.ts` covers its half and the mechanics every key shares.
+`architecture-node.schema.json` is one node of the tree, which no family extends, so it stays the
+core's alone. Either test fails when a committed file is behind the codec — so a change to the manifest schema is followed by regenerating them,
+and the docs site copies both to `/schema/` at build. Decode errors name a line through the
+locator the YAML reader hands `loadPolicy`; a module manifest gets the path only.
+
+**The manifest may be split with `include`, and this repository's is.** `{ include: <path> }`
+anywhere in the manifest is replaced by that file's value before `defs`/`use` expand
+(`infrastructure/manifest-include.ts`); the path is relative to the file that wrote it, an
+included file is YAML/JSON only, nothing may stand beside `include`, and a list item naming a
+list is spliced. The root `architecture.yaml` includes `packages/<name>/architecture.yaml` for
+each package's tree node — so a package's layering rules are edited in the package, and the
+root stays the index. A position inside an included file carries the file
+(`ManifestPosition.file`), which is how an error names `packages/core/architecture.yaml:12:5`.
+
+**`e2e/` is the suite that runs what a user installs, and it lives outside `packages/` on
+purpose.** The root policy's scope is `^packages/` and its walker roots are `packages`, so the
+harness and its generated fixtures are governed by no rule and seen by no walk — a fixture under
+`packages/cli/` raced the self-hosting `infer` test once. Every fixture is written to a
+realpath'd temp directory (macOS's `/var` is a symlink, and the resolver realpaths its answers)
+with its externals stubbed under the fixture's own `node_modules/`. The harness never imports
+`@goodbones/*` source: `e2e/src/cli.ts` spawns `packages/cli/build/esm/main.js`, `e2e/src/oxlint.ts`
+runs the `oxlint` binary with `packages/oxlint/build/esm/plugin.js` named by absolute path, and
+`e2e/src/install.ts` extracts `pnpm pack` tarballs into the fixture. Assertions are on
+`check --json`, never on the prose. The `e2e` Nx target depends on every build and is never
+cached or affected-filtered. It runs in CI on push to `main` only — it takes several minutes,
+so it is not on pull requests and not in `precommit` — and `release` needs it, so a red suite
+blocks the publish. Run `pnpm run e2e` locally before merging anything that touches a build.
+`e2e/src/profile.ts` is the seam a second language fills — a profile and a `resolve.scopes`
+entry; the scenarios do not change. The property tier (`e2e/src/properties/`) is metamorphic
+only — never a model of the evaluators — and a failing seed shrinks for a long time, so
+`FC_END_ON_FAILURE=1` is how to see the failure first. Running `oxlint` from inside `e2e/`
+fails to load the plugin: the plugin reads the manifest from the working directory, so lint
+from the repository root.
+
+**Imports use explicit `.js` extensions.** `moduleResolution` is `NodeNext` and the package is ESM —
+`import { x } from "./thing.js"` referring to `thing.ts` is correct, not a mistake to "fix".
+
+**`oxlint` and `@effect/tsgo` move together.** The `prepare` step runs `effect-tsgo patch --oxlint`,
+and that patch targets one exact oxlint version, so a bump is the set (`1.88.0` and `oxlint-tsgolint`
+`7.0.2004` with `@effect/tsgo` `^0.53.4`, the versions `oxlint-plugin-effect` `0.29.0` is tested
+with; `@oxlint/plugins`, which the vendored anti-slop plugins import, is pinned to `oxlint`'s exact
+version). Do not go below 1.78.0: 1.77.0's language server panics building the "disable this rule"
+quick-fix for any JS-plugin diagnostic (oxc #25278), so the architecture rules ran in CI and never
+surfaced in the editor. `.vscode/` points the editor at `oxc.oxc-vscode` for the same reason.
+
+**`oxlint` and `oxc-parser` move together.** The pack parses with `oxc-parser`, pinned exactly to
+the version released with the pinned `oxlint` (`1.88.0` with `oxc-parser` `0.154.0`, released together;
+the pack reads `@oxc-project/types@0.154.0`), because the plugin reads oxlint's tree through the pack's reader
+and the reader is written against one ESTree. `packages/oxlint/src/parity.test.ts` is what fails
+when either is bumped alone — a node renamed or a field moved in one parser and not the other —
+so a bump of either runs it. `oxc-parser` ships prebuilt platform binaries as optional dependencies
+with no install script, so it needs no `onlyBuiltDependencies` entry.
+
+**No package depends on `typescript`, and none should.** Every package builds with the workspace's
+`tsc`, which is tsgo (the root's `typescript` is `@typescript/native` 7.x). The pack once depended on
+real `typescript` 5.x for its parser API, and that package's bin shadowed the root's: letting it build
+with 5.x made CI flaky — `tsc -b` in `cli` and `oxlint`, each seeing the pack's outputs "generated with
+a different version", re-emitted them in parallel, and one read the other's half-written declaration
+file. The root keeps a `typescript` 5.x devDependency for tooling only; a package that adds one brings
+the shadow back.
+
+**`no-redeclare` is off on purpose.** From oxlint 1.79.0 the rule reports TypeScript declaration
+merging — `export const X = Schema.Struct(…)` beside `export type X = …`, which is how every schema in
+`src/domain/` is written. Upstream closed it as not planned (oxc #25936). A real redeclaration is
+TS2451, and the compiler owns it.
+
+**`effect` is an exact dependency** (`4.0.5`), pinned again in the root `pnpm.overrides` with
+`@effect/vitest` beside it. Every package moves in one change. `@effect/vitest` 4.0.5 needs vitest 5,
+which dropped `describe.sequential`/`it.sequential` (pass `{ concurrent: false }`) and workspace files
+(the root `vitest.config.ts` lists `test.projects`). Effect 4.0.5 also changed two defaults that the
+code now states outright: a decode reports the rejected value only with `reportInput: true`, and
+`toJsonSchemaDocument` closes objects only with `onExcessProperty: "error"`. An `isPattern` regex
+reaches the JSON Schema only if it carries the `u` flag.
+
+**`references` is not inherited through `extends`**, so `tsconfig.build.json` and the root
+`tsconfig.build.json` repeat what the plain `tsconfig.json` already lists.
+
+## Conventions
+
+- **Prettier**: double quotes, `printWidth: 100`, semicolons. (Note this differs from most dataquail
+  repos — it matches the upstream these packages were extracted from.)
+- **oxlint**, not ESLint. Local rules live in `scripts/lint-rules/` and are loaded as an oxlint JS
+  plugin under the `local/` prefix. The config extends `@effect/tsgo`'s recommended preset (the
+  `effecttsgo/*` rules) and `oxlint-plugin-effect`'s (the `effect/*` rules), and loads the
+  anti-slop plugins vendored under `tools/oxlint/anti-slop/` (`anti-slop/*`, `anti-slop-effect/*`;
+  provenance and local deviations in its `UPSTREAM.md`). Those are TypeScript, so every oxlint run
+  needs `NODE_OPTIONS='--experimental-strip-types --no-warnings'` — the `lint` scripts and each
+  project's Nx `lint` target set it; a bare `pnpm exec oxlint` fails to load them. The rules turned
+  off in `.oxlintrc.json` are adoption debt, each with its reason, not a judgement on the rule.
+- **`@effect/language-service` is a tsconfig entry, not a dependency.** `pnpm check:effect` runs
+  `effect-tsgo diagnostics`, which reads its options from the `@effect/language-service` plugin
+  entry in `tsconfig.base.json`; the package itself is no longer installed.
+- **Conventional commits** are enforced by commitlint and drive `nx release` version bumps.
+- **Nx targets** are declared in each `project.json` and delegate to the package's own npm scripts, so
+  `pnpm --filter … run build` and `nx build …` do the same thing. Each `package.json` sets
+  `"nx": { "includedScripts": [] }` so Nx does not also infer targets from the scripts.
+- **Docs are namespaced per package.** `website/src/content/docs/architecture-rules/**` belongs to this
+  package; a second library gets its own directory and its own sidebar group rather than being folded
+  into this one.
+
+## Architecture notes
+
+`@goodbones/core` is laid out hexagonally, and the layering is the thing to preserve:
+
+- `src/domain/` — the manifest schema, the error types, the `Violation` and its line-independent
+  fingerprint. No I/O.
+- `src/core/` — the pure evaluators (`imports`, `exports`, `members`, `surface`, `structure`, `graph`,
+  `campaigns`, `sectors`, `phases`, `campaign-state`, `coverage`, `baseline`, `ledger`, `patterns`).
+  Given facts, they return violations; they never read a file.
+- `src/manifest/` — compiling the manifest tree down to flat, resolved rules (`lowerManifest`).
+- `src/load/` — `loadPolicy`: decode, lower, compile and probe a manifest the host has already
+  read, with the language packs and the `FileSystem` the host hands in. Language-neutral; the
+  resolver and the extractor it returns route each file to the scope's language.
+- `src/ports/` — the `FileSystem`, `ModuleResolver`, `FactExtractor`, `SyntaxMatcher`,
+  `ReportSource`, `CampaignPredicate` and `Language` ports.
+- `src/infrastructure/` — a fake per port (exported as `@goodbones/core/testing`; tests drive them),
+  and the five things the core does on this host without a language: the live file system, the
+  walker, reading the manifest file, importing the `fn` terms' modules (`campaign-functions.ts`),
+  and running a `report` term's command (`report-source-live.ts`).
+
+`@goodbones/campaigns` repeats that shape for a family the core does not own — `domain/`,
+`ports/`, `core/`, `manifest/`, `load/`, `infrastructure/`, and a `host/` tier above them for the
+glue that runs git and writes ledgers. Two graph rules in the root policy pin it:
+`campaigns-reaches-only-the-core` (it reaches the core and no peer, so a second such family is a
+second package) and `campaigns-pure-tiers-reach-no-adapter`. Two couplings are kept on purpose:
+`Violation.kind` still carries `"campaign"`, and `domain/snapshot.ts` still declares the
+conformance report's campaign fields — a published report format is a shared contract even when
+the implementation that fills it lives elsewhere.
+
+The other four packages sit around it:
+
+- `@goodbones/typescript` implements the ports for one language and assembles them into
+  `typescriptLanguage()`. Its extractor is what the CLI reads every file through and what the
+  loader parses authored probes with. It parses with `oxc-parser` and exports the reader,
+  `readProgram`, that turns an ESTree `Program` into facts with the node each came from; the
+  plugin calls the same reader on oxlint's tree, so there is one reader over one tree shape. A
+  syntax error does not throw: oxc returns an empty program, so a file that does not parse
+  contributes no facts. Only the two hosts' `config-loader.ts` construct the pack; the core never
+  imports it (a `reach` rule in the repo policy says so).
+- `@goodbones/cli` and `@goodbones/oxlint` — the two hosts. Both answer to the same core,
+  deliberately, so an alpha oxlint plugin API is not a single point of failure. The plugin reads
+  oxlint's tree through the pack's reader rather than parsing again, and
+  `packages/oxlint/src/parity.test.ts` holds oxlint's parse and oxc-parser's to one answer — it
+  lives in the plugin because it is the plugin's contract with the pack.
+
+Two properties are load-bearing and pinned by tests:
+
+- **Every compiled rule carries a probe** generated from its own node path, and the plugin **refuses to
+  load** if any probe fails. A rule that has drifted into matching nothing is a load-time error, not
+  something a separate script might notice later. A `members`, `exports` or `surface` rule may carry
+  an authored `probe: { source }` instead, parsed at load — the only way to prove a rule fires on a
+  declaration shape, since a synthetic probe never meets a parser.
+- **The baseline is a ratchet, not a suppression list.** Entries are keyed by fingerprint, and fixing a
+  violation fails the build until its entry is removed, so the floor only rises.
+- **The graph family is CLI-only, by design.** The plugin sees one file at a time; `architecture check`
+  builds the import graph (parsing each file once) and is a superset of the plugin, not a mirror.
+  Both adapters compile and probe graph rules at load, so a vacuous one fails `oxlint` too.
+
+### @goodbones/cli
+
+The CLI is moving from verbs inline in `packages/cli/src/run.ts` to use-cases behind ports, as
+[ADR 1](docs/adr/0001-use-cases-behind-ports-in-the-cli.md) decides. Its target tiers are
+`domain/` (pure types and functions, no I/O), `ports/` (plain `type`s passed as arguments, as the
+core's are), `infrastructure/` (one `*-live.ts` and one `*-fake.ts` per port), `use-cases/` (one
+`<verbNoun>UseCase` per `<verb-noun>.use-case.ts`, which never prints and never imports another
+use-case) and `interface/` (one `<verb>.command.ts` per verb, which renders text or `--json`).
+`main.ts`, `config-loader.ts`, `run.ts`, `output.ts` and `campaigns/` stay where they are. A tier's
+node is added to the policy in the same pull request as its first file, and no flag, output or
+exit code changes.
+
+## Releasing
+
+`nx release` with `projectsRelationship: "independent"`. Push to `main` → version + tag + GitHub
+release; creating that release triggers the npm publish from `packages/<name>` (not a `dist/`
+subdirectory — the manifest's `files` is what narrows the tarball). `updateDependents` is `never`:
+a package is released when something in it changed, never as a side effect of a dependency moving.
+See `RELEASE.md`.
+
+**`main` releases only packages the registry already knows.** The release job asks npm about each
+package and passes the existing ones to `nx release --projects`; a never-published package goes through
+First Publish, deliberately — and the release job now _refuses_ to run at all while any package under
+`packages/` is missing from the registry, because filtering it out of `--projects` was never enough.
+A first publish still names the whole set (`core`, `typescript`, `cli`, `oxlint`) in one run; the
+preflight refuses otherwise.
+
+**`updateDependents` is `never`, and changing it back will burn a version number.** nx hardcodes
+`patch` for a dependent's bump, and `semver.inc("0.1.0-beta.11", "patch")` is `"0.1.0"` — so under
+`auto` any package on a prerelease that is versioned only because a dependency moved silently leaves
+beta and takes a stable number. That is how `@goodbones/campaigns@0.1.0` was published by accident.
+The cost of `never` is that releasing `core` no longer publishes a `cli` and `oxlint` that depend on
+it; give them their own conventional commit when they should go out together.
+
+**A package that has never been released does not go through that path.** It has no git tag and no
+registry version to derive from, so it is bootstrapped by the **First Publish** workflow
+(`workflow_dispatch` → `scripts/first-publish.sh`), which passes nx's `--first-release` and refuses any
+package that is already on the registry. After that one run the package is normal.
+
+**`--preid` is passed once, on the first publish, and never again.** Once a package's current version
+is a prerelease, nx resolves every subsequent bump as `prerelease` on its own, so the ordinary flow
+keeps cutting betas with no flag anywhere. Leaving beta is therefore a deliberate
+`nx release minor` — there is nothing to unset — which is the property you want from a "not ready yet"
+state. Don't add a preid to `on-push.yml` trying to make betas stick; they already do.
+
+**The npm dist-tag is derived from the version, not configured** (`scripts/dist-tag.mjs`, used by both
+publish scripts). npm applies `latest` to whatever it is given unless `--tag` says otherwise and never
+looks at the version, so an untagged beta becomes what `npm install` resolves to — which is exactly
+what happened to `@effect-server-utils/cqrs` (`latest -> 0.1.0-beta.4`).
+
+**`.npmrc` sets `provenance=true` unconditionally, and npm errors rather than degrades without a
+trusted CI to attest from.** Any publish outside Actions — including a Verdaccio rehearsal — needs
+`NPM_CONFIG_PROVENANCE=false`, and gives up the attestation to get it.

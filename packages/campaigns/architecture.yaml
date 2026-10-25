@@ -264,7 +264,7 @@ children:
                       external: [vitest]
 
           "use-cases/":
-            message: "use-cases/ holds one <verb-noun>.use-case.ts per thing a host asks the module to do, the <name>.result.ts it answers with where that is a type of its own, and their tests. A use-case loads through the policy's repositories and clients, decides in the domain, saves, and returns a result. A shared helper here is a domain service or a port that hasn't been written yet."
+            message: "use-cases/ holds one <verb-noun>.use-case.ts per thing a host asks the module to do, the <name>.result.ts it answers with where that is a type of its own, their tests, and the *.test-helper.ts fixtures those tests share. A use-case loads through the policy's repositories and clients, decides in the domain, saves, and returns a result. A shared helper here is a domain service or a port that hasn't been written yet."
             members:
               - use: no-talking
               - use: no-file-system-calls
@@ -291,6 +291,14 @@ children:
                 imports:
                   message: "A use-case's test drives it over the fakes: it names its subject, the core's fakes and the family's tiers it builds a policy from, and the test framework."
                   external: [vitest]
+                  allow:
+                    - "@core/testing.ts"
+                    - "@camp/load/**"
+                    - "@camp/modules/{module}/use-cases/**"
+                    - "@camp/modules/{module}/infrastructure/**"
+              "*.test-helper.ts":
+                imports:
+                  message: "A fixture the use-cases' tests share builds what a test would: it names the core's fakes, the family's tiers it builds a policy from, its module's use-cases and adapters, and nothing a use-case could not reach in a test."
                   allow:
                     - "@core/testing.ts"
                     - "@camp/load/**"

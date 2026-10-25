@@ -5,7 +5,7 @@
   "references": [{ "path": "../core/tsconfig.build.json" }],
   "extends": "../../tsconfig.base.json",
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test-helper.ts"],
   "compilerOptions": {
     "types": ["node"],
     "outDir": "build/src",

@@ -275,7 +275,7 @@ graph:
     - name: campaigns-use-cases-reach-no-adapter
       message: "A use-case transitively reaches a live adapter. It loads and saves through the repositories and clients the extension built and carries on the policy; a route from it to a live implementation, or to the extension that constructs them, means it would run against the real file system or git in a test."
       from: "@camp/modules/*/use-cases/**"
-      fromNot: "**/*.test.ts"
+      fromNot: ["**/*.test.ts", "**/*.test-helper.ts"]
       to:
         - "@camp/modules/*/infrastructure/**/*-live.ts"
         - "@camp/infrastructure/campaign-functions.ts"

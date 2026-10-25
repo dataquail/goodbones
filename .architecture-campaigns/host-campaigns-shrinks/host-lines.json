@@ -11,8 +11,200 @@
       "initial": 2140,
       "recorded": 419,
       "improved": 1721,
-      "closed": null,
+      "closed": 419,
       "lastImproved": "2026-10-24T15:02:28.649Z"
+    },
+    "packages/campaigns/src/compat/policy-signatures": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 75,
+      "recorded": 75,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/modules/ledgers/domain/services/campaign-evaluation.service": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 249,
+      "recorded": 249,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/modules/ledgers/domain/services/campaign-ledgers.service": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 145,
+      "recorded": 145,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/modules/ledgers/domain/services/campaign-report.service": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 484,
+      "recorded": 484,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/modules/ledgers/domain/services/concession.service": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 157,
+      "recorded": 157,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/modules/ledgers/use-cases/attest-sector.use-case": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 48,
+      "recorded": 48,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/modules/ledgers/use-cases/clear-objectives.use-case": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 250,
+      "recorded": 250,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/modules/ledgers/use-cases/concede-objective.use-case": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 75,
+      "recorded": 75,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/modules/ledgers/use-cases/evaluate-campaigns.use-case": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 31,
+      "recorded": 31,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/modules/ledgers/use-cases/explain-campaign.use-case": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 59,
+      "recorded": 59,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/modules/ledgers/use-cases/note-sector.use-case": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 35,
+      "recorded": 35,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/modules/ledgers/use-cases/nudge-changes.use-case": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 624,
+      "recorded": 624,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/modules/ledgers/use-cases/preview-sector-moves.use-case": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 44,
+      "recorded": 44,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/modules/ledgers/use-cases/read-base-side.use-case": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 51,
+      "recorded": 51,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/modules/ledgers/use-cases/replay-history.use-case": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 61,
+      "recorded": 61,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/modules/ledgers/use-cases/report-campaigns.use-case": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 13,
+      "recorded": 13,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/modules/ledgers/use-cases/snapshot-campaigns.use-case": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 233,
+      "recorded": 233,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/modules/ledgers/use-cases/view-sector.use-case": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 94,
+      "recorded": 94,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/presentation/campaign-explanation.presenter": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 42,
+      "recorded": 42,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/presentation/campaign-reports.presenter": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 137,
+      "recorded": 137,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/presentation/campaign-rows.presenter": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 55,
+      "recorded": 55,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/presentation/history.presenter": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 22,
+      "recorded": 22,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/presentation/nudge.presenter": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 246,
+      "recorded": 246,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/presentation/sector-view.presenter": {
+      "entered": "2026-10-25T13:17:37.565Z",
+      "initial": 61,
+      "recorded": 61,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T13:17:37.565Z"
     }
   },
   "concessions": []

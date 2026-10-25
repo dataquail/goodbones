@@ -17,6 +17,9 @@ import {
   sectorEntryOf,
 } from "@goodbones/campaigns";
 import {
+  makeBaseSidesClientFake,
+  makeGitClientFake,
+  makeMeasureCommandsClientFake,
   makeObjectiveLedgersRepositoryFake,
   makePlansRepositoryFake,
   makeSectorRecordsRepositoryFake,
@@ -162,6 +165,15 @@ const policyWith = (ledgers: CampaignPolicy["ledgers"]): LoadedPolicy => ({
           ledgers: makeObjectiveLedgersRepositoryFake(),
           sectorRecords: makeSectorRecordsRepositoryFake(),
           plans: makePlansRepositoryFake(),
+        },
+        readersAt: () => ({
+          ledgers: makeObjectiveLedgersRepositoryFake(),
+          sectorRecords: makeSectorRecordsRepositoryFake(),
+        }),
+        clients: {
+          git: makeGitClientFake(),
+          baseSides: makeBaseSidesClientFake(),
+          commands: makeMeasureCommandsClientFake(),
         },
         functions: new Map(),
         reports: NO_REPORTS,

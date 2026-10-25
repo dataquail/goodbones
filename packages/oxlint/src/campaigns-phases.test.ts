@@ -21,6 +21,9 @@ import {
   type SectorRecord,
 } from "@goodbones/campaigns";
 import {
+  makeBaseSidesClientFake,
+  makeGitClientFake,
+  makeMeasureCommandsClientFake,
   makeObjectiveLedgersRepositoryFake,
   makePlansRepositoryFake,
   makeSectorRecordsRepositoryFake,
@@ -205,6 +208,15 @@ const policyWith = (
           ledgers: makeObjectiveLedgersRepositoryFake(),
           sectorRecords: makeSectorRecordsRepositoryFake(),
           plans: makePlansRepositoryFake(),
+        },
+        readersAt: () => ({
+          ledgers: makeObjectiveLedgersRepositoryFake(),
+          sectorRecords: makeSectorRecordsRepositoryFake(),
+        }),
+        clients: {
+          git: makeGitClientFake(),
+          baseSides: makeBaseSidesClientFake(),
+          commands: makeMeasureCommandsClientFake(),
         },
         functions: new Map(),
         reports: NO_REPORTS,

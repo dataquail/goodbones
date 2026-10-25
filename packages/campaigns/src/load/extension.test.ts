@@ -10,7 +10,8 @@ import { describe, expect, it } from "vitest";
 import type { CampaignMeasure } from "../ports/campaign-measure.js";
 import type { CampaignPredicate, CampaignPredicateInput } from "../ports/campaign-predicate.js";
 import type { ReportSource } from "../ports/report-source.js";
-import { campaignsExtension, campaignsOf } from "./extension.js";
+import { campaignsOf } from "./campaign-policy.js";
+import { campaignsExtension } from "./extension.js";
 
 // The family loaded the way a host loads it: composed into `loadPolicy` as an
 // extension, decoding its own two keys, compiling and probing its own rules,

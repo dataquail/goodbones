@@ -1,40 +1,37 @@
-import type { LoadedPolicy, Violation } from "@goodbones/core";
-
 import {
   type CampaignEvaluation,
   hitsInWindow,
   type ObjectiveHit,
-} from "../core/campaign-state.js";
-import type { CompiledCampaign, CompiledObjective } from "../core/campaigns.js";
-import { isBehind, ledgeredFor, type Residue as ResidueVector } from "../core/phases.js";
-import { isShared } from "../core/sectors.js";
-import { campaignsOf } from "../load/extension.js";
+} from "../../../../core/campaign-state.js";
+import type { CompiledCampaign, CompiledObjective } from "../../../../core/campaigns.js";
+import { isBehind, ledgeredFor, type Residue as ResidueVector } from "../../../../core/phases.js";
+import { isShared } from "../../../../core/sectors.js";
 import {
   isComplete,
   isStalled,
   ledgerArithmeticHolds,
   reconcileSector,
   sectorArithmeticHolds,
-} from "../modules/ledgers/domain/ledger/ledger.root-ops.js";
-import type { MeasureLedger } from "../modules/ledgers/domain/measure-ledger/measure-ledger.root.js";
+} from "../ledger/ledger.root-ops.js";
+import type { MeasureLedger } from "../measure-ledger/measure-ledger.root.js";
 import {
   lastImprovedOf,
   measureLedgerArithmeticHolds,
   measureStandingOf,
-} from "../modules/ledgers/domain/measure-ledger/measure-ledger.root-ops.js";
-import { planDiffOf } from "../modules/ledgers/domain/plan/plan.root-ops.js";
-import { sectorClockOf } from "../modules/ledgers/domain/sector-record/sector-record.root-ops.js";
-import { growsFor } from "./ledger-phase.js";
+} from "../measure-ledger/measure-ledger.root-ops.js";
+import { planDiffOf } from "../plan/plan.root-ops.js";
+import { sectorClockOf } from "../sector-record/sector-record.root-ops.js";
 import {
-  count,
+  type CampaignLedgers,
   describeValue,
   entriesOf,
+  growsFor,
   ledgerOf,
   measureLedgerOf,
   phaseIdOf,
   recordOf,
   sectorNames,
-} from "./ledgers.js";
+} from "./campaign-ledgers.service.js";
 
 // ---------------------------------------------------------------------------
 // The report `check` reads
@@ -112,7 +109,8 @@ export type CampaignReport = {
 };
 
 export const campaignReportsOf = (
-  policy: LoadedPolicy,
+  campaigns: CampaignLedgers,
+  now: number,
   evaluations: ReadonlyArray<CampaignEvaluation>,
 ): ReadonlyArray<CampaignReport> =>
   evaluations.map((evaluation) => {
@@ -131,7 +129,7 @@ export const campaignReportsOf = (
     // that `grows` the objective is on the `clear` side: the plan expected
     // it, and the ledger is only behind.
     const scalarReport = (objective: CompiledObjective): ObjectiveReport => {
-      const ledger = measureLedgerOf(policy, rule, objective);
+      const ledger = measureLedgerOf(campaigns, rule, objective);
       const sectors: Array<SectorObjectiveReport> = [];
       let value = 0;
       let recorded = 0;
@@ -190,7 +188,7 @@ export const campaignReportsOf = (
           ? "unmeasured"
           : measureStandingOf(ledger, name, measured, objective.tolerance);
 
-        const grown = standing === "breached" && growsFor(policy, rule, name, objective.id);
+        const grown = standing === "breached" && growsFor(campaigns, rule, name, objective.id);
 
         const line =
           `measured ${describeValue(measured)}, recorded ${String(own.recorded)}` +
@@ -248,7 +246,7 @@ export const campaignReportsOf = (
 
     const objectives: Array<ObjectiveReport> = rule.objectives.map((objective) => {
       if (objective.measure !== null) return scalarReport(objective);
-      const ledger = ledgerOf(policy, rule, objective);
+      const ledger = ledgerOf(campaigns, rule, objective);
       const sectors: Array<SectorObjectiveReport> = [];
 
       for (const name of sectorNames(evaluation)) {
@@ -342,13 +340,13 @@ export const campaignReportsOf = (
       );
 
     const ledgers = rule.objectives.flatMap((objective) => {
-      const ledger = ledgerOf(policy, rule, objective);
+      const ledger = ledgerOf(campaigns, rule, objective);
 
       return ledger === undefined ? [] : [ledger];
     });
 
     const measureLedgers = rule.objectives.flatMap((objective) => {
-      const ledger = measureLedgerOf(policy, rule, objective);
+      const ledger = measureLedgerOf(campaigns, rule, objective);
 
       return ledger === undefined ? [] : [{ objective, ledger }];
     });
@@ -377,7 +375,7 @@ export const campaignReportsOf = (
 
     const sectorClock = [...evaluation.sectors.keys()]
       .flatMap((name) => {
-        const record = recordOf(policy, rule, name);
+        const record = recordOf(campaigns, rule, name);
 
         return record === undefined ? [] : [sectorClockOf(record)];
       })
@@ -402,19 +400,19 @@ export const campaignReportsOf = (
       complete: count === 0 && ledgers.every(isComplete) && scalarsMet && unmeasured.length === 0,
       stalled:
         (ledgers.length > 0 &&
-          ledgers.some((ledger) => isStalled(rule, ledger, policy.now, sectorClock))) ||
-        scalarsOpen.some(({ ledger }) => isMeasureStalled(rule, ledger, policy.now, sectorClock)),
+          ledgers.some((ledger) => isStalled(rule, ledger, now, sectorClock))) ||
+        scalarsOpen.some(({ ledger }) => isMeasureStalled(rule, ledger, now, sectorClock)),
       onComplete: rule.onComplete,
       objectives,
       sectors: [...evaluation.sectors.values()].map((state) => ({
         name: state.name,
         phase: phaseIdOf(rule, state.phase),
-        reached: recordOf(policy, rule, state.name)?.reached ?? null,
+        reached: recordOf(campaigns, rule, state.name)?.reached ?? null,
         files: state.sector.files.length,
         residue: state.residue,
       })),
       drift: evaluation.index.drift,
-      plan: planDiffOf(rule, campaignsOf(policy).plans.get(rule.id)),
+      plan: planDiffOf(rule, campaigns.plans.get(rule.id)),
     };
   });
 
@@ -437,8 +435,8 @@ const isMeasureStalled = (
 };
 
 // Which hits in window are carried by a ledger, exactly or by anchor.
-export const ledgeredFilter = (
-  policy: LoadedPolicy,
+export const ledgeredFilterOf = (
+  campaigns: CampaignLedgers,
   evaluations: ReadonlyArray<CampaignEvaluation>,
 ): ((hit: ObjectiveHit) => boolean) => {
   const carried = new Set<ObjectiveHit>();
@@ -447,7 +445,7 @@ export const ledgeredFilter = (
     const { rule } = evaluation;
 
     for (const objective of rule.objectives) {
-      const ledger = ledgerOf(policy, rule, objective);
+      const ledger = ledgerOf(campaigns, rule, objective);
 
       if (ledger === undefined) continue;
 
@@ -476,7 +474,7 @@ export const ledgeredFilter = (
 // The sectors standing in a window no ledger has recorded for them, each
 // with the phase it is at. A campaign with no ledger at all has never been
 // cleared; one with ledgers has a sector that moved on since the last clear.
-const unrecordedSectorsOf = (campaign: CampaignReport): ReadonlyArray<string> =>
+export const unrecordedSectorsOf = (campaign: CampaignReport): ReadonlyArray<string> =>
   [
     ...new Set(
       campaign.objectives.flatMap((objective) =>
@@ -494,7 +492,7 @@ const unrecordedSectorsOf = (campaign: CampaignReport): ReadonlyArray<string> =>
     return phase === null ? name : `${name} (at ${phase})`;
   });
 
-const neverCleared = (campaign: CampaignReport): boolean =>
+export const neverCleared = (campaign: CampaignReport): boolean =>
   !campaign.objectives.some((objective) => objective.ledgered);
 
 // Why a campaign report is not ok, in the order `check` explains it.
@@ -545,152 +543,3 @@ export const campaignFailuresOf = (
     ),
   ];
 };
-
-// A campaign's failures, as `check` prints them, with the command that
-// answers each.
-export const renderCampaignReports = (
-  reports: ReadonlyArray<CampaignReport>,
-  hits: ReadonlyArray<{
-    readonly violation: Violation;
-    readonly objective: string;
-    readonly sector: string;
-    readonly entry: string;
-    readonly ledgered: boolean;
-  }>,
-): ReadonlyArray<string> =>
-  reports.flatMap((campaign): ReadonlyArray<string> => {
-    const lines: Array<string> = [];
-
-    const say = (...more: ReadonlyArray<string>): void => {
-      for (const one of more) lines.push(one);
-    };
-
-    const at = (objective: string, sector: string, entry: string): string =>
-      `  ${objective} · ${sector} · ${entry}`;
-
-    if (campaign.drift.length > 0) {
-      say(
-        "",
-        `campaign ${campaign.id}: ${count(campaign.drift.length, "file is", "files are")} in two sectors. A perimeter nests another; narrow one:`,
-        ...campaign.drift.map((one) => `  ${one.file}  (${one.sectors.join(", ")})`),
-      );
-    }
-
-    if (campaign.plan.unreceipted.length > 0) {
-      say(
-        "",
-        `campaign ${campaign.id}: ${count(campaign.plan.unreceipted.length, "defined phase")} changed since the last clear with no concession: ${campaign.plan.unreceipted.join(", ")}. Add a \`concessions\` entry to the phase with a reason and a date, then run \`objectives clear\`.`,
-      );
-    }
-
-    if (campaign.missingLedger) {
-      const unrecorded = campaign.objectives.flatMap((objective) =>
-        objective.sectors
-          .filter(
-            (one) =>
-              one.unrecorded && (one.count > 0 || objective.ledgered || one.measure !== undefined),
-          )
-          .map(
-            (one) =>
-              `  ${objective.id} · ${one.sector}  (${
-                one.measure === undefined
-                  ? count(one.count, "hit")
-                  : `measures ${one.measure.value === null ? "no number" : String(one.measure.value)}`
-              })`,
-          ),
-      );
-
-      say(
-        "",
-        neverCleared(campaign)
-          ? `campaign ${campaign.id}: ${count(unrecorded.length, "sector")} in an objective's window that no ledger has seen. Record them before they count as growth:`
-          : `campaign ${campaign.id}: ${unrecordedSectorsOf(campaign).join(", ")} entered a window since the last clear, and its objectives have no ledger entries for it yet. Record what is there before it counts as growth:`,
-        ...unrecorded,
-        "",
-        `  architecture objectives clear ${campaign.id}`,
-      );
-    }
-
-    if (campaign.unmeasured.length > 0) {
-      say(
-        "",
-        `campaign ${campaign.id}: ${count(campaign.unmeasured.length, "sector")} where a scalar objective measured no number — a function that answered something other than a number of zero or more, or a command that did not run or printed none:`,
-        ...campaign.unmeasured.map((one) => `  ${one.objective} · ${one.sector}`),
-      );
-    }
-
-    if (campaign.new.length > 0 && !campaign.missingLedger) {
-      say(
-        "",
-        `campaign ${campaign.id}: ${count(campaign.new.length, "new hit")} the ledger does not carry. Fix them, or record why the count may rise:`,
-        ...campaign.new.flatMap((one) => {
-          const hit = hits.find(
-            (two) =>
-              two.objective === one.objective &&
-              two.sector === one.sector &&
-              two.entry === one.entry,
-          );
-
-          return [
-            at(one.objective, one.sector, one.entry),
-            ...(hit === undefined ? [] : [`      ${hit.violation.file}: ${hit.violation.message}`]),
-          ];
-        }),
-        "",
-        `  architecture objectives concede ${campaign.id} --reason "<why>"`,
-      );
-    }
-
-    if (campaign.stale.length > 0) {
-      say(
-        "",
-        `campaign ${campaign.id}: ${count(campaign.stale.length, "ledger entry", "ledger entries")} no longer fire, or fire past their window. The code was fixed, or the sector moved on; clear them:`,
-        ...campaign.stale.map((one) => at(one.objective, one.sector, one.entry)),
-        "",
-        `  architecture objectives clear ${campaign.id}`,
-      );
-    }
-
-    if (!campaign.arithmetic) {
-      say(
-        "",
-        `campaign ${campaign.id}: a ledger does not add up (holdouts ≠ initial + conceded − cleared − closed; for a scalar, recorded ≠ initial + risen − improved). The ledger was edited by hand; restore it, or record the change with \`objectives concede\`.`,
-      );
-    }
-
-    const complete = campaign.complete && !campaign.missingLedger;
-
-    if (complete && campaign.onComplete === "remove") {
-      say(
-        "",
-        `campaign ${campaign.id} is complete and declares onComplete: remove. Delete it from the manifest, and its ledgers.`,
-      );
-    }
-
-    if (campaign.stalled) {
-      say(
-        "",
-        `notice: campaign ${campaign.id} has stalled — nothing has left a ledger, and no sector has been attested or noted, within its staleAfter.`,
-      );
-    }
-
-    if (complete && campaign.onComplete === "keep") {
-      say("", `notice: campaign ${campaign.id} is complete, and stays as a guard.`);
-    }
-
-    if (campaign.plan.changed.length > 0 && campaign.plan.unreceipted.length === 0) {
-      say(
-        "",
-        `notice: campaign ${campaign.id}: plan changed — ${campaign.plan.changed.join(", ")} (receipted; the next clear re-baselines the sectors in window).`,
-      );
-    }
-
-    if (campaign.plan.refined.length > 0) {
-      say(
-        "",
-        `notice: campaign ${campaign.id}: plan refined — ${campaign.plan.refined.join(", ")}.`,
-      );
-    }
-
-    return lines;
-  });

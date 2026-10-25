@@ -1,8 +1,6 @@
 import type { Violation } from "@goodbones/core";
 
 import type { PhaseRule } from "../domain/config.js";
-import type { SectorRecord } from "../modules/ledgers/domain/sector-record/sector-record.root.js";
-import { positionOf } from "../modules/ledgers/domain/sector-record/sector-record.root-ops.js";
 import {
   addParts,
   type CampaignHit,
@@ -25,6 +23,8 @@ import {
   donePhaseOf,
   LEGACY_PHASE,
   objectivesInWindow,
+  positionOfRecord,
+  type RecordedPosition,
   type Residue,
   type SectorPosition,
   sharedWindow,
@@ -88,7 +88,7 @@ export type CampaignEvaluationInput = {
   readonly readText: (file: string) => string | null;
   readonly globToRegExp: SectorDiscovery["globToRegExp"];
   readonly projects?: SectorDiscovery["projects"];
-  readonly recordOf: (sector: string) => SectorRecord | undefined;
+  readonly recordOf: (sector: string) => RecordedPosition | undefined;
   // For an `endState` objective: the violations of one family against the
   // tree lowered for this sector. Absent, an end state has no residue —
   // the plugin's position, which never evaluates one.
@@ -328,7 +328,7 @@ export const evaluateCampaign = (
       }
     }
 
-    const position = positionOf(rule, input.recordOf(name));
+    const position = positionOfRecord(rule, input.recordOf(name));
 
     const phase =
       name === LEGACY_SECTOR

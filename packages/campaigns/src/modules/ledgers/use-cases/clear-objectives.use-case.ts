@@ -1,61 +1,39 @@
 import type { LoadedPolicy } from "@goodbones/core";
 
-import { type CampaignEvaluation, hitsInWindow } from "../core/campaign-state.js";
-import type { CompiledObjective } from "../core/campaigns.js";
-import { isBehind, isDefinedPhase, ledgeredFor } from "../core/phases.js";
-import { isShared, LEGACY_SECTOR } from "../core/sectors.js";
-import type { PhaseRule } from "../domain/config.js";
-import { campaignsOf } from "../load/extension.js";
-import { EMPTY_LEDGER, type Ledger } from "../modules/ledgers/domain/ledger/ledger.root.js";
+import { type CampaignEvaluation, hitsInWindow } from "../../../core/campaign-state.js";
+import type { CompiledObjective } from "../../../core/campaigns.js";
+import { isBehind, ledgeredFor } from "../../../core/phases.js";
+import { isShared, LEGACY_SECTOR } from "../../../core/sectors.js";
+import type { PhaseRule } from "../../../domain/config.js";
+import { campaignsOf } from "../../../load/campaign-policy.js";
+import { EMPTY_LEDGER, type Ledger } from "../domain/ledger/ledger.root.js";
 import {
   clearedSector,
   rebaselinedSector,
   reconcileSector,
-} from "../modules/ledgers/domain/ledger/ledger.root-ops.js";
-import { EMPTY_MEASURE_LEDGER } from "../modules/ledgers/domain/measure-ledger/measure-ledger.root.js";
+} from "../domain/ledger/ledger.root-ops.js";
+import { EMPTY_MEASURE_LEDGER } from "../domain/measure-ledger/measure-ledger.root.js";
 import {
   clearedMeasure,
   concededMeasure,
   measureStandingOf,
   recordedOf,
-} from "../modules/ledgers/domain/measure-ledger/measure-ledger.root-ops.js";
-import { planDiffOf, planOf } from "../modules/ledgers/domain/plan/plan.root-ops.js";
-import { EMPTY_SECTOR_RECORD } from "../modules/ledgers/domain/sector-record/sector-record.root.js";
+} from "../domain/measure-ledger/measure-ledger.root-ops.js";
+import { planDiffOf, planOf } from "../domain/plan/plan.root-ops.js";
+import { EMPTY_SECTOR_RECORD } from "../domain/sector-record/sector-record.root.js";
+import { reachedRecord } from "../domain/sector-record/sector-record.root-ops.js";
 import {
-  positionOf,
-  reachedRecord,
-} from "../modules/ledgers/domain/sector-record/sector-record.root-ops.js";
-import { growsFor, ledgerPhaseOf } from "./ledger-phase.js";
-import { entriesOf, ledgerOf, measureLedgerOf, recordOf } from "./ledgers.js";
+  entriesOf,
+  growsFor,
+  ledgerOf,
+  ledgerPhaseOf,
+  measureLedgerOf,
+  recordOf,
+} from "../domain/services/campaign-ledgers.service.js";
+import type { ClearOutcome } from "./clear-objectives.result.js";
 
 // `objectives clear`: the ledgers reconciled with the code wherever that is
 // not a regression, the furthest phase each sector has reached, and the plan.
-
-export type ClearOutcome = {
-  readonly campaign: string;
-  readonly objective: string;
-  readonly cleared: number;
-  readonly rewritten: number;
-  readonly closed: number;
-  readonly entered: ReadonlyArray<string>;
-  readonly rebaselined: ReadonlyArray<string>;
-  readonly left: number;
-  // For a scalar objective: the sectors whose record improved, those whose
-  // number rose in a phase that `grows` it, and what the open sectors are
-  // held to now, summed. `cleared`, `rewritten` and `left` are 0; `closed`
-  // counts sectors.
-  readonly measure?: {
-    readonly improved: ReadonlyArray<{ sector: string; from: number; to: number }>;
-    // `phase` is `null` on the shared files, which hold no number.
-    readonly grown: ReadonlyArray<{
-      sector: string;
-      from: number;
-      to: number;
-      phase: string | null;
-    }>;
-    readonly recorded: number;
-  };
-};
 
 // `clear` for a scalar objective: a sector entering the window is recorded
 // at its value; one inside it whose value improved past the tolerance is
@@ -73,7 +51,8 @@ const clearMeasure = (
   by: string,
 ): ClearOutcome => {
   const { rule } = evaluation;
-  const existing = measureLedgerOf(policy, rule, objective);
+  const campaigns = campaignsOf(policy);
+  const existing = measureLedgerOf(campaigns, rule, objective);
 
   const before =
     existing ?? EMPTY_MEASURE_LEDGER(rule.id, objective.id, objective.direction, policy.now);
@@ -129,14 +108,14 @@ const clearMeasure = (
     }
 
     if (
-      growsFor(policy, rule, name, objective.id) &&
+      growsFor(campaigns, rule, name, objective.id) &&
       measureStandingOf(ledger, name, value, objective.tolerance) === "breached"
     ) {
       // On the shared files, which hold no number; elsewhere, in a phase that
       // grows this one.
       const at = isShared(rule, name)
         ? null
-        : (rule.phases[ledgerPhaseOf(policy, rule, name)]?.id ?? null);
+        : (rule.phases[ledgerPhaseOf(campaigns, rule, name)]?.id ?? null);
 
       ledger = concededMeasure(ledger, name, value, {
         at: policy.now,
@@ -171,7 +150,7 @@ const clearMeasure = (
   }
 
   if (ledger !== before || existing === undefined) {
-    campaignsOf(policy).repositories.ledgers.save(ledger);
+    campaigns.repositories.ledgers.save(ledger);
   }
 
   return {
@@ -194,15 +173,16 @@ const clearMeasure = (
 // re-baseline of the sectors in that phase's window; the furthest phase
 // each sector has reached is recorded, and so is the plan. Unrecorded
 // growth is left where it is — `concede` is the one way it enters.
-export const clear = (
+export const clearObjectivesUseCase = (
   policy: LoadedPolicy,
   evaluation: CampaignEvaluation,
   only: string | null,
   by: string,
 ): ReadonlyArray<ClearOutcome> => {
   const { rule } = evaluation;
+  const campaigns = campaignsOf(policy);
   const counted = hitsInWindow(evaluation);
-  const plan = planDiffOf(rule, campaignsOf(policy).plans.get(rule.id));
+  const plan = planDiffOf(rule, campaigns.plans.get(rule.id));
   const outcomes: Array<ClearOutcome> = [];
 
   for (const objective of rule.objectives) {
@@ -221,7 +201,7 @@ export const clear = (
     }
 
     const before =
-      ledgerOf(policy, rule, objective) ?? EMPTY_LEDGER(rule.id, objective.id, policy.now);
+      ledgerOf(campaigns, rule, objective) ?? EMPTY_LEDGER(rule.id, objective.id, policy.now);
 
     let ledger = before;
     const entered: Array<string> = [];
@@ -283,8 +263,8 @@ export const clear = (
       left: sum(ledger, (one) => one.holdouts.length),
     });
 
-    if (ledger !== before || ledgerOf(policy, rule, objective) === undefined) {
-      campaignsOf(policy).repositories.ledgers.save(ledger);
+    if (ledger !== before || ledgerOf(campaigns, rule, objective) === undefined) {
+      campaigns.repositories.ledgers.save(ledger);
     }
   }
 
@@ -292,72 +272,23 @@ export const clear = (
     for (const [name, state] of evaluation.sectors) {
       // Neither stands on the ladder, so neither has a record of reaching.
       if (name === LEGACY_SECTOR || isShared(rule, name)) continue;
-      const before = recordOf(policy, rule, name) ?? EMPTY_SECTOR_RECORD(rule.id, name, policy.now);
+
+      const before =
+        recordOf(campaigns, rule, name) ?? EMPTY_SECTOR_RECORD(rule.id, name, policy.now);
+
       const after = reachedRecord(before, rule, state.phase, policy.now);
 
-      if (after !== before || recordOf(policy, rule, name) === undefined) {
-        campaignsOf(policy).repositories.sectorRecords.save(after);
+      if (after !== before || recordOf(campaigns, rule, name) === undefined) {
+        campaigns.repositories.sectorRecords.save(after);
       }
     }
 
-    campaignsOf(policy).repositories.plans.save(planOf(rule));
+    campaigns.repositories.plans.save(planOf(rule));
 
-    if (campaignsOf(policy).legacyLedgers.has(rule.id)) {
-      campaignsOf(policy).repositories.ledgers.remove({ campaign: rule.id, objective: null });
+    if (campaigns.legacyLedgers.has(rule.id)) {
+      campaigns.repositories.ledgers.remove({ campaign: rule.id, objective: null });
     }
   }
 
   return outcomes;
-};
-
-// A sector the working tree has carried to another phase than the one the
-// ledgers placed it at: what the `clear` about to run will record. The
-// defined phases strictly between the two were entered and left in that one
-// clear — nothing in them was ever counted for the sector, which is worth
-// saying: a phase every sector passes this way recognizes nothing.
-export type SectorMove = {
-  readonly campaign: string;
-  readonly sector: string;
-  readonly from: string | null;
-  // `null` past every phase.
-  readonly to: string | null;
-  readonly back: boolean;
-  readonly passed: ReadonlyArray<string>;
-};
-
-export const sectorMovesOf = (
-  policy: LoadedPolicy,
-  evaluation: CampaignEvaluation,
-): ReadonlyArray<SectorMove> => {
-  const { rule } = evaluation;
-  const moves: Array<SectorMove> = [];
-
-  for (const [name, state] of evaluation.sectors) {
-    // A sector no `clear` has placed has not moved: it is placed.
-    if (name === LEGACY_SECTOR || isShared(rule, name)) continue;
-    const record = recordOf(policy, rule, name);
-
-    if (record === undefined) continue;
-    // Where the ledgers place it — or, when that is where the tree has it
-    // already (an attestation since the last `clear` moved it there), the
-    // furthest phase the record says it reached, which this `clear` advances.
-    const placed = ledgerPhaseOf(policy, rule, name);
-    const { reached } = positionOf(rule, record);
-    const from = placed === state.phase && reached >= 0 ? Math.min(reached, placed) : placed;
-
-    if (from === state.phase) continue;
-    moves.push({
-      campaign: rule.id,
-      sector: name,
-      from: rule.phases[from]?.id ?? null,
-      to: rule.phases[state.phase]?.id ?? null,
-      back: state.phase < from,
-      passed: rule.phases
-        .slice(from + 1, Math.max(from + 1, state.phase))
-        .filter((phase) => isDefinedPhase(phase))
-        .map((phase) => phase.id),
-    });
-  }
-
-  return moves;
 };

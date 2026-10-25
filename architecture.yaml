@@ -77,6 +77,7 @@ exports:
       - "@ts/index.ts"
       - "@camp/infrastructure/report-source-live.ts"
       - "@camp/modules/*/infrastructure/repositories/*.repository-live.ts"
+      - "@camp/modules/*/infrastructure/clients/*.client-live.ts"
       - "@camp/index.ts"
       - "@ag/matcher.ts"
       - "@ag/index.ts"
@@ -88,13 +89,17 @@ exports:
       - makeObjectiveLedgersRepositoryLive
       - makeSectorRecordsRepositoryLive
       - makePlansRepositoryLive
+      - makeGitClientLive
+      - makeBaseSidesClientLive
+      - makeMeasureCommandsClientLive
       - astGrepMatcher
     # The three hosts' composition roots, and the hosts' campaigns glue,
     # which a root loads only when the family is installed; the barrels that
     # re-export them; the pack, which assembles its own extractor and
     # resolver; and the campaigns extension, which builds the ledgers'
-    # repositories over the host's file system as the family's composition
-    # point inside `loadPolicy`.
+    # repositories over the host's file system, and the clients the verbs
+    # read other programs through, as the family's composition point inside
+    # `loadPolicy`.
     except:
       - "@cli/config-loader.ts"
       - "@cli/campaigns/live.ts"
@@ -238,7 +243,7 @@ graph:
     # The campaigns family's own hexagon: its pure tiers reach no live adapter
     # of its own, for the reason the core's do not reach the core's.
     - name: campaigns-pure-tiers-reach-no-adapter
-      message: "The campaigns family's pure tiers — domain, ports, core, manifest — reach no live implementation and no host glue, through any number of hops. That is what makes them testable without a file system, a git repository or another program."
+      message: "The campaigns family's pure tiers — domain, ports, core, manifest — reach no live implementation, no module's adapters and no use-case, through any number of hops. That is what makes them testable without a file system, a git repository or another program."
       from:
         - "@camp/domain/**"
         - "@camp/ports/**"
@@ -248,12 +253,13 @@ graph:
       to:
         - "@camp/infrastructure/campaign-functions.ts"
         - "@camp/infrastructure/report-source-live.ts"
-        - "@camp/host/**"
+        - "@camp/modules/*/infrastructure/**"
+        - "@camp/modules/*/use-cases/**"
 
     # A module's domain is the model: it reaches no adapter of its own module
     # or any other, and none of the host glue, through any number of hops.
     - name: campaigns-domain-reaches-no-adapter
-      message: "A module's domain transitively reaches an adapter. The domain names its own aggregates, the core's barrel and, until this package has a kernel, the old pure tiers; a route from it to an infrastructure/ adapter, the extension or the host glue means a file on the route has widened past what the domain may know."
+      message: "A module's domain transitively reaches an adapter. The domain names its own aggregates, the core's barrel and, until this package has a kernel, the old pure tiers; a route from it to an infrastructure/ adapter, the extension, a use-case or a presenter means a file on the route has widened past what the domain may know."
       from: "@camp/modules/*/domain/**"
       fromNot: "**/*.test.ts"
       to:
@@ -261,7 +267,20 @@ graph:
         - "@camp/infrastructure/campaign-functions.ts"
         - "@camp/infrastructure/report-source-live.ts"
         - "@camp/load/**"
-        - "@camp/host/**"
+        - "@camp/modules/*/use-cases/**"
+        - "@camp/presentation/**"
+
+    # A use-case loads through ports it is handed — the repositories and
+    # clients on the policy — and never through an adapter it reaches.
+    - name: campaigns-use-cases-reach-no-adapter
+      message: "A use-case transitively reaches a live adapter. It loads and saves through the repositories and clients the extension built and carries on the policy; a route from it to a live implementation, or to the extension that constructs them, means it would run against the real file system or git in a test."
+      from: "@camp/modules/*/use-cases/**"
+      fromNot: "**/*.test.ts"
+      to:
+        - "@camp/modules/*/infrastructure/**/*-live.ts"
+        - "@camp/infrastructure/campaign-functions.ts"
+        - "@camp/infrastructure/report-source-live.ts"
+        - "@camp/load/extension.ts"
 
     # The pack never names the matcher: a host composes the two, so a second
     # engine is a second package the pack need not know about.
@@ -363,6 +382,33 @@ defs:
       source: "export type ZzRepository = { readonly pausedSlugs: () => void };"
       name: pausedSlugs
 
+  # What a use-case file exports: the one use-case, named for it. Ported
+  # from chernabog's policy.
+  one-use-case-export:
+    message: "A use-case file exports exactly one `<verbNoun>UseCase`. A second one is a second use-case that wants its own file; none means this isn't a use-case."
+    declares: [function, variable]
+    match: "*UseCase"
+    count: { min: 1, max: 1 }
+    probe:
+      source: "export const zzUseCase = () => 1; export const yyUseCase = () => 2;"
+
+  # A port is consumed by its module's domain and use-cases, by the adapter
+  # that implements it, by the extension that builds the adapters and types
+  # the policy over them, and by the barrel that publishes it.
+  port-consumers:
+    message: "A port is consumed by its module's domain and use-cases, the adapter that implements it, the extension that builds the adapters and the barrel. Anything else reaching for one is bypassing the use-case boundary: call a use-case instead."
+    allow:
+      - "@camp/modules/*/domain/**"
+      - "@camp/modules/*/use-cases/**"
+      - "@camp/modules/*/infrastructure/**"
+      - "@camp/load/**"
+      - "@camp/index.ts"
+      - "**/*.test.ts"
+      # An `importedBy` is matched against every importer the linter sees, and
+      # oxlint lints e2e/ too; the harness is outside this policy's scope and
+      # never imports a package's source.
+      - "e2e/**"
+
   named-reexports-only:
     message: "Re-export by name, so a barrel says what the module is. `export *` takes every export at once and launders a restricted name through the barrel."
     kinds: [namespace]
@@ -425,21 +471,29 @@ campaigns:
 
   # The scalar form: a number per sector held to what `objectives clear` last
   # recorded, where the campaign above holds a list of places. The host glue
-  # is one module that every verb, the nudge, the reports and the snapshot
-  # grew into; its non-blank lines go down as it is split by verb, and a rise
-  # needs `objectives concede --reason` in the open. Standing, not phased: a
-  # campaign with no phases has its objectives in window everywhere.
+  # was one module that every verb, the nudge, the reports and the snapshot
+  # grew into; split into use-cases, services and presenters, each file is a
+  # sector held to its own non-blank lines, and a rise needs `objectives
+  # concede --reason` in the open. Standing, not phased: a campaign with no
+  # phases has its objectives in window everywhere.
   host-campaigns-shrinks:
-    title: The campaigns host glue is split by verb
-    why: "`host/campaigns.ts` holds evaluation, the ledger verbs, the nudge, the reports, history and explain in one module past two thousand lines, so every change to one verb is a review of all of them."
-    how: "Move a verb — its type, its function and its rendering — into its own module under `host/`, re-exported from the barrel. Then `objectives clear host-campaigns-shrinks` records the smaller number."
+    title: No campaigns host module grows past its count
+    why: "`host/campaigns.ts` held evaluation, the ledger verbs, the nudge, the reports, history and explain in one module past two thousand lines, so every change to one verb was a review of all of them. The verbs are use-cases now, their rules domain services and their rendering presenters; what must not come back is one of them growing into the next `host/campaigns.ts`."
+    how: "Keep a verb in its own use-case, a rule several verbs share in its own service, and a rendering in its own presenter. A file that must grow says why with `objectives concede host-campaigns-shrinks --sector <file> --reason`; one that shrinks is recorded smaller by `objectives clear host-campaigns-shrinks`."
     owner: "@dataquail"
-    scope: ["@camp/host/campaigns.ts"]
+    # Wherever the host glue landed. One sector per file, each held to its
+    # own count.
+    scope:
+      - "@camp/modules/*/use-cases/*.use-case.ts"
+      - "@camp/modules/*/domain/services/*.service.ts"
+      - "@camp/presentation/*.presenter.ts"
+      - "@camp/compat/*.ts"
+    perimeter: file
     staleAfter: 180d
     onComplete: keep
     objectives:
       host-lines:
-        intent: "Every verb in one module is every verb in one review; the line count is how much of it is still there."
+        intent: "Every verb in one module is every verb in one review; a file's line count is how much of the next one it holds."
         measure: { lines: true }
         direction: down
         target: 1000

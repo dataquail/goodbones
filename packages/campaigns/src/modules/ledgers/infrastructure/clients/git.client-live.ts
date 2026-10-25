@@ -3,28 +3,15 @@ import { existsSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 
-// What the nudge is scoped to: the files a diff touches, and where in each.
-// Read from git — the working tree against `HEAD` on a developer's machine,
-// or against `--base <ref>` in CI — with `-U0`, so a hunk is exactly the
-// lines that changed and "nearest your change" means something.
+import type { FileSystem } from "@goodbones/core";
 
-export type Hunk = {
-  // One-based, inclusive, in the new file; a pure deletion is a zero-length
-  // hunk at the line after it.
-  readonly start: number;
-  readonly end: number;
-};
+import type { Commit } from "../../domain/git/commit.value-object.js";
+import { type Diff, parseDiff } from "../../domain/git/diff.value-object.js";
+import type { GitClient } from "../../domain/ports/clients/git.client.js";
 
-export type Diff = {
-  // The ref the diff was taken against; `null` for the working tree
-  // against HEAD.
-  readonly base: string | null;
-  // Repo-relative paths, forward slashes, with the hunks in each. A file
-  // added whole has one hunk covering it; a deleted file is not here.
-  readonly touched: ReadonlyMap<string, ReadonlyArray<Hunk>>;
-  readonly deleted: ReadonlyArray<string>;
-  readonly added: ReadonlyArray<string>;
-};
+// The git client over the `git` binary, run in the repository it is told
+// to read. Each member is also exported on its own, as the family's barrel
+// has always offered them, for a host that reads git without a policy.
 
 // git exports GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE and friends into the
 // environment of every hook it runs, and those WIN OVER `cwd`. Everything here
@@ -84,74 +71,6 @@ export const gitPathsOf = (
   }
 };
 
-const HUNK = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
-
-const HEADER = /^diff --git a\/(.+?) b\/(.+)$/;
-
-// Parses `git diff -U0`: one entry per file header, one hunk per `@@`. An
-// empty file added or deleted has a header and a mode line and nothing
-// else, so the mode lines are read too.
-export const parseDiff = (
-  text: string,
-): { touched: Map<string, Array<Hunk>>; deleted: Array<string>; added: Array<string> } => {
-  const touched = new Map<string, Array<Hunk>>();
-  const deleted = new Set<string>();
-  const added = new Set<string>();
-  let current: string | null = null;
-
-  for (const line of text.split("\n")) {
-    const header = HEADER.exec(line);
-
-    if (header !== null) {
-      current = header[2] ?? null;
-      continue;
-    }
-
-    if (current === null) continue;
-
-    if (line.startsWith("deleted file mode")) {
-      deleted.add(current);
-      touched.delete(current);
-      continue;
-    }
-
-    if (line.startsWith("new file mode")) {
-      added.add(current);
-
-      if (!touched.has(current)) touched.set(current, []);
-      continue;
-    }
-
-    if (line.startsWith("+++ ")) {
-      if (line.slice(4) === "/dev/null") {
-        deleted.add(current);
-        touched.delete(current);
-      } else if (!deleted.has(current) && !touched.has(current)) {
-        touched.set(current, []);
-      }
-
-      continue;
-    }
-
-    const hunk = HUNK.exec(line);
-
-    if (hunk !== null && !deleted.has(current)) {
-      const start = Number(hunk[3]);
-      const count = hunk[4] === undefined ? 1 : Number(hunk[4]);
-      const hunks = touched.get(current) ?? [];
-      hunks.push({ start, end: count === 0 ? start : start + count - 1 });
-      touched.set(current, hunks);
-    }
-  }
-
-  // A file added whole with no hunk of its own (empty) covers itself.
-  for (const file of added) {
-    if ((touched.get(file) ?? []).length === 0) touched.set(file, [{ start: 1, end: 1 }]);
-  }
-
-  return { touched, deleted: [...deleted].sort(), added: [...added].sort() };
-};
-
 // The diff of the working tree against `base` (or HEAD), untracked files
 // included as added whole.
 export const readDiff = (repoRoot: string, base: string | null): Diff => {
@@ -175,20 +94,6 @@ export const readDiff = (repoRoot: string, base: string | null): Diff => {
     deleted: parsed.deleted,
     added: [...new Set(parsed.added)].sort(),
   };
-};
-
-// The distance, in lines, from a range to the nearest hunk of a file: zero
-// when they overlap. `Infinity` for a file with no hunk.
-export const distanceToHunks = (hunks: ReadonlyArray<Hunk>, start: number, end: number): number => {
-  let nearest = Number.POSITIVE_INFINITY;
-
-  for (const hunk of hunks) {
-    const distance = hunk.end < start ? start - hunk.end : end < hunk.start ? hunk.start - end : 0;
-
-    if (distance < nearest) nearest = distance;
-  }
-
-  return nearest;
 };
 
 // A file's text as it was at `ref`, or `null` when it did not exist there.
@@ -236,13 +141,6 @@ export const materializeTree = (
 };
 
 // The commits that touched any of these paths, oldest first.
-export type Commit = {
-  readonly sha: string;
-  readonly at: string;
-  readonly subject: string;
-  readonly files: ReadonlyArray<string>;
-};
-
 export const commitsTouching = (
   repoRoot: string,
   paths: ReadonlyArray<string>,
@@ -276,3 +174,60 @@ export const commitsTouching = (
 
   return commits;
 };
+
+// The tree at `ref`, read as the core reads any file. A path absent there
+// does not exist, reads as `null` and lists nothing.
+export const fileSystemAt = (repoRoot: string, ref: string): FileSystem => ({
+  exists: (file) => {
+    try {
+      git(repoRoot, ["cat-file", "-e", `${ref}:${file}`]);
+
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  readText: (file) => textAt(repoRoot, ref, file),
+  list: (dir) => {
+    try {
+      return git(repoRoot, ["ls-tree", "--name-only", `${ref}:${dir}`])
+        .split("\n")
+        .filter((one) => one !== "")
+        .sort();
+    } catch {
+      return [];
+    }
+  },
+});
+
+// The author of a concession: `--by`, else git's user.email, else the
+// GIT_AUTHOR_EMAIL the environment carries. Without one the record is
+// refused rather than written blank, since the record is the point.
+export const authorOf = (given: string | undefined): string | null => {
+  if (given !== undefined && given !== "") return given;
+
+  try {
+    const email = execFileSync("git", ["config", "user.email"], {
+      env: gitEnv(),
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+
+    if (email !== "") return email;
+  } catch {
+    // git absent, or no email configured
+  }
+
+  const fromEnvironment = process.env.GIT_AUTHOR_EMAIL;
+
+  return fromEnvironment === undefined || fromEnvironment === "" ? null : fromEnvironment;
+};
+
+export const makeGitClientLive = (repoRoot: string): GitClient => ({
+  diff: (base) => readDiff(repoRoot, base),
+  textAt: (ref, file) => textAt(repoRoot, ref, file),
+  commitOf: (ref) => commitOf(repoRoot, ref),
+  materializeTree: (ref) => materializeTree(repoRoot, ref),
+  commitsTouching: (paths, since) => commitsTouching(repoRoot, paths, since),
+  fileSystemAt: (ref) => fileSystemAt(repoRoot, ref),
+});

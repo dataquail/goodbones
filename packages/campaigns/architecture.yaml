@@ -3,7 +3,7 @@
 # The @goodbones/campaigns node of the repository's architecture policy. The
 # root architecture.yaml includes this file at `~/campaigns/`; the globals it
 # shares — the aliases, the `defs` it uses, the graph rules — are written there.
-message: "@goodbones/campaigns is a family the core does not own: a refactor as objectives over sectors through phases. It is laid out as the core is — a pure domain and core, its own two ports, the manifest slice it decodes, the extension a host composes, and the host glue the CLI drives — and it depends on the core and on nothing else in the repository."
+message: "@goodbones/campaigns is a family the core does not own: a refactor as objectives over sectors through phases. It is laid out as the core is — a pure domain and core, its own two ports, the manifest slice it decodes, the extension a host composes — and is moving into modules of use-cases over a domain, with presenters the hosts render through; it depends on the core and on nothing else in the repository."
 layout: open
 imports:
   use: package-floor
@@ -75,8 +75,6 @@ children:
             - "@camp/ports/**"
             - "@camp/core/**"
             - "@camp/infrastructure/*-fake.ts"
-            # A sector's position is read off its record.
-            - "@camp/modules/ledgers/domain/sector-record/**"
 
       "manifest/":
         message: "manifest/ is this family's slice of the manifest: the codec that decodes `campaigns` and `ledger`, and the lowering that resolves their globs with the same primitives the core's own lowering uses."
@@ -87,13 +85,13 @@ children:
           allow: ["@core/index.ts", "@camp/domain/**", "@camp/manifest/**"]
 
       "load/":
-        message: "load/ is the extension a host composes into `loadPolicy`: decode this family's keys, lower them, compile and probe every rule, and read the ledgers through their repositories — which it builds over the host's file system port, as the family's composition point."
+        message: "load/ is the extension a host composes into `loadPolicy`: decode this family's keys, lower them, compile and probe every rule, and read the ledgers through their repositories — which it builds over the host's file system port, with the live clients the verbs read git, the base-tree cache and a measure's shell through, as the family's composition point. `campaign-policy.ts` is what it carries, apart from the adapters it builds."
         layout: open
         children: {}
         members:
           - use: no-file-system-calls
         imports:
-          message: "load/ composes this family's pure tiers. It reaches the core's barrel, the domain, the ports, the core and the manifest compiler, and the ledgers' domain and live repositories, which it builds; any other live adapter reaches it only as an argument."
+          message: "load/ composes this family's pure tiers. It reaches the core's barrel, the domain, the ports, the core and the manifest compiler, and the ledgers' domain, live repositories and live clients, which it builds; any other live adapter reaches it only as an argument."
           allow:
             - "@core/index.ts"
             - "@core/testing.ts"
@@ -104,6 +102,7 @@ children:
             - "@camp/modules/ledgers/domain/**"
             - "@camp/modules/ledgers/infrastructure/repositories/*-live.ts"
             - "@camp/modules/ledgers/infrastructure/repositories/ledger.mapper.ts"
+            - "@camp/modules/ledgers/infrastructure/clients/*-live.ts"
 
       "infrastructure/":
         message: "infrastructure/ holds the fake for this family's report source, and the two things it does on this host: importing the `fn` terms' modules, and running a `report` term's command."
@@ -113,40 +112,55 @@ children:
           message: "An adapter implements a port. It reaches the port it satisfies, the domain types in that signature, and its own siblings."
           allow: ["@core/index.ts", "@camp/domain/**", "@camp/ports/**", "@camp/infrastructure/**"]
 
-      "host/":
-        message: "host/ is the glue a host drives: every campaign evaluated over the files it sees, the ledger verbs, the nudge over a real git diff, and the reports. It runs git and writes files, so it sits above the pure tiers and is reached only by a host."
+      "presentation/":
+        message: "presentation/ holds the presenters: pure functions from a use-case's result to the lines a host prints — the nudge, the status table, a sector's view, the explain paragraph, the history and `check`'s campaign failures. The hosts import them; no use-case calls one."
+        layout: open
+        children: {}
+        members:
+          - use: no-talking
+          - use: no-file-system-calls
+        imports:
+          reset: true
+          message: "A presenter reads a result. It names the results and domain of the modules, the old pure tiers for the compiled rules a result carries, the core's barrel for the violations, and its sibling presenters; never a use-case, which it renders the answer of, and never an adapter."
+          allow:
+            - "@core/index.ts"
+            - "@camp/core/**"
+            - "@camp/modules/*/domain/**"
+            - "@camp/modules/*/use-cases/*.result.ts"
+            - "@camp/presentation/**"
+
+      "compat/":
+        message: "compat/ keeps the barrel's names from before the verbs were use-cases at the signatures they had: each read the loaded policy, so each is a use-case or a domain service composed with the policy's state — and `explainCampaignLines`, a use-case with its presenter, the one place the two meet."
         layout: open
         children: {}
         imports:
-          message: "The host glue composes everything below it and the core's evaluators, which is how an `endState` is evaluated per sector."
+          reset: true
+          message: "A compatibility shim composes what replaced it: the modules' use-cases and domain, the presenters, and the policy's state. It names nothing else."
+          external: [effect]
           allow:
             - "@core/index.ts"
-            - "@camp/domain/**"
             - "@camp/core/**"
-            - "@camp/manifest/**"
-            - "@camp/load/**"
-            - "@camp/host/**"
-            # The ledgers' rules, and — for the nudge, which reads HEAD's
-            # ledgers through git rather than the file system — their codec.
-            - "@camp/modules/ledgers/domain/**"
-            - "@camp/modules/ledgers/infrastructure/repositories/*.mapper.ts"
+            - "@camp/load/campaign-policy.ts"
+            - "@camp/modules/*/domain/**"
+            - "@camp/modules/*/use-cases/**"
+            - "@camp/presentation/**"
 
       # The shape this package is moving to (docs/adr/0002-modules-of-use-cases-over-a-domain.md):
       # one folder per module — the aggregates goodbones owns and writes, the
       # ports its verbs load and save them through, and the adapters behind
       # those ports. The tiers beside this one empty into modules as they move.
       "modules/{module}/":
-        message: "A module admits domain/ (its aggregates and the ports over them) and infrastructure/ (the adapters behind those ports)."
+        message: "A module admits domain/ (its aggregates, its value objects and services, and the ports over them), use-cases/ (what a host asks the module to do) and infrastructure/ (the adapters behind those ports)."
         name: kebab-case
         children:
           "domain/":
-            message: "domain/ is a container: one folder per aggregate, named for it, and ports/ for the repositories the verbs load and save through. No files live directly in domain/."
+            message: "domain/ is a container: one folder per aggregate or value object, named for it, services/ for the rules that read several, and ports/ for the repositories and clients the use-cases load, save and read through. No files live directly in domain/."
             members:
               - use: no-talking
               - use: no-file-system-calls
             children:
               "ports/":
-                message: "domain/ports/ is a container: repositories/, the module's own stores."
+                message: "domain/ports/ is a container: repositories/, the module's own stores, and clients/, the other programs it reads from."
                 children:
                   "repositories/":
                     imports:
@@ -163,11 +177,58 @@ children:
                           - "../../../infrastructure/repositories/{base}-live.ts"
                           - "../../../infrastructure/repositories/{base}-fake.ts"
                           - "../../../infrastructure/repositories/{base}-live.test.ts"
+                        importedBy: { use: port-consumers }
+                  "clients/":
+                    imports:
+                      reset: true
+                      message: "A client port is a declaration over what another program answers: it names its module's domain — the value objects in its signatures — and the core's barrel, and nothing else."
+                      allow: ["@core/index.ts", "@camp/modules/{module}/domain/**"]
+                    children:
+                      "*.client.ts":
+                        message: "A client port needs its live adapter, its fake and the live adapter's test in ../../../infrastructure/clients/."
+                        surface: [{ use: port-declares-no-value }]
+                        members:
+                          - message: 'A port member is a verb in camelCase: "{name}" is not. The port is the vocabulary every adapter must speak, and its case is part of the contract.'
+                            subject: members
+                            declares: [type, interface]
+                            allow: "[a-z]*"
+                            probe:
+                              source: "export type GitClient = { readonly TextAt: (file: string) => string };"
+                              name: TextAt
+                        requires:
+                          - "../../../infrastructure/clients/{base}-live.ts"
+                          - "../../../infrastructure/clients/{base}-fake.ts"
+                          - "../../../infrastructure/clients/{base}-live.test.ts"
+                        importedBy: { use: port-consumers }
+
+              # The rules that read several of the module's aggregates and
+              # belong to none — where a sector stands by its ledgers, what a
+              # concession sends back, the report over every ledger, the
+              # evaluation. Matched before the aggregate catch-all below.
+              "services/":
+                message: "domain/services/ holds the domain services: pure functions over several of the module's aggregates, which no one aggregate owns and more than one use-case asks. One concept per *.service.ts."
+                imports:
+                  reset: true
+                  message: "A domain service reads the module's aggregates and value objects, its sibling services, the old pure tiers for the primitives that still live there, and the core's barrel. It names no port, which is a use-case's to call, and no adapter."
+                  external: [effect]
+                  allow:
+                    - "node:path"
+                    - "@core/index.ts"
+                    - "@camp/core/**"
+                    - "@camp/domain/**"
+                    - "@camp/manifest/**"
+                    - "@camp/ports/**"
+                    - "@camp/modules/{module}/domain/**"
+                  deny:
+                    - match: "@camp/modules/{module}/domain/ports/**"
+                      message: "A domain service decides; the port it would call is the use-case's. Take the value the port answers as an argument."
+                children:
+                  "*.service.ts": {}
 
               # One folder per aggregate. ports/ above is matched first, so
               # this catch-all is only ever an aggregate.
               "{aggregate}/":
-                message: "An aggregate's folder admits its root (*.root.ts), its operations (*.root-ops.ts, pure functions), its id (*.id.ts), its value objects (*.value-object.ts) and its errors (*.errors.ts). A free-standing helper is an op that hasn't found its root."
+                message: "An aggregate's folder admits its root (*.root.ts), its operations (*.root-ops.ts, pure functions), its id (*.id.ts), its value objects (*.value-object.ts) and its errors (*.errors.ts); a value object's folder, its value objects alone. A free-standing helper is an op that hasn't found its root."
                 imports:
                   reset: true
                   message: "An aggregate sees itself, the core's barrel and effect. It does not reach another aggregate or the ports: composing aggregates is a use-case's job. Until this package has a kernel, it may also name the old pure tiers (domain/, core/) for the primitives that still live there."
@@ -184,15 +245,60 @@ children:
                     name: { like: "{aggregate}" }
                     message: "An aggregate's operations own its invariants, so they carry the test obligation: add the sibling *.root-ops.test.ts."
                     requires: ["{base}.test.ts"]
+                    importedBy:
+                      message: "*.root-ops.ts is the aggregate's mutation surface. Only its module's domain and use-cases, its repository fakes, the barrel and tests may call it; anything else reaching for an op is bypassing the use-case that should own the change."
+                      allow:
+                        - "@camp/modules/*/domain/**"
+                        - "@camp/modules/*/use-cases/**"
+                        - "**/*.repository-fake.ts"
+                        - "@camp/index.ts"
+                        - "**/*.test.ts"
+                        # Outside this policy's scope, and linted all the same.
+                        - "e2e/**"
                   "*.id.ts": { name: { like: "{aggregate}" } }
                   "*.errors.ts": { name: { like: "{aggregate}" } }
+                  "*.value-object.ts": {}
                   "*.root-ops.test.ts":
                     imports:
                       message: "An aggregate's test names its subject, the old pure tiers it builds fixtures from, effect and the test framework."
                       external: [vitest]
 
+          "use-cases/":
+            message: "use-cases/ holds one <verb-noun>.use-case.ts per thing a host asks the module to do, the <name>.result.ts it answers with where that is a type of its own, and their tests. A use-case loads through the policy's repositories and clients, decides in the domain, saves, and returns a result. A shared helper here is a domain service or a port that hasn't been written yet."
+            members:
+              - use: no-talking
+              - use: no-file-system-calls
+            imports:
+              reset: true
+              message: "A use-case names effect, the core's barrel, its own module's domain (aggregates, services and ports), its sibling results, the family's state on the policy, and — until this package has a kernel — the old pure tiers. Never another use-case: what two do together, a host composes. Never a presenter: a use-case returns a result, and the host renders it. Never an adapter but a mapper, for the path a record is saved at."
+              external: [effect]
+              allow:
+                - "node:path"
+                - "@core/index.ts"
+                - "@camp/core/**"
+                - "@camp/domain/**"
+                - "@camp/load/campaign-policy.ts"
+                - "@camp/modules/{module}/domain/**"
+                - "@camp/modules/{module}/use-cases/*.result.ts"
+                - "@camp/modules/{module}/infrastructure/repositories/*.mapper.ts"
+            children:
+              "*.use-case.ts":
+                message: "A use-case owes a sibling *.use-case.test.ts, run over its ports' fakes."
+                requires: ["{base}.test.ts"]
+                surface: [{ use: one-use-case-export }]
+              "*.result.ts": {}
+              "*.use-case.test.ts":
+                imports:
+                  message: "A use-case's test drives it over the fakes: it names its subject, the core's fakes and the family's tiers it builds a policy from, and the test framework."
+                  external: [vitest]
+                  allow:
+                    - "@core/testing.ts"
+                    - "@camp/load/**"
+                    - "@camp/modules/{module}/use-cases/**"
+                    - "@camp/modules/{module}/infrastructure/**"
+
           "infrastructure/":
-            message: "infrastructure/ is a container mirroring domain/ports/: repositories/. No files live directly in infrastructure/."
+            message: "infrastructure/ is a container mirroring domain/ports/: repositories/ and clients/. No files live directly in infrastructure/."
             children:
               "repositories/":
                 imports:
@@ -212,6 +318,22 @@ children:
                   "*.repository-live.test.ts":
                     imports:
                       message: "A live repository's test drives it over a scratch directory: it names its module, the core's barrel, node, effect and the test framework."
+                      external: [vitest]
+              "clients/":
+                imports:
+                  reset: true
+                  message: "A client adapts another program — git, a shell, a cache file — to its module's port. It names its module's domain, its sibling adapters, the core's barrel and node."
+                  allow:
+                    - "node:**"
+                    - "@core/index.ts"
+                    - "@camp/modules/{module}/domain/**"
+                    - "@camp/modules/{module}/infrastructure/**"
+                children:
+                  "*.client-live.ts": {}
+                  "*.client-fake.ts": {}
+                  "*.client-live.test.ts":
+                    imports:
+                      message: "A live client's test drives it over a scratch repository: it names its module, node and the test framework."
                       external: [vitest]
 
       # The two barrels: the public surface, and the fake.

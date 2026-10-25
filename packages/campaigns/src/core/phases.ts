@@ -30,6 +30,29 @@ export type SectorPosition = {
 
 export const UNPLACED: SectorPosition = { reached: -1, attested: new Set() };
 
+// What a sector's record says of where it stands, as the phase logic reads
+// it: the furthest phase it reached, and its attestations. A `SectorRecord`
+// is one; the phases read no more of it.
+export type RecordedPosition = {
+  readonly reached: string | null;
+  readonly attested: ReadonlyArray<{ readonly phase: string; readonly revoked?: unknown }>;
+};
+
+// The record's position: `reached` as an index (`-1` when unplaced, or when
+// the phase it names is gone), and the phases attested and not revoked.
+export const positionOfRecord = (
+  rule: CompiledCampaign,
+  record: RecordedPosition | undefined,
+): SectorPosition => ({
+  reached:
+    record?.reached === null || record === undefined
+      ? -1
+      : rule.phases.findIndex((phase) => phase.id === record.reached),
+  attested: new Set(
+    record?.attested.filter((one) => one.revoked === undefined).map((one) => one.phase) ?? [],
+  ),
+});
+
 export type Window = {
   // The index of the phase naming the objective; `-1` for one no phase
   // names, which is in window everywhere, the legacy included.

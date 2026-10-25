@@ -8,7 +8,6 @@ import {
   exportRulesFailingTheirProbe,
   type ExtensionContext,
   type LoadedExtension,
-  type LoadedPolicy,
   type LoweredRules,
   type ManifestPath,
   memberRulesFailingTheirProbe,
@@ -33,10 +32,14 @@ import { END_STATE_ROOT, lowerCampaigns, lowerEndState } from "../manifest/lower
 import type { Ledger } from "../modules/ledgers/domain/ledger/ledger.root.js";
 import type { MeasureLedger } from "../modules/ledgers/domain/measure-ledger/measure-ledger.root.js";
 import type { PlanRecord } from "../modules/ledgers/domain/plan/plan.root.js";
-import type { ObjectiveLedgersRepository } from "../modules/ledgers/domain/ports/repositories/objective-ledgers.repository.js";
-import type { PlansRepository } from "../modules/ledgers/domain/ports/repositories/plans.repository.js";
-import type { SectorRecordsRepository } from "../modules/ledgers/domain/ports/repositories/sector-records.repository.js";
+import type { BaseSidesClient } from "../modules/ledgers/domain/ports/clients/base-sides.client.js";
+import type { GitClient } from "../modules/ledgers/domain/ports/clients/git.client.js";
+import type { MeasureCommandsClient } from "../modules/ledgers/domain/ports/clients/measure-commands.client.js";
 import type { SectorRecord } from "../modules/ledgers/domain/sector-record/sector-record.root.js";
+import { ledgerKeyOf } from "../modules/ledgers/domain/services/campaign-ledgers.service.js";
+import { makeBaseSidesClientLive } from "../modules/ledgers/infrastructure/clients/base-sides.client-live.js";
+import { makeGitClientLive } from "../modules/ledgers/infrastructure/clients/git.client-live.js";
+import { makeMeasureCommandsClientLive } from "../modules/ledgers/infrastructure/clients/measure-commands.client-live.js";
 import {
   ledgerPathOf,
   legacyLedgerPathOf,
@@ -46,6 +49,13 @@ import { makePlansRepositoryLive } from "../modules/ledgers/infrastructure/repos
 import { makeSectorRecordsRepositoryLive } from "../modules/ledgers/infrastructure/repositories/sector-records.repository-live.js";
 import type { CampaignPredicate } from "../ports/campaign-predicate.js";
 import { NO_REPORTS, type ReportSource } from "../ports/report-source.js";
+import {
+  type CampaignClients,
+  type CampaignPolicy,
+  CAMPAIGNS_EXTENSION_ID,
+  type LedgerReaders,
+  type LedgerRepositories,
+} from "./campaign-policy.js";
 import { type CampaignsManifest, decodeCampaigns, DEFAULT_LEDGER_DIR } from "./decode.js";
 
 // The campaigns family as a `PolicyExtension`: everything `loadPolicy` used
@@ -59,82 +69,6 @@ import { type CampaignsManifest, decodeCampaigns, DEFAULT_LEDGER_DIR } from "./d
 // reads the ledgers off the file system port. The core carries the result and
 // never looks inside it; `campaignsOf(policy)` is how a host reads it back.
 
-export const CAMPAIGNS_EXTENSION_ID = "campaigns";
-
-// Keyed `<campaign>/<objective>`, and `<campaign>/<sector>` for a record.
-export const ledgerKeyOf = (campaign: string, objective: string): string =>
-  `${campaign}/${objective}`;
-
-// Where every ledger, sector record and plan is loaded from and saved to.
-export type LedgerRepositories = {
-  readonly ledgers: ObjectiveLedgersRepository;
-  readonly sectorRecords: SectorRecordsRepository;
-  readonly plans: PlansRepository;
-};
-
-export type CampaignPolicy = {
-  // Evaluated by both hosts, one file at a time; the ledgers say which hits
-  // are already counted. An objective with no ledger, or a sector no ledger
-  // has seen, is one `objectives clear` has not been run for, and `check`
-  // says so.
-  readonly campaignRules: ReadonlyArray<CompiledCampaign>;
-  // Keyed `<campaign>/<objective>`: the holdout ledgers, and the scalar
-  // objectives' in a map of their own — the same file, a second schema.
-  readonly ledgers: ReadonlyMap<string, Ledger>;
-  readonly measureLedgers: ReadonlyMap<string, MeasureLedger>;
-  // Ledgers read from the family's first layout, `<ledgerDir>/<campaign>.json`,
-  // by campaign: `clear` rewrites each in the new layout and removes it.
-  readonly legacyLedgers: ReadonlyMap<string, string>;
-  // Keyed `<campaign>/<sector>`.
-  readonly sectorRecords: ReadonlyMap<string, SectorRecord>;
-  // What `clear` last saw of each campaign's phases, by campaign.
-  readonly plans: ReadonlyMap<string, PlanRecord>;
-  // Repo-relative; `<ledgerDir>/<campaign>/<objective>.json` is a ledger.
-  readonly ledgerDir: string;
-  // What the verbs that write a ledger, a record or a plan save through.
-  readonly repositories: LedgerRepositories;
-  // The predicate functions the host imported for the `fn` terms.
-  readonly functions: ReadonlyMap<string, CampaignPredicate>;
-  // Answers the `report` terms: the host's live source, or nothing.
-  readonly reports: ReportSource;
-};
-
-// A policy with no campaigns has no ledger to read, and no verb that saves
-// one: there is nothing for a verb to iterate.
-const NO_LEDGERS: LedgerRepositories = {
-  ledgers: {
-    findOne: () => Result.succeed(null),
-    save: () => undefined,
-    remove: () => undefined,
-  },
-  sectorRecords: { findAll: () => Result.succeed([]), save: () => undefined },
-  plans: { findOne: () => Result.succeed(null), save: () => undefined },
-};
-
-// A campaign-free policy, for a host that loaded the extension against a
-// manifest holding no `campaigns` key at all.
-const NOTHING: CampaignPolicy = {
-  campaignRules: [],
-  ledgers: new Map(),
-  measureLedgers: new Map(),
-  legacyLedgers: new Map(),
-  sectorRecords: new Map(),
-  plans: new Map(),
-  ledgerDir: DEFAULT_LEDGER_DIR,
-  repositories: NO_LEDGERS,
-  functions: new Map(),
-  reports: NO_REPORTS,
-};
-
-// What a host reads back off the policy. A policy loaded without this
-// extension answers the empty family rather than throwing: `architecture
-// check` on a manifest with no campaigns is not an error.
-export const campaignsOf = (policy: LoadedPolicy): CampaignPolicy => {
-  const found = policy.extensions.get(CAMPAIGNS_EXTENSION_ID);
-
-  return found === undefined ? NOTHING : (found as CampaignPolicy);
-};
-
 export type CampaignsExtensionOptions = {
   // The predicate functions the manifest's `fn` terms name, imported by the
   // host before loading — `loadCampaignFunctions` does it.
@@ -142,6 +76,13 @@ export type CampaignsExtensionOptions = {
   // The host's report source, for the `report` terms. Absent, a term naming
   // one is refused rather than quietly answering nothing.
   readonly reports?: ReportSource | undefined;
+  // Where the ledgers are read from and saved to, and the programs the verbs
+  // read from. Absent, each is the live one over the repository the policy
+  // is loaded from; a test hands in the fakes.
+  readonly repositories?: LedgerRepositories | undefined;
+  readonly git?: GitClient | undefined;
+  readonly baseSides?: BaseSidesClient | undefined;
+  readonly commands?: MeasureCommandsClient | undefined;
 };
 
 const referencedFunctions = (detect: CompiledDetector): ReadonlyArray<string> => {
@@ -495,10 +436,27 @@ const load = (
   // through the host's file system, and written under its repository root.
   const store = { fileSystem, repoRoot, ledgerDir };
 
-  const repositories: LedgerRepositories = {
+  const repositories: LedgerRepositories = options.repositories ?? {
     ledgers: makeObjectiveLedgersRepositoryLive(store),
     sectorRecords: makeSectorRecordsRepositoryLive(store),
     plans: makePlansRepositoryLive(store),
+  };
+
+  const clients: CampaignClients = {
+    git: options.git ?? makeGitClientLive(repoRoot),
+    baseSides: options.baseSides ?? makeBaseSidesClientLive(repoRoot),
+    commands: options.commands ?? makeMeasureCommandsClientLive(repoRoot),
+  };
+
+  // The ledgers at a ref: the same repositories, over the tree git holds
+  // there, and read only.
+  const readersAt = (ref: string): LedgerReaders => {
+    const at = { fileSystem: clients.git.fileSystemAt(ref), repoRoot, ledgerDir };
+
+    return {
+      ledgers: makeObjectiveLedgersRepositoryLive(at),
+      sectorRecords: makeSectorRecordsRepositoryLive(at),
+    };
   };
 
   const ledgers = readLedgers(configPath, repositories, ledgerDir, campaignRules.success);
@@ -515,6 +473,8 @@ const load = (
       plans: ledgers.success.plans,
       ledgerDir,
       repositories,
+      readersAt,
+      clients,
       functions,
       reports: options.reports ?? NO_REPORTS,
     },

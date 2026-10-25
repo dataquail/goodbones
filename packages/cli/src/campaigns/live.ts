@@ -3,22 +3,23 @@ import * as path from "node:path";
 
 import {
   campaignFailuresOf,
-  campaignReportsOf,
   campaignsExtension,
   campaignsOf,
   campaignsSelecting,
-  evaluateCampaigns,
-  explainCampaignLines,
+  evaluateCampaignsUseCase,
+  explainCampaignUseCase,
   explainObjective,
   hitsInWindow,
   ledgeredFilter,
   loadCampaignFunctions,
   makeReportSourceLive,
   measureFile,
+  renderCampaignExplanation,
   renderCampaignReports,
   renderCampaignRows,
+  reportCampaignsUseCase,
   reportSpecsOf,
-  snapshotCampaignsOf,
+  snapshotCampaignsUseCase,
   valueOfParts,
   widenedExtensions,
 } from "@goodbones/campaigns";
@@ -33,13 +34,23 @@ import { campaigns, objectives } from "./verbs.js";
 const firstSentence = (message: string): string =>
   `${(message.split(". ")[0] ?? message).replace(/\.$/, "")}.`;
 
+// One campaign's `explain` paragraph for one file: the use-case's answer,
+// rendered.
+const explainedLines = (
+  ...input: Parameters<typeof explainCampaignUseCase>
+): ReadonlyArray<string> => {
+  const explained = explainCampaignUseCase(...input);
+
+  return explained === null ? [] : renderCampaignExplanation(explained);
+};
+
 const host: CampaignsHost = {
   widenedExtensions,
   readReports: async (policy) => {
     const { campaignRules, reports } = campaignsOf(policy);
     await Promise.all(reportSpecsOf(campaignRules).map((spec) => reports.read?.(spec)));
   },
-  evaluate: evaluateCampaigns,
+  evaluate: evaluateCampaignsUseCase,
   hitsOf: (policy, evaluations) => {
     const isLedgered = ledgeredFilter(policy, evaluations);
 
@@ -53,10 +64,10 @@ const host: CampaignsHost = {
       })),
     );
   },
-  reportsOf: campaignReportsOf,
+  reportsOf: reportCampaignsUseCase,
   failuresOf: campaignFailuresOf,
   renderReports: renderCampaignReports,
-  snapshotOf: snapshotCampaignsOf,
+  snapshotOf: snapshotCampaignsUseCase,
   renderRows: renderCampaignRows,
   // Each campaign selecting the file: the sector the file is in, its phase
   // and definedness, the objectives in window that fire on it and the
@@ -89,7 +100,7 @@ const host: CampaignsHost = {
       const evaluation = evaluations.find((one) => one.rule.id === rule.id);
 
       return [
-        ...(evaluation === undefined ? [] : explainCampaignLines(policy, evaluation, relative)),
+        ...(evaluation === undefined ? [] : explainedLines(policy, evaluation, relative)),
         ...rule.objectives.flatMap((objective) => {
           const measure = objective.measure;
 

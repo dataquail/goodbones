@@ -2,24 +2,23 @@ import { existsSync } from "node:fs";
 import * as path from "node:path";
 
 import {
-  attest,
+  attestSectorUseCase,
   authorOf,
-  baseSideAt,
   type CampaignEvaluation,
   campaignsOf,
-  clear,
-  concede,
-  historyOf,
-  note,
-  nudgeOf,
-  readDiff,
+  clearObjectivesUseCase,
+  concedeObjectiveUseCase,
+  noteSectorUseCase,
+  nudgeChangesUseCase,
+  previewSectorMovesUseCase,
+  readBaseSideUseCase,
   renderCampaignRows,
   renderHistory,
   renderNudge,
   renderSectorView,
-  sectorMovesOf,
-  sectorViewOf,
-  snapshotCampaignsOf,
+  replayHistoryUseCase,
+  snapshotCampaignsUseCase,
+  viewSectorUseCase,
 } from "@goodbones/campaigns";
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
@@ -246,13 +245,13 @@ export const objectives = (context: VerbContext): Effect.Effect<void, CliFailure
           }
 
           const outcomes = yield* Effect.try({
-            try: () => clear(policy, evaluation, only, by),
+            try: () => clearObjectivesUseCase(policy, evaluation, only, by),
             catch: (cause) => fail(String(cause)),
           });
 
           // Where each sector went, read off the ledgers as they stood: a
           // clear of one objective places no sector, so it says nothing.
-          const moves = only === null ? sectorMovesOf(policy, evaluation) : [];
+          const moves = only === null ? previewSectorMovesUseCase(policy, evaluation) : [];
 
           for (const outcome of outcomes) {
             const parts = [
@@ -378,7 +377,7 @@ export const objectives = (context: VerbContext): Effect.Effect<void, CliFailure
             ?.split(",")
             .map((one) => one.trim()) ?? null;
 
-        const outcome = concede(
+        const outcome = concedeObjectiveUseCase(
           policy,
           evaluation,
           objective.success,
@@ -505,7 +504,7 @@ export const campaigns = (context: VerbContext): Effect.Effect<void, CliFailure>
         .evaluate(roots)
         .filter((one) => only === null || one.rule.id === only.success.id)
         .flatMap((one) => {
-          const view = sectorViewOf(policy, one, sector);
+          const view = viewSectorUseCase(policy, one, sector);
 
           return view === null ? [] : [view];
         });
@@ -530,7 +529,7 @@ export const campaigns = (context: VerbContext): Effect.Effect<void, CliFailure>
 
     switch (subcommand) {
       case undefined: {
-        const snapshot = { campaigns: snapshotCampaignsOf(policy, context.evaluate(roots)) };
+        const snapshot = { campaigns: snapshotCampaignsUseCase(policy, context.evaluate(roots)) };
 
         if (json) {
           // Each campaign as the conformance snapshot carries it: its
@@ -559,7 +558,7 @@ export const campaigns = (context: VerbContext): Effect.Effect<void, CliFailure>
         const base = flagOf(argv, "--base") ?? null;
 
         const diff = yield* Effect.try({
-          try: () => readDiff(policy.repoRoot, base),
+          try: () => campaignsOf(policy).clients.git.diff(base),
           catch: (cause) => fail(`could not read the diff: ${String(cause)}`),
         });
 
@@ -569,7 +568,7 @@ export const campaigns = (context: VerbContext): Effect.Effect<void, CliFailure>
           base === null
             ? null
             : yield* Effect.tryPromise({
-                try: () => baseSideAt(policy, base, roots, context.reload),
+                try: () => readBaseSideUseCase(policy, base, roots, context.reload),
                 catch: (cause) =>
                   fail(`could not evaluate the base tree at ${base}: ${String(cause)}`),
               });
@@ -581,13 +580,13 @@ export const campaigns = (context: VerbContext): Effect.Effect<void, CliFailure>
           base !== null || !current.some((one) => one.rule.phases.length > 0)
             ? null
             : yield* Effect.tryPromise({
-                try: () => baseSideAt(policy, "HEAD", roots, context.reload),
+                try: () => readBaseSideUseCase(policy, "HEAD", roots, context.reload),
                 catch: (cause) => fail(`could not evaluate the tree at HEAD: ${String(cause)}`),
               });
 
         const hotfix = flagOf(argv, "--hotfix") ?? null;
 
-        const nudge = nudgeOf(
+        const nudge = nudgeChangesUseCase(
           policy,
           current,
           diff,
@@ -648,7 +647,7 @@ export const campaigns = (context: VerbContext): Effect.Effect<void, CliFailure>
         if (evaluation === undefined)
           return yield* Effect.fail(fail(`campaign ${rule.success.id} was not evaluated`));
 
-        const written = attest(policy, evaluation, sector, phase, {
+        const written = attestSectorUseCase(policy, evaluation, sector, phase, {
           reason,
           evidence: flagOf(argv, "--evidence"),
           by,
@@ -684,7 +683,7 @@ export const campaigns = (context: VerbContext): Effect.Effect<void, CliFailure>
 
         if (evaluation === undefined)
           return yield* Effect.fail(fail(`campaign ${rule.success.id} was not evaluated`));
-        const written = note(policy, evaluation, sector, text, by);
+        const written = noteSectorUseCase(policy, evaluation, sector, text, by);
 
         if (Result.isFailure(written)) return yield* Effect.fail(fail(written.failure));
 
@@ -708,7 +707,9 @@ export const campaigns = (context: VerbContext): Effect.Effect<void, CliFailure>
         const lines: Array<string> = [];
 
         for (const rule of targets) {
-          const rows = historyOf(policy, rule, flagOf(argv, "--since") ?? null, [manifestPath]);
+          const rows = replayHistoryUseCase(policy, rule, flagOf(argv, "--since") ?? null, [
+            manifestPath,
+          ]);
 
           if (json) {
             lines.push(JSON.stringify({ campaign: rule.id, rows }, null, 2));

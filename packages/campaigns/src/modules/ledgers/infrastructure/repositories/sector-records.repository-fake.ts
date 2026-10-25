@@ -18,6 +18,7 @@ export const makeSectorRecordsRepositoryFake = (
 
   return {
     stored,
+    findOne: ({ campaign, sector }) => Result.succeed(stored.get(`${campaign}/${sector}`) ?? null),
     findAll: (campaign) =>
       Result.succeed(
         [...stored.values()]

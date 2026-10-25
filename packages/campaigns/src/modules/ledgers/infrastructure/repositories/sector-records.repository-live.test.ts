@@ -67,6 +67,33 @@ describe("the sector records repository", () => {
     expect(repository().findAll("c")).toEqual(Result.succeed([record]));
   });
 
+  it("finds one sector's record by its encoded name, and null for a sector with none", () => {
+    const { repository } = scratch();
+    repository().save(record);
+
+    expect(repository().findOne({ campaign: "c", sector: "apps/web" })).toEqual(
+      Result.succeed(record),
+    );
+    expect(repository().findOne({ campaign: "c", sector: "apps/api" })).toEqual(
+      Result.succeed(null),
+    );
+  });
+
+  it("refuses one sector's record without reading the others", () => {
+    const { place, repository } = scratch();
+    repository().save(EMPTY_SECTOR_RECORD("c", "a", T0));
+    place("b.json", "{");
+
+    expect(Result.isFailure(repository().findAll("c"))).toBe(true);
+    expect(repository().findOne({ campaign: "c", sector: "a" })).toEqual(
+      Result.succeed(EMPTY_SECTOR_RECORD("c", "a", T0)),
+    );
+
+    const found = repository().findOne({ campaign: "c", sector: "b" });
+
+    expect(Result.isFailure(found) && found.failure.reason).toBe("not-json");
+  });
+
   it("reads only the JSON files, in the order they sort", () => {
     const { place, repository } = scratch();
     repository().save(EMPTY_SECTOR_RECORD("c", "b", T0));

@@ -41,7 +41,8 @@
     "build/dts",
     "build/esm",
     "src",
-    "!src/**/*.test.ts"
+    "!src/**/*.test.ts",
+    "!src/**/*.test-helper.ts"
   ],
   "scripts": {
     "build": "tsc -b tsconfig.build.json",

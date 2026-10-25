@@ -1,0 +1,545 @@
+import {
+  type CampaignEvaluation,
+  hitsInWindow,
+  type ObjectiveHit,
+} from "../../../../core/campaign-state.js";
+import type { CompiledCampaign, CompiledObjective } from "../../../../core/campaigns.js";
+import { isBehind, ledgeredFor, type Residue as ResidueVector } from "../../../../core/phases.js";
+import { isShared } from "../../../../core/sectors.js";
+import {
+  isComplete,
+  isStalled,
+  ledgerArithmeticHolds,
+  reconcileSector,
+  sectorArithmeticHolds,
+} from "../ledger/ledger.root-ops.js";
+import type { MeasureLedger } from "../measure-ledger/measure-ledger.root.js";
+import {
+  lastImprovedOf,
+  measureLedgerArithmeticHolds,
+  measureStandingOf,
+} from "../measure-ledger/measure-ledger.root-ops.js";
+import { planDiffOf } from "../plan/plan.root-ops.js";
+import { sectorClockOf } from "../sector-record/sector-record.root-ops.js";
+import {
+  type CampaignLedgers,
+  describeValue,
+  entriesOf,
+  growsFor,
+  ledgerOf,
+  measureLedgerOf,
+  phaseIdOf,
+  recordOf,
+  sectorNames,
+} from "./campaign-ledgers.service.js";
+
+// ---------------------------------------------------------------------------
+// The report `check` reads
+
+export type SectorObjectiveReport = {
+  readonly sector: string;
+  readonly count: number;
+  // Entries the ledger does not carry — unrecorded growth.
+  readonly new: ReadonlyArray<string>;
+  // Holdouts no entry produces — cleared, and waiting for `clear`.
+  readonly stale: ReadonlyArray<string>;
+  readonly drifted: number;
+  // The sector is in the objective's window and the ledger has not seen it.
+  readonly unrecorded: boolean;
+  readonly arithmetic: boolean;
+  // For a scalar objective: the value measured, the value the ledger holds
+  // the sector to (`null` before `clear` records it), and where the one
+  // stands against the other.
+  readonly measure?: {
+    readonly value: number | null;
+    readonly recorded: number | null;
+    readonly standing: "within" | "breached" | "surpassed" | "unrecorded" | "unmeasured";
+  };
+};
+
+export type ObjectiveReport = {
+  readonly id: string;
+  readonly count: number;
+  readonly ledgered: boolean;
+  readonly sectors: ReadonlyArray<SectorObjectiveReport>;
+  // For a scalar objective: its number across the sectors in window.
+  readonly measure?: {
+    readonly direction: "down" | "up";
+    readonly value: number | null;
+    readonly recorded: number | null;
+    readonly target: number | null;
+    readonly tolerance: number;
+  };
+};
+
+export type SectorReport = {
+  readonly name: string;
+  readonly phase: string | null;
+  readonly reached: string | null;
+  readonly files: number;
+  readonly residue: ResidueVector;
+};
+
+export type CampaignReport = {
+  readonly id: string;
+  // Holdouts in window, every objective and sector summed.
+  readonly count: number;
+  readonly new: ReadonlyArray<{ objective: string; sector: string; entry: string }>;
+  readonly stale: ReadonlyArray<{ objective: string; sector: string; entry: string }>;
+  readonly drifted: number;
+  // No ledger for an objective with hits, or a sector in window the ledger
+  // has not seen: `objectives clear` has not been run.
+  readonly missingLedger: boolean;
+  // Scalar objectives that measured no number in a sector in window: a
+  // function that answered something else, a command that did not run.
+  readonly unmeasured: ReadonlyArray<{ objective: string; sector: string }>;
+  readonly arithmetic: boolean;
+  readonly complete: boolean;
+  readonly stalled: boolean;
+  readonly onComplete: "keep" | "remove";
+  readonly objectives: ReadonlyArray<ObjectiveReport>;
+  readonly sectors: ReadonlyArray<SectorReport>;
+  // Files two sectors claim.
+  readonly drift: ReadonlyArray<{ readonly file: string; readonly sectors: ReadonlyArray<string> }>;
+  readonly plan: {
+    refined: ReadonlyArray<string>;
+    changed: ReadonlyArray<string>;
+    unreceipted: ReadonlyArray<string>;
+  };
+};
+
+export const campaignReportsOf = (
+  campaigns: CampaignLedgers,
+  now: number,
+  evaluations: ReadonlyArray<CampaignEvaluation>,
+): ReadonlyArray<CampaignReport> =>
+  evaluations.map((evaluation) => {
+    const { rule } = evaluation;
+    const counted = hitsInWindow(evaluation);
+    let missingLedger = false;
+    const unmeasured: Array<{ objective: string; sector: string }> = [];
+    const scalarNew: Array<{ objective: string; sector: string; entry: string }> = [];
+    const scalarStale: Array<{ objective: string; sector: string; entry: string }> = [];
+
+    // A scalar objective, reconciled per sector against its ledger. A value
+    // worse than the record past the tolerance is growth `concede` records;
+    // better past it, progress `clear` records — each a line of the same
+    // `new` and `stale` lists a holdout lands in, so `check` fails on them
+    // for the same reasons and says the same next step. A rise in a phase
+    // that `grows` the objective is on the `clear` side: the plan expected
+    // it, and the ledger is only behind.
+    const scalarReport = (objective: CompiledObjective): ObjectiveReport => {
+      const ledger = measureLedgerOf(campaigns, rule, objective);
+      const sectors: Array<SectorObjectiveReport> = [];
+      let value = 0;
+      let recorded = 0;
+      let measuredAll = true;
+      let recordedAll = true;
+
+      for (const name of sectorNames(evaluation)) {
+        const state = evaluation.sectors.get(name);
+
+        if (state === undefined || !ledgeredFor(rule, objective, name)) continue;
+        const measured = state.values[objective.id] ?? Number.NaN;
+        const own = ledger?.sectors[name];
+
+        if (!state.inWindow.some((one) => one.id === objective.id)) {
+          // Behind the window: the record is held for the sector's return.
+          // Past it: a record still open is closed by `clear`.
+          if (own?.closed === null && !isBehind(rule, objective, state.phase, state.position)) {
+            scalarStale.push({
+              objective: objective.id,
+              sector: name,
+              entry: `left the window at ${describeValue(measured)}`,
+            });
+          }
+
+          continue;
+        }
+
+        if (Number.isNaN(measured)) {
+          measuredAll = false;
+          unmeasured.push({ objective: objective.id, sector: name });
+        } else value += measured;
+
+        if (ledger === undefined || own === undefined || own.closed !== null) {
+          missingLedger = true;
+          recordedAll = false;
+          sectors.push({
+            sector: name,
+            count: 0,
+            new: [],
+            stale: [],
+            drifted: 0,
+            unrecorded: true,
+            arithmetic: true,
+            measure: {
+              value: Number.isNaN(measured) ? null : measured,
+              recorded: null,
+              standing: Number.isNaN(measured) ? "unmeasured" : "unrecorded",
+            },
+          });
+          continue;
+        }
+
+        recorded += own.recorded;
+
+        const standing = Number.isNaN(measured)
+          ? "unmeasured"
+          : measureStandingOf(ledger, name, measured, objective.tolerance);
+
+        const grown = standing === "breached" && growsFor(campaigns, rule, name, objective.id);
+
+        const line =
+          `measured ${describeValue(measured)}, recorded ${String(own.recorded)}` +
+          (grown
+            ? isShared(rule, name)
+              ? " — measured, not held"
+              : " — a rise its phase grows"
+            : "");
+
+        if (standing === "breached" && !grown) {
+          scalarNew.push({ objective: objective.id, sector: name, entry: line });
+        }
+
+        if (standing === "surpassed" || grown) {
+          scalarStale.push({ objective: objective.id, sector: name, entry: line });
+        }
+
+        sectors.push({
+          sector: name,
+          count: 0,
+          new: standing === "breached" && !grown ? [line] : [],
+          stale: standing === "surpassed" || grown ? [line] : [],
+          drifted: 0,
+          unrecorded: false,
+          arithmetic: measureLedgerArithmeticHolds(ledger),
+          measure: {
+            value: Number.isNaN(measured) ? null : measured,
+            recorded: own.recorded,
+            standing,
+          },
+        });
+      }
+
+      // Sectors the ledger records that the code no longer births: closed
+      // on the next `clear`, stale until then.
+      for (const [name, own] of Object.entries(ledger?.sectors ?? {})) {
+        if (evaluation.sectors.has(name) || own.closed !== null) continue;
+        scalarStale.push({ objective: objective.id, sector: name, entry: "no longer a sector" });
+      }
+
+      return {
+        id: objective.id,
+        count: 0,
+        ledgered: ledger !== undefined,
+        sectors,
+        measure: {
+          direction: objective.direction,
+          value: measuredAll ? value : null,
+          recorded: recordedAll ? recorded : null,
+          target: objective.target,
+          tolerance: objective.tolerance,
+        },
+      };
+    };
+
+    const objectives: Array<ObjectiveReport> = rule.objectives.map((objective) => {
+      if (objective.measure !== null) return scalarReport(objective);
+      const ledger = ledgerOf(campaigns, rule, objective);
+      const sectors: Array<SectorObjectiveReport> = [];
+
+      for (const name of sectorNames(evaluation)) {
+        const state = evaluation.sectors.get(name);
+
+        if (state === undefined || !ledgeredFor(rule, objective, name)) continue;
+        const inWindow = state.inWindow.some((one) => one.id === objective.id);
+        const entries = entriesOf(counted, objective.id, name);
+        const recorded = ledger?.sectors[name] !== undefined;
+
+        if (!inWindow) {
+          // Past the window: what the ledger still carries is closed by
+          // `clear`, and nothing here counts. Behind it — the sector fell
+          // back below the phase naming it — the holdouts are work still
+          // owed, held as they are until the sector returns.
+          const carried = ledger?.sectors[name]?.holdouts ?? [];
+          const behind = isBehind(rule, objective, state.phase, state.position);
+
+          if (ledger !== undefined && carried.length > 0 && !behind) {
+            sectors.push({
+              sector: name,
+              count: 0,
+              new: [],
+              stale: carried,
+              drifted: 0,
+              unrecorded: false,
+              arithmetic: sectorArithmeticHolds(ledger, name),
+            });
+          }
+
+          continue;
+        }
+
+        if (ledger === undefined || !recorded) {
+          if (entries.length > 0 || ledger !== undefined) missingLedger = true;
+          sectors.push({
+            sector: name,
+            count: entries.length,
+            new: [...new Set(entries)].sort(),
+            stale: [],
+            drifted: 0,
+            unrecorded: true,
+            arithmetic: true,
+          });
+          continue;
+        }
+
+        const state_ = reconcileSector(ledger, name, entries, objective.unit);
+        sectors.push({
+          sector: name,
+          count: entries.length,
+          new: state_.unrecorded,
+          stale: state_.stale,
+          drifted: state_.drifted.length,
+          unrecorded: false,
+          arithmetic: sectorArithmeticHolds(ledger, name),
+        });
+      }
+
+      // Sectors the ledger carries that the code no longer births: closed
+      // on the next `clear`, stale until then.
+      for (const name of Object.keys(ledger?.sectors ?? {})) {
+        if (evaluation.sectors.has(name)) continue;
+        const holdouts = ledger?.sectors[name]?.holdouts ?? [];
+
+        if (holdouts.length === 0) continue;
+        sectors.push({
+          sector: name,
+          count: 0,
+          new: [],
+          stale: holdouts,
+          drifted: 0,
+          unrecorded: false,
+          arithmetic: true,
+        });
+      }
+
+      return {
+        id: objective.id,
+        count: sectors.reduce((sum, one) => sum + one.count, 0),
+        ledgered: ledger !== undefined,
+        sectors,
+      };
+    });
+
+    const flat = (pick: (one: SectorObjectiveReport) => ReadonlyArray<string>) =>
+      objectives.flatMap((objective) =>
+        objective.sectors.flatMap((one) =>
+          pick(one).map((entry) => ({ objective: objective.id, sector: one.sector, entry })),
+        ),
+      );
+
+    const ledgers = rule.objectives.flatMap((objective) => {
+      const ledger = ledgerOf(campaigns, rule, objective);
+
+      return ledger === undefined ? [] : [ledger];
+    });
+
+    const measureLedgers = rule.objectives.flatMap((objective) => {
+      const ledger = measureLedgerOf(campaigns, rule, objective);
+
+      return ledger === undefined ? [] : [{ objective, ledger }];
+    });
+
+    // A targeted scalar is met in every sector in window when its distance
+    // is 0 there; a standing one never holds a campaign open.
+    const scalarsMet = rule.objectives
+      .filter((objective) => objective.measure !== null && objective.target !== null)
+      .every((objective) =>
+        [...evaluation.sectors.values()].every(
+          (state) =>
+            !state.inWindow.some((one) => one.id === objective.id) ||
+            (state.counts[objective.id] ?? 0) === 0,
+        ),
+      );
+
+    const scalarsOpen = measureLedgers.filter(
+      ({ objective }) =>
+        objective.target !== null &&
+        [...evaluation.sectors.values()].some(
+          (state) =>
+            state.inWindow.some((one) => one.id === objective.id) &&
+            (state.counts[objective.id] ?? 0) > 0,
+        ),
+    );
+
+    const sectorClock = [...evaluation.sectors.keys()]
+      .flatMap((name) => {
+        const record = recordOf(campaigns, rule, name);
+
+        return record === undefined ? [] : [sectorClockOf(record)];
+      })
+      .reduce<string | null>((a, b) => (a === null || b > a ? b : a), null);
+
+    const count = objectives.reduce((sum, one) => sum + one.count, 0);
+
+    return {
+      id: rule.id,
+      count,
+      new: [...flat((one) => (one.measure === undefined ? one.new : [])), ...scalarNew],
+      stale: [...flat((one) => (one.measure === undefined ? one.stale : [])), ...scalarStale],
+      drifted: objectives.reduce(
+        (sum, one) => sum + one.sectors.reduce((inner, two) => inner + two.drifted, 0),
+        0,
+      ),
+      missingLedger,
+      unmeasured,
+      arithmetic:
+        ledgers.every(ledgerArithmeticHolds) &&
+        measureLedgers.every(({ ledger }) => measureLedgerArithmeticHolds(ledger)),
+      complete: count === 0 && ledgers.every(isComplete) && scalarsMet && unmeasured.length === 0,
+      stalled:
+        (ledgers.length > 0 &&
+          ledgers.some((ledger) => isStalled(rule, ledger, now, sectorClock))) ||
+        scalarsOpen.some(({ ledger }) => isMeasureStalled(rule, ledger, now, sectorClock)),
+      onComplete: rule.onComplete,
+      objectives,
+      sectors: [...evaluation.sectors.values()].map((state) => ({
+        name: state.name,
+        phase: phaseIdOf(rule, state.phase),
+        reached: recordOf(campaigns, rule, state.name)?.reached ?? null,
+        files: state.sector.files.length,
+        residue: state.residue,
+      })),
+      drift: evaluation.index.drift,
+      plan: planDiffOf(rule, campaigns.plans.get(rule.id)),
+    };
+  });
+
+// A scalar short of its target is stalled when its record has not improved,
+// and no sector has been attested or noted, within the campaign's
+// `staleAfter`.
+const isMeasureStalled = (
+  rule: CompiledCampaign,
+  ledger: MeasureLedger,
+  now: number,
+  sectorClock: string | null,
+): boolean => {
+  if (rule.staleAfter === null) return false;
+
+  const last = [lastImprovedOf(ledger), sectorClock]
+    .filter((one): one is string => one !== null)
+    .reduce((a, b) => (a > b ? a : b), ledger.created);
+
+  return now - Date.parse(last) > rule.staleAfter;
+};
+
+// Which hits in window are carried by a ledger, exactly or by anchor.
+export const ledgeredFilterOf = (
+  campaigns: CampaignLedgers,
+  evaluations: ReadonlyArray<CampaignEvaluation>,
+): ((hit: ObjectiveHit) => boolean) => {
+  const carried = new Set<ObjectiveHit>();
+
+  for (const evaluation of evaluations) {
+    const { rule } = evaluation;
+
+    for (const objective of rule.objectives) {
+      const ledger = ledgerOf(campaigns, rule, objective);
+
+      if (ledger === undefined) continue;
+
+      for (const name of sectorNames(evaluation)) {
+        const own = hitsInWindow(evaluation).filter(
+          (hit) => hit.objective === objective.id && hit.sector === name,
+        );
+
+        const { ledgered } = reconcileSector(
+          ledger,
+          name,
+          own.map((hit) => hit.entry),
+          objective.unit,
+        );
+
+        const known = new Set(ledgered);
+
+        for (const hit of own) if (known.has(hit.entry)) carried.add(hit);
+      }
+    }
+  }
+
+  return (hit) => carried.has(hit);
+};
+
+// The sectors standing in a window no ledger has recorded for them, each
+// with the phase it is at. A campaign with no ledger at all has never been
+// cleared; one with ledgers has a sector that moved on since the last clear.
+export const unrecordedSectorsOf = (campaign: CampaignReport): ReadonlyArray<string> =>
+  [
+    ...new Set(
+      campaign.objectives.flatMap((objective) =>
+        objective.sectors
+          .filter(
+            (one) =>
+              one.unrecorded && (one.count > 0 || objective.ledgered || one.measure !== undefined),
+          )
+          .map((one) => one.sector),
+      ),
+    ),
+  ].map((name) => {
+    const phase = campaign.sectors.find((one) => one.name === name)?.phase ?? null;
+
+    return phase === null ? name : `${name} (at ${phase})`;
+  });
+
+export const neverCleared = (campaign: CampaignReport): boolean =>
+  !campaign.objectives.some((objective) => objective.ledgered);
+
+// Why a campaign report is not ok, in the order `check` explains it.
+export const campaignFailuresOf = (
+  campaigns: ReadonlyArray<CampaignReport>,
+): ReadonlyArray<string> => {
+  // One failure per campaign it holds of, in the campaigns' order.
+  const failing = (
+    holds: (one: CampaignReport) => boolean,
+    say: (one: CampaignReport) => string,
+  ): ReadonlyArray<string> => campaigns.flatMap((one) => (holds(one) ? [say(one)] : []));
+
+  return [
+    ...failing(
+      (one) => one.drift.length > 0,
+      (one) => `campaign ${one.id}: a file is in two sectors`,
+    ),
+    ...failing(
+      (one) => one.plan.unreceipted.length > 0,
+      (one) => `campaign ${one.id}: a defined phase changed without a concession`,
+    ),
+    ...failing(
+      (one) => one.unmeasured.length > 0,
+      (one) => `campaign ${one.id}: a scalar objective measured no number`,
+    ),
+    ...failing(
+      (one) => one.stale.length > 0,
+      () => "stale ledger entries",
+    ),
+    ...failing(
+      (one) => !one.arithmetic,
+      () => "ledger arithmetic does not hold",
+    ),
+    ...failing(
+      (one) => one.missingLedger,
+      (one) =>
+        neverCleared(one)
+          ? `campaign ${one.id} has no ledger`
+          : `campaign ${one.id}: ${unrecordedSectorsOf(one).join(", ")} entered a window no ledger has recorded`,
+    ),
+    ...failing(
+      (one) => !one.missingLedger && one.new.length > 0,
+      () => "unrecorded campaign growth",
+    ),
+    ...failing(
+      (one) => one.complete && !one.missingLedger && one.onComplete === "remove",
+      (one) => `campaign ${one.id} is complete and declared onComplete: remove`,
+    ),
+  ];
+};

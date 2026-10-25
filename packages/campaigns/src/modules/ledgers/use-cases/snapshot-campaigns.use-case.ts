@@ -1,0 +1,255 @@
+import type { LoadedPolicy, SnapshotCampaign } from "@goodbones/core";
+
+import type { CampaignEvaluation } from "../../../core/campaign-state.js";
+import { isDefinedPhase, ladderPositionOf, stepsOf } from "../../../core/phases.js";
+import { isShared, LEGACY_SECTOR, SHARED_SECTOR } from "../../../core/sectors.js";
+import { campaignsOf } from "../../../load/campaign-policy.js";
+import {
+  isComplete,
+  lastClearedOf,
+  progressOf,
+  sectorProgressOf,
+} from "../domain/ledger/ledger.root-ops.js";
+import {
+  lastImprovedOf,
+  measureProgressOf,
+  measureSectorProgressOf,
+  recordedOf,
+} from "../domain/measure-ledger/measure-ledger.root-ops.js";
+import { sectorClockOf } from "../domain/sector-record/sector-record.root-ops.js";
+import {
+  ledgerOf,
+  measureLedgerOf,
+  phaseIdOf,
+  recordOf,
+} from "../domain/services/campaign-ledgers.service.js";
+import { campaignReportsOf } from "../domain/services/campaign-report.service.js";
+
+// What `campaigns` and `conformance` say of every campaign: its burn-down,
+// and where its sectors stand on its ladder — the conformance snapshot's
+// campaigns.
+export const snapshotCampaignsUseCase = (
+  policy: LoadedPolicy,
+  evaluations: ReadonlyArray<CampaignEvaluation>,
+): ReadonlyArray<SnapshotCampaign> =>
+  campaignReportsOf(campaignsOf(policy), policy.now, evaluations).map((report, i) => {
+    const campaigns = campaignsOf(policy);
+    const evaluation = evaluations[i];
+
+    if (evaluation === undefined) throw new Error("report without evaluation");
+    const { rule } = evaluation;
+    const ledgers = rule.objectives.map((objective) => ledgerOf(campaigns, rule, objective));
+
+    const scalar = new Set(
+      rule.objectives.filter((one) => one.measure !== null).map((one) => one.id),
+    );
+
+    const objectives = rule.objectives.map((objective, j) => {
+      const ledger = ledgers[j];
+      const own = report.objectives[j];
+      const phase = rule.phases.find((one) => one.objectives.includes(objective.id))?.id ?? null;
+      const over = objective.overShared ? { over: "shared" as const } : {};
+
+      if (objective.measure !== null) {
+        // A scalar: the holdout counts are all 0, and the number is under
+        // `measure`. Met when every sector in window is at its target.
+        const measured = measureLedgerOf(campaigns, rule, objective);
+
+        const met =
+          objective.target !== null &&
+          (own?.sectors ?? []).every(
+            (one) => (evaluation.sectors.get(one.sector)?.counts[objective.id] ?? 1) === 0,
+          );
+
+        return {
+          id: objective.id,
+          phase,
+          ...over,
+          initial: 0,
+          allowed: 0,
+          count: 0,
+          cleared: 0,
+          closed: 0,
+          entered: Object.keys(measured?.sectors ?? {}).length,
+          // No sector has entered the window: nothing has been asked yet,
+          // which is not the same as done.
+          progress:
+            measured === undefined || Object.keys(measured.sectors).length === 0
+              ? null
+              : measureProgressOf(measured, objective.target),
+          lastCleared: measured === undefined ? null : lastImprovedOf(measured),
+          concessions: measured?.concessions.length ?? 0,
+          complete: met,
+          ledgered: measured !== undefined,
+          measure: {
+            direction: objective.direction,
+            value: own?.measure?.value ?? 0,
+            recorded: own?.measure?.recorded ?? (measured === undefined ? 0 : recordedOf(measured)),
+            target: objective.target,
+            tolerance: objective.tolerance,
+          },
+        };
+      }
+
+      if (ledger === undefined) {
+        return {
+          id: objective.id,
+          phase,
+          ...over,
+          initial: own?.count ?? 0,
+          allowed: 0,
+          count: own?.count ?? 0,
+          cleared: 0,
+          closed: 0,
+          entered: 0,
+          progress: (own?.count ?? 0) === 0 ? null : 0,
+          lastCleared: null,
+          concessions: 0,
+          complete: (own?.count ?? 0) === 0,
+          ledgered: false,
+        };
+      }
+
+      const sectors = Object.values(ledger.sectors);
+
+      return {
+        id: objective.id,
+        phase,
+        ...over,
+        initial: sectors.reduce((sum, one) => sum + one.initial, 0),
+        allowed: ledger.concessions.reduce(
+          (sum, one) => sum + Math.max(0, "delta" in one ? one.delta : one.to - one.from),
+          0,
+        ),
+        count: sectors.reduce((sum, one) => sum + one.holdouts.length, 0),
+        cleared: sectors.reduce((sum, one) => sum + one.cleared, 0),
+        closed: sectors.reduce((sum, one) => sum + one.closed, 0),
+        entered: sectors.length,
+        progress: sectors.length === 0 ? null : progressOf(ledger),
+        lastCleared: lastClearedOf(ledger),
+        concessions: ledger.concessions.length,
+        complete: isComplete(ledger),
+        ledgered: true,
+      };
+    });
+
+    const totalInitial = objectives.reduce(
+      (sum, one) => sum + one.initial + one.allowed - one.closed,
+      0,
+    );
+
+    const totalCount = objectives.reduce((sum, one) => sum + one.count, 0);
+
+    // The legacy and the shared files stand on no rung of their own: neither is
+    // among the sectors the ladder counts.
+    const sectors = [...evaluation.sectors.values()].filter(
+      (one) => one.name !== LEGACY_SECTOR && !isShared(rule, one.name),
+    );
+
+    const legacy = evaluation.sectors.get(LEGACY_SECTOR);
+    const sharedFiles = rule.shared === null ? undefined : evaluation.sectors.get(SHARED_SECTOR);
+    // Each sector's position on the ladder: the phases behind it, plus the
+    // share of the one it stands in that the ledgers say is paid.
+    const steps = stepsOf(rule);
+
+    const positions = new Map(
+      sectors.map((state) => [
+        state.name,
+        ladderPositionOf(rule, state.phase, (objectiveId) => {
+          const at = rule.objectives.findIndex((one) => one.id === objectiveId);
+          const objective = rule.objectives[at];
+
+          if (objective === undefined) return 0;
+          // A prerequisite is paid where it is ledgered: on the shared files.
+          const paidBy = objective.overShared ? SHARED_SECTOR : state.name;
+
+          return objective.measure !== null
+            ? measureSectorProgressOf(
+                measureLedgerOf(campaigns, rule, objective),
+                paidBy,
+                objective.target,
+              )
+            : sectorProgressOf(ledgers[at], paidBy);
+        }),
+      ]),
+    );
+
+    return {
+      id: rule.id,
+      ...(rule.title === null ? {} : { title: rule.title }),
+      ...(rule.owner === null ? {} : { owner: rule.owner }),
+      count: totalCount,
+      // With a ladder, how far along it the sectors stand — a number that
+      // rises as they advance and never falls when one enters a phase, as
+      // cleared-over-ever-ledgered does each time a new window is counted.
+      progress:
+        steps > 0 && sectors.length > 0
+          ? [...positions.values()].reduce((sum, one) => sum + one, 0) / (steps * sectors.length)
+          : totalInitial <= 0
+            ? 1
+            : 1 - totalCount / totalInitial,
+      steps,
+      objectives,
+      phases: rule.phases.map((phase, index) => ({
+        id: phase.id,
+        defined: isDefinedPhase(phase),
+        attested: phase.attested,
+        sectors: sectors.filter((one) => one.phase === index).length,
+      })),
+      sectors: sectors.map((state) => {
+        const record = recordOf(campaigns, rule, state.name);
+        const residueTotal = Object.values(state.residue).reduce((sum, one) => sum + one, 0);
+
+        const clock = [
+          ...ledgers.flatMap((ledger) => {
+            const own = ledger?.sectors[state.name];
+
+            return own === undefined ? [] : [own.lastCleared];
+          }),
+          ...(record === undefined ? [] : [sectorClockOf(record)]),
+        ].reduce<string | null>((a, b) => (a === null || b > a ? b : a), null);
+
+        return {
+          name: state.name,
+          phase: phaseIdOf(rule, state.phase),
+          reached: record?.reached ?? null,
+          files: state.sector.files.length,
+          position: positions.get(state.name) ?? 0,
+          residue: state.residue,
+          stalled:
+            rule.staleAfter !== null &&
+            residueTotal > 0 &&
+            clock !== null &&
+            policy.now - Date.parse(clock) > rule.staleAfter,
+        };
+      }),
+      legacy: {
+        files: evaluation.index.legacy.length,
+        holdouts:
+          legacy === undefined
+            ? 0
+            : Object.entries(legacy.residue)
+                .filter(([id]) => !scalar.has(id))
+                .reduce((a, [, n]) => a + n, 0),
+      },
+      ...(sharedFiles === undefined
+        ? {}
+        : {
+            shared: {
+              files: evaluation.index.shared.length,
+              holdouts: Object.entries(sharedFiles.residue)
+                .filter(([id]) => !scalar.has(id))
+                .reduce((a, [, n]) => a + n, 0),
+            },
+          }),
+      plan: report.plan,
+      stalled: report.stalled,
+      complete: report.complete,
+      onComplete: rule.onComplete,
+      ledgered: rule.objectives.every((objective, j) =>
+        objective.measure === null
+          ? ledgers[j] !== undefined
+          : measureLedgerOf(campaigns, rule, objective) !== undefined,
+      ),
+    };
+  });

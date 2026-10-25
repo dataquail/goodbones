@@ -17,9 +17,10 @@ all under `packages/`:
   not own: a refactor as objectives with ledgers, over sectors, through phases. It is laid out as
   the core is — `domain/`, its own two `ports/` (`CampaignPredicate`, `ReportSource`), the pure
   `core/` evaluators, the `manifest/` slice it decodes and lowers, the `load/` extension a host
-  composes, `infrastructure/`, and the `host/` glue the CLI drives — and is moving into
-  `modules/` (see "Architecture" below), starting with `modules/ledgers/`. It depends on the core and on
-  nothing else in the repository.
+  composes, `infrastructure/`, and `presentation/`, the presenters the hosts render through —
+  and is moving into `modules/` (see "Architecture" below): `modules/ledgers/` holds the ledger
+  aggregates and every verb's use-case. It depends on the core and on nothing else in the
+  repository.
 - **`@goodbones/typescript`** (`packages/typescript`) — the TypeScript language pack: facts read
   through oxc-parser, specifiers resolved through `unrs-resolver`, behind the core's
   `Language` port.
@@ -95,23 +96,29 @@ drift rewritten — a renamed declaration's match pairs by file and hash — ent
 with their initial, passed windows closed, entries _behind_ a window a regression sent the sector
 below held, never closed, a receipted phase change re-baselined), `objectives concede --reason` is
 the one way a holdout is added (a concession that sends a sector back below an attested phase
-revokes that attestation — `host/concede.ts`), and
+revokes that attestation — `domain/services/concession.service.ts`), and
 `check` verifies per sector `holdouts.length === initial + Σ delta − cleared − closed`; a defined
 phase changed without a `concessions` entry fails `check`. **The nudge**, `campaigns status
---changed [--base <ref>] [--json] [--hotfix]` (`host/nudge.ts`, `host/diff.ts`), is the
+--changed [--base <ref>] [--json] [--hotfix]` (`use-cases/nudge-changes.use-case.ts`, over
+the `GitClient`), is the
 family's deliverable: per touched sector, the phase and what would move it on, `ask`/`verdict`
 enumerated, non-zero under `ratchet`/`paydown`, and under `onAhead: ratchet` for work paid ahead
 of the plan (an objective whose phase lies past where the sector stands after the diff, read
 against the base tree or HEAD's evaluated tree). A diff is judged by the phase the sector stood at
 before it — the base tree's with `--base`, else the one the ledgers place it at, never below
-HEAD's ledgers' (`host/ledger-phase.ts`; an objective with no ledger entry for the sector is met
+HEAD's ledgers' (`ledgerPhaseOf` in `domain/services/campaign-ledgers.service.ts`, HEAD's read
+through `CampaignPolicy.readersAt("HEAD")`; an objective with no ledger entry for the sector is met
 only up to its `reached`) — so entering a later window is "now counted", never growth, and a
 concession in the head's ledger is a receipt in both modes. At an open judged phase, what went
 back is held by the `onTouch` of the phase that named it. A campaign's progress is its sectors'
 positions on the ladder (`ladderPositionOf`), not cleared-over-ledgered, which fell at every phase
-entry. The host glue is one module per verb (`clear`, `concede`, `report`, `status`, `sector`, `nudge`,
-`explain`, over `ledgers.ts`); `host/campaigns.ts` is held to its line count by `host-campaigns-shrinks`, so a new
-verb is a new module. The plugin reads membership off the perimeter and
+entry. Each verb is one use-case under `modules/ledgers/use-cases/` (evaluate, clear, preview the
+sector moves, concede, attest, note, report, snapshot, the nudge, the base side, explain, the sector
+view, history), the rules several share are domain services, and the text is a presenter under
+`presentation/`; `host-campaigns-shrinks` holds each of those files to its own line count (one
+sector per file), so a new verb is a new use-case. The barrel's older names (`clear`, `nudgeOf`,
+`sectorViewOf`, …) alias the use-cases, and the few that read the policy (`ledgerPhaseOf`,
+`sendBack`, `explainCampaignLines`, …) keep their signatures in `compat/policy-signatures.ts`. The plugin reads membership off the perimeter and
 the phase off the ledgers (a sector no `clear` has placed stands at the first phase) and parses
 `sourceCode.text` with the same ast-grep matcher the CLI uses — the only family the plugin parses
 with anything but oxlint's tree — so its parity contract is "one engine", pinned by
@@ -399,8 +406,11 @@ package's `architecture.yaml` polices a tier from its first file.
   repository port speaks `findAll`, `findOne`, `save` and `remove` only: a finder that answers a
   question is an op. Nothing under a `domain/` prints, exits or touches the file system, and
   `campaigns-domain-reaches-no-adapter` holds that through any number of hops.
-- **Obligations.** A `.root-ops.ts` owes a sibling `.test.ts`; a repository port owes its
-  `-live.ts`, `-fake.ts` and `-live.test.ts`. The lint names what is missing.
+- **Obligations.** A `.root-ops.ts` and a `.use-case.ts` each owe a sibling `.test.ts`; a
+  repository or client port owes its `-live.ts`, `-fake.ts` and `-live.test.ts`. A use-case file
+  exports one `<verbNoun>UseCase`, names no other use-case and no presenter, and reaches no live
+  adapter (`campaigns-use-cases-reach-no-adapter`); an op and a port are imported only by their
+  module, the barrel and tests (`importedBy`). The lint names what is missing.
 - **The ledgers are the first module** (`packages/campaigns/src/modules/ledgers/`): `Ledger`,
   `MeasureLedger`, `SectorRecord` and `PlanRecord`, behind `ObjectiveLedgersRepository` (both
   ledger kinds share a path, and the first layout is `objective: null`),
@@ -408,11 +418,16 @@ package's `architecture.yaml` polices a tier from its first file.
   `FileSystem` port, so the plugin and the browser read ledgers as they read any file, and write
   with `node:fs`; the mappers own the bytes on disk. The extension's `load` builds them as the
   family's composition point inside `loadPolicy` and carries them on `CampaignPolicy.repositories`,
-  which is what every verb saves through. The nudge still reads HEAD's ledgers through git with
-  the mappers' codec, until a git client takes that over. The fakes are exported from
+  which is what every verb saves through. Beside them it builds the clients — `GitClient`,
+  `BaseSidesClient` (the exact mode's cache under `node_modules/.cache/goodbones/`),
+  `MeasureCommandsClient` and `WorkspaceClient` (the core's walker, which `no-walker-calls`
+  keeps out of `domain/` and `use-cases/`) — on `CampaignPolicy.clients`, and `readersAt(ref)`,
+  the same repositories read-only over the tree git holds at a ref, each record read per sector;
+  `campaignsExtension({ repositories, git, baseSides, commands, workspace })` takes fakes in
+  their place. A use-case reads all of it through
+  `load/campaign-policy.ts`, never the extension. The fakes are exported from
   `@goodbones/campaigns/testing`.
-- **What is left**, one layer per pull request, in the order ADR 2 gives: `campaigns/host/` into
-  use-cases and a presentation tier; the manifest aggregate; the baseline aggregate; one CLI
+- **What is left**, one layer per pull request, in the order ADR 2 gives: the manifest aggregate; the baseline aggregate; one CLI
   use-case per verb over client ports; the core's `kernel/` and policy module; optionally one core
   module per rule family.
 
@@ -437,9 +452,9 @@ package's `architecture.yaml` polices a tier from its first file.
   and running a `report` term's command (`report-source-live.ts`).
 
 `@goodbones/campaigns` repeats that shape for a family the core does not own — `domain/`,
-`ports/`, `core/`, `manifest/`, `load/`, `infrastructure/`, and a `host/` tier above them for the
-glue that runs git and saves ledgers through their repositories — with `modules/ledgers/` the
-first of the modules it is moving into. Two graph rules in the root policy pin it:
+`ports/`, `core/`, `manifest/`, `load/`, `infrastructure/` — with `modules/ledgers/` the first of
+the modules it is moving into, holding the use-cases that replaced the old `host/` glue, and
+`presentation/` above them for the text the hosts print. Two graph rules in the root policy pin it:
 `campaigns-reaches-only-the-core` (it reaches the core and no peer, so a second such family is a
 second package) and `campaigns-pure-tiers-reach-no-adapter`. Two couplings are kept on purpose:
 `Violation.kind` still carries `"campaign"`, and `domain/snapshot.ts` still declares the

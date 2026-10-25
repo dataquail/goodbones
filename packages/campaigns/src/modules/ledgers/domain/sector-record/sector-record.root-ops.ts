@@ -1,7 +1,7 @@
 import * as Result from "effect/Result";
 
 import type { CompiledCampaign } from "../../../../core/campaigns.js";
-import type { SectorPosition } from "../../../../core/phases.js";
+import { positionOfRecord, type SectorPosition } from "../../../../core/phases.js";
 import type { Attestation, Note, SectorRecord } from "./sector-record.root.js";
 
 // What may happen to a sector's record: `reached` advances, a phase is
@@ -13,15 +13,7 @@ import type { Attestation, Note, SectorRecord } from "./sector-record.root.js";
 export const positionOf = (
   rule: CompiledCampaign,
   record: SectorRecord | undefined,
-): SectorPosition => ({
-  reached:
-    record?.reached === null || record === undefined
-      ? -1
-      : rule.phases.findIndex((phase) => phase.id === record.reached),
-  attested: new Set(
-    record?.attested.filter((one) => one.revoked === undefined).map((one) => one.phase) ?? [],
-  ),
-});
+): SectorPosition => positionOfRecord(rule, record);
 
 // `reached` only advances.
 export const reachedRecord = (

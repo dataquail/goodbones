@@ -3,6 +3,24 @@
 // `@goodbones/core/testing`.
 export { makeReportSourceFake } from "./infrastructure/report-source-fake.js";
 export {
+  type BaseSidesClientFake,
+  makeBaseSidesClientFake,
+} from "./modules/ledgers/infrastructure/clients/base-sides.client-fake.js";
+export {
+  type GitClientFake,
+  type GitClientFakeState,
+  makeGitClientFake,
+} from "./modules/ledgers/infrastructure/clients/git.client-fake.js";
+export {
+  makeMeasureCommandsClientFake,
+  type MeasureCommandsClientFake,
+} from "./modules/ledgers/infrastructure/clients/measure-commands.client-fake.js";
+export {
+  makeWorkspaceClientFake,
+  type WorkspaceClientFake,
+  type WorkspaceClientFakeState,
+} from "./modules/ledgers/infrastructure/clients/workspace.client-fake.js";
+export {
   makeObjectiveLedgersRepositoryFake,
   type ObjectiveLedgersRepositoryFake,
 } from "./modules/ledgers/infrastructure/repositories/objective-ledgers.repository-fake.js";

@@ -1,5 +1,5 @@
 import type { LoadedPolicy } from "@goodbones/core";
-import type * as Result from "effect/Result";
+import * as Result from "effect/Result";
 
 import type { CampaignEvaluation, ObjectiveHit } from "../core/campaign-state.js";
 import type { CompiledCampaign, CompiledObjective } from "../core/campaigns.js";
@@ -64,15 +64,26 @@ export const sendBack = (
   return back.sent;
 };
 
-// `concede` for a scalar objective, narrowed to `sector`.
+// `concede` for a scalar objective, narrowed to `sector`. It reads only a
+// scalar's ledger, so a holdout objective — whose ledger is of the other
+// kind — has none to concede against, as it never had.
 export const concedeMeasure = (
   policy: LoadedPolicy,
   evaluation: CampaignEvaluation,
   objective: CompiledObjective,
   sector: string | null,
   record: ConcessionReceipt,
-): Result.Result<ConcedeOutcome, string> =>
-  concedeObjectiveUseCase(policy, evaluation, objective.id, null, sector, record);
+): Result.Result<ConcedeOutcome, string> => {
+  const { rule } = evaluation;
+
+  if (objective.measure === null) {
+    return Result.fail(
+      `objective ${rule.id}/${objective.id} has no ledger yet; run \`objectives clear ${rule.id}\` first.`,
+    );
+  }
+
+  return concedeObjectiveUseCase(policy, evaluation, objective.id, null, sector, record);
+};
 
 // `explain`'s paragraph for one campaign.
 export const explainCampaignLines = (

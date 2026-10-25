@@ -16,6 +16,11 @@ export {
   type MeasureCommandsClientFake,
 } from "./modules/ledgers/infrastructure/clients/measure-commands.client-fake.js";
 export {
+  makeWorkspaceClientFake,
+  type WorkspaceClientFake,
+  type WorkspaceClientFakeState,
+} from "./modules/ledgers/infrastructure/clients/workspace.client-fake.js";
+export {
   makeObjectiveLedgersRepositoryFake,
   type ObjectiveLedgersRepositoryFake,
 } from "./modules/ledgers/infrastructure/repositories/objective-ledgers.repository-fake.js";

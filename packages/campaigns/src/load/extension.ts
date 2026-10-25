@@ -35,11 +35,13 @@ import type { PlanRecord } from "../modules/ledgers/domain/plan/plan.root.js";
 import type { BaseSidesClient } from "../modules/ledgers/domain/ports/clients/base-sides.client.js";
 import type { GitClient } from "../modules/ledgers/domain/ports/clients/git.client.js";
 import type { MeasureCommandsClient } from "../modules/ledgers/domain/ports/clients/measure-commands.client.js";
+import type { WorkspaceClient } from "../modules/ledgers/domain/ports/clients/workspace.client.js";
 import type { SectorRecord } from "../modules/ledgers/domain/sector-record/sector-record.root.js";
 import { ledgerKeyOf } from "../modules/ledgers/domain/services/campaign-ledgers.service.js";
 import { makeBaseSidesClientLive } from "../modules/ledgers/infrastructure/clients/base-sides.client-live.js";
 import { makeGitClientLive } from "../modules/ledgers/infrastructure/clients/git.client-live.js";
 import { makeMeasureCommandsClientLive } from "../modules/ledgers/infrastructure/clients/measure-commands.client-live.js";
+import { makeWorkspaceClientLive } from "../modules/ledgers/infrastructure/clients/workspace.client-live.js";
 import {
   ledgerPathOf,
   legacyLedgerPathOf,
@@ -83,6 +85,7 @@ export type CampaignsExtensionOptions = {
   readonly git?: GitClient | undefined;
   readonly baseSides?: BaseSidesClient | undefined;
   readonly commands?: MeasureCommandsClient | undefined;
+  readonly workspace?: WorkspaceClient | undefined;
 };
 
 const referencedFunctions = (detect: CompiledDetector): ReadonlyArray<string> => {
@@ -446,6 +449,7 @@ const load = (
     git: options.git ?? makeGitClientLive(repoRoot),
     baseSides: options.baseSides ?? makeBaseSidesClientLive(repoRoot),
     commands: options.commands ?? makeMeasureCommandsClientLive(repoRoot),
+    workspace: options.workspace ?? makeWorkspaceClientLive(),
   };
 
   // The ledgers at a ref: the same repositories, over the tree git holds

@@ -92,6 +92,7 @@ exports:
       - makeGitClientLive
       - makeBaseSidesClientLive
       - makeMeasureCommandsClientLive
+      - makeWorkspaceClientLive
       - astGrepMatcher
     # The three hosts' composition roots, and the hosts' campaigns glue,
     # which a root loads only when the family is installed; the barrels that
@@ -334,6 +335,17 @@ defs:
       source: 'import { readFileSync } from "node:fs"; readFileSync("x");'
       name: readFileSync
 
+  # The core's walker reads the disk as surely as readdirSync does, but under
+  # a name no-file-system-calls cannot see. A campaigns tier that is handed
+  # its files walks a tree through the WorkspaceClient instead.
+  no-walker-calls:
+    message: "`{name}` walks the disk: the core's walker is a live adapter. A use-case reads a tree through the WorkspaceClient on the policy's clients; the domain is handed the files."
+    subject: calls
+    match: [listSourceFiles, listWorkspaceProjects]
+    probe:
+      source: 'import { listSourceFiles } from "@goodbones/core"; listSourceFiles(".", [], []);'
+      name: listSourceFiles
+
   # The floor every package inherits: node builtins, the runtime, and the test
   # framework. Each package adds the packages it may reach; none of them `reset`,
   # so this floor cannot be dropped further down.
@@ -481,13 +493,20 @@ campaigns:
     why: "`host/campaigns.ts` held evaluation, the ledger verbs, the nudge, the reports, history and explain in one module past two thousand lines, so every change to one verb was a review of all of them. The verbs are use-cases now, their rules domain services and their rendering presenters; what must not come back is one of them growing into the next `host/campaigns.ts`."
     how: "Keep a verb in its own use-case, a rule several verbs share in its own service, and a rendering in its own presenter. A file that must grow says why with `objectives concede host-campaigns-shrinks --sector <file> --reason`; one that shrinks is recorded smaller by `objectives clear host-campaigns-shrinks`."
     owner: "@dataquail"
-    # Wherever the host glue landed. One sector per file, each held to its
-    # own count.
+    # Wherever the host glue landed: the verbs and the types they answer
+    # with, the rules they share, the renderings, the git and shell adapters
+    # host/diff.ts became, what a verb reads the policy through, and the
+    # old names. One sector per file, each held to its own count; tests are
+    # not glue, so compat/ is named by file.
     scope:
       - "@camp/modules/*/use-cases/*.use-case.ts"
+      - "@camp/modules/*/use-cases/*.result.ts"
       - "@camp/modules/*/domain/services/*.service.ts"
+      - "@camp/modules/*/infrastructure/clients/*.client-live.ts"
       - "@camp/presentation/*.presenter.ts"
-      - "@camp/compat/*.ts"
+      - "@camp/presentation/lines.ts"
+      - "@camp/load/campaign-policy.ts"
+      - "@camp/compat/policy-signatures.ts"
     perimeter: file
     staleAfter: 180d
     onComplete: keep

@@ -234,6 +234,7 @@ export { type PlanDiff, planDiffOf, planOf } from "./modules/ledgers/domain/plan
 export type { BaseSidesClient } from "./modules/ledgers/domain/ports/clients/base-sides.client.js";
 export type { GitClient } from "./modules/ledgers/domain/ports/clients/git.client.js";
 export type { MeasureCommandsClient } from "./modules/ledgers/domain/ports/clients/measure-commands.client.js";
+export type { WorkspaceClient } from "./modules/ledgers/domain/ports/clients/workspace.client.js";
 export type { ObjectiveLedgersRepository } from "./modules/ledgers/domain/ports/repositories/objective-ledgers.repository.js";
 export type { PlansRepository } from "./modules/ledgers/domain/ports/repositories/plans.repository.js";
 export type { SectorRecordsRepository } from "./modules/ledgers/domain/ports/repositories/sector-records.repository.js";

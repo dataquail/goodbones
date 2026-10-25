@@ -1,8 +1,8 @@
 import type { LoadedPolicy } from "@goodbones/core";
+import * as Result from "effect/Result";
 
 import type { CompiledCampaign } from "../../../core/campaigns.js";
 import { campaignsOf } from "../../../load/campaign-policy.js";
-import { ledgerPathOf } from "../infrastructure/repositories/ledger.mapper.js";
 import type { HistoryRow } from "./history.result.js";
 
 // The series replayed from the ledgers' and the manifest's git history:
@@ -22,40 +22,30 @@ export const replayHistoryUseCase = (
 
   return commits.map((commit) => {
     const counts: Record<string, number> = {};
+    const { ledgers } = campaigns.readersAt(commit.sha);
 
     for (const objective of rule.objectives) {
-      const text =
-        git.textAt(commit.sha, ledgerPathOf(campaigns.ledgerDir, rule.id, objective.id)) ??
-        (rule.objectives.length === 1 ? git.textAt(commit.sha, legacy) : null);
+      const own = ledgers.findOne({ campaign: rule.id, objective: objective.id });
 
-      if (text === null) continue;
+      // A campaign of one objective may still be in the first layout there.
+      const found =
+        Result.isSuccess(own) && own.success === null && rule.objectives.length === 1
+          ? ledgers.findOne({ campaign: rule.id, objective: null })
+          : own;
 
-      try {
-        const raw = JSON.parse(text) as {
-          kind?: string;
-          sectors?: Record<
-            string,
-            { holdouts?: Array<unknown>; recorded?: number; closed?: number | null }
-          >;
-          entries?: Array<unknown>;
-        };
+      // An unreadable ledger at that commit contributes nothing.
+      if (Result.isFailure(found) || found.success === null) continue;
+      const ledger = found.success;
 
-        // A scalar's column is what its open sectors were held to.
-        counts[objective.id] =
-          raw.kind === "measure"
-            ? Math.round(
-                Object.values(raw.sectors ?? {})
-                  .filter((one) => one.closed === null || one.closed === undefined)
-                  .reduce((sum, one) => sum + (one.recorded ?? 0), 0) * 1e6,
-              ) / 1e6
-            : (raw.entries?.length ??
-              Object.values(raw.sectors ?? {}).reduce(
-                (sum, one) => sum + (one.holdouts?.length ?? 0),
-                0,
-              ));
-      } catch {
-        // an unreadable ledger at that commit contributes nothing
-      }
+      // A scalar's column is what its open sectors were held to.
+      counts[objective.id] =
+        "kind" in ledger
+          ? Math.round(
+              Object.values(ledger.sectors)
+                .filter((one) => one.closed === null)
+                .reduce((sum, one) => sum + one.recorded, 0) * 1e6,
+            ) / 1e6
+          : Object.values(ledger.sectors).reduce((sum, one) => sum + one.holdouts.length, 0);
     }
 
     return {

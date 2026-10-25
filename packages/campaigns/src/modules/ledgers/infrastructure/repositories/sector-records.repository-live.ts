@@ -15,42 +15,58 @@ export const makeSectorRecordsRepositoryLive = ({
   fileSystem,
   ledgerDir,
   repoRoot,
-}: LedgerStore): SectorRecordsRepository => ({
-  findAll: (campaign) => {
-    const dir = `${ledgerDir}/${campaign}/sectors`;
-    const records: Array<SectorRecord> = [];
+}: LedgerStore): SectorRecordsRepository => {
+  // The record at `at`, refused when it is not JSON, not a record, or
+  // another campaign's; `null` when there is no file.
+  const readAt = (
+    at: string,
+    campaign: string,
+  ): Result.Result<SectorRecord | null, SectorRecordUnreadable> => {
+    const text = fileSystem.readText(at);
 
-    for (const name of fileSystem.list(dir)) {
-      if (!name.endsWith(".json")) continue;
-      const at = `${dir}/${name}`;
-      const text = fileSystem.readText(at);
+    if (text === null) return Result.succeed(null);
 
-      if (text === null) continue;
+    const refuse = (reason: SectorRecordUnreadable["reason"], detail: string) =>
+      Result.fail(new SectorRecordUnreadable({ at, reason, detail }));
 
-      const refuse = (reason: SectorRecordUnreadable["reason"], detail: string) =>
-        Result.fail(new SectorRecordUnreadable({ at, reason, detail }));
+    const raw = parseJson(text);
 
-      const raw = parseJson(text);
+    if (Result.isFailure(raw)) return refuse("not-json", raw.failure);
+    const decoded = decodeSectorRecord(raw.success);
 
-      if (Result.isFailure(raw)) return refuse("not-json", raw.failure);
-      const decoded = decodeSectorRecord(raw.success);
+    if (Result.isFailure(decoded)) return refuse("undecodable", decoded.failure);
 
-      if (Result.isFailure(decoded)) return refuse("undecodable", decoded.failure);
-
-      if (decoded.success.campaign !== campaign) {
-        return refuse("misplaced", decoded.success.campaign);
-      }
-
-      records.push(decoded.success);
+    if (decoded.success.campaign !== campaign) {
+      return refuse("misplaced", decoded.success.campaign);
     }
 
-    return Result.succeed(records);
-  },
-  save: (record) => {
-    writeStoredFile(
-      repoRoot,
-      sectorRecordPathOf(ledgerDir, record.campaign, record.sector),
-      serializeSectorRecord(record),
-    );
-  },
-});
+    return Result.succeed(decoded.success);
+  };
+
+  return {
+    findOne: ({ campaign, sector }) =>
+      readAt(sectorRecordPathOf(ledgerDir, campaign, sector), campaign),
+    findAll: (campaign) => {
+      const dir = `${ledgerDir}/${campaign}/sectors`;
+      const records: Array<SectorRecord> = [];
+
+      for (const name of fileSystem.list(dir)) {
+        if (!name.endsWith(".json")) continue;
+        const found = readAt(`${dir}/${name}`, campaign);
+
+        if (Result.isFailure(found)) return Result.fail(found.failure);
+
+        if (found.success !== null) records.push(found.success);
+      }
+
+      return Result.succeed(records);
+    },
+    save: (record) => {
+      writeStoredFile(
+        repoRoot,
+        sectorRecordPathOf(ledgerDir, record.campaign, record.sector),
+        serializeSectorRecord(record),
+      );
+    },
+  };
+};

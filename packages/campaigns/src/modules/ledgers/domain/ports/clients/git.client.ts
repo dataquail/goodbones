@@ -7,7 +7,7 @@ import type { Diff } from "../../git/diff.value-object.js";
 // from: the working tree's diff, a file or a whole tree as it was at a ref,
 // and the commits that touched some paths. Every member throws where git
 // does not answer — no repository, an unknown ref — except `textAt`, for
-// which a file absent at the ref is `null`.
+// which a file absent at the ref, or a ref git does not know, is `null`.
 export type GitClient = {
   // The working tree against `base` (or HEAD), untracked files included as
   // added whole.

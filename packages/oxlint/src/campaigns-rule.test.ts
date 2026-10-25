@@ -16,6 +16,7 @@ import {
   makeObjectiveLedgersRepositoryFake,
   makePlansRepositoryFake,
   makeSectorRecordsRepositoryFake,
+  makeWorkspaceClientFake,
 } from "@goodbones/campaigns/testing";
 import {
   EMPTY_BASELINE,
@@ -142,6 +143,7 @@ const policy: LoadedPolicy = {
           git: makeGitClientFake(),
           baseSides: makeBaseSidesClientFake(),
           commands: makeMeasureCommandsClientFake(),
+          workspace: makeWorkspaceClientFake(),
         },
         functions: new Map(),
         reports: refused,

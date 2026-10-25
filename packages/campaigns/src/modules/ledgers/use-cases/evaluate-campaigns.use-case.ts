@@ -1,12 +1,10 @@
-import { listWorkspaceProjects, type LoadedPolicy } from "@goodbones/core";
+import type { LoadedPolicy } from "@goodbones/core";
 
 import type { CampaignEvaluation } from "../../../core/campaign-state.js";
-import { campaignsOf } from "../../../load/campaign-policy.js";
+import { campaignsOf, readersOf } from "../../../load/campaign-policy.js";
 import {
-  commandValuesOf,
   evaluateCampaignsOver,
   type Readers,
-  readersOf,
 } from "../domain/services/campaign-evaluation.service.js";
 
 // Every campaign, evaluated over the files under `roots`: the workspace's
@@ -19,17 +17,10 @@ export const evaluateCampaignsUseCase = (
   readers: Readers = readersOf(policy),
 ): ReadonlyArray<CampaignEvaluation> => {
   const campaigns = campaignsOf(policy);
+  const { commands, workspace } = campaigns.clients;
 
-  const projects = campaigns.campaignRules.some((rule) => rule.perimeter?.kind === "nx")
-    ? listWorkspaceProjects(policy.repoRoot, roots)
-    : [];
-
-  return evaluateCampaignsOver(
-    policy,
-    campaigns,
-    files,
-    readers,
-    projects,
-    commandValuesOf(campaigns.clients.commands.outputOf),
-  );
+  return evaluateCampaignsOver(policy, campaigns, files, readers, {
+    projects: () => workspace.projects(policy.repoRoot, roots),
+    outputOf: commands.outputOf,
+  });
 };

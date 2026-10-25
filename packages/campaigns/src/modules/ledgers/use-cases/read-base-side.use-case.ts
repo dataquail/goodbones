@@ -1,12 +1,8 @@
-import { listSourceFiles, listWorkspaceProjects, type LoadedPolicy } from "@goodbones/core";
+import type { LoadedPolicy } from "@goodbones/core";
 
-import { campaignsOf, widenedExtensions } from "../../../load/campaign-policy.js";
+import { campaignsOf, readersOf, widenedExtensions } from "../../../load/campaign-policy.js";
 import { type BaseSide, baseSideOf } from "../domain/base-side/base-side.value-object.js";
-import {
-  commandValuesOf,
-  evaluateCampaignsOver,
-  readersOf,
-} from "../domain/services/campaign-evaluation.service.js";
+import { evaluateCampaignsOver } from "../domain/services/campaign-evaluation.service.js";
 
 // The exact mode's "before": the campaigns evaluated over the tree at `ref`,
 // through a policy loaded from that tree, so `imports`, `requires`, `report`
@@ -18,7 +14,7 @@ export const readBaseSideUseCase = async (
   roots: ReadonlyArray<string>,
   load: (repoRoot: string) => Promise<LoadedPolicy>,
 ): Promise<BaseSide> => {
-  const { baseSides, git } = campaignsOf(policy).clients;
+  const { baseSides, git, workspace } = campaignsOf(policy).clients;
   let sha: string | null = null;
 
   try {
@@ -35,21 +31,13 @@ export const readBaseSideUseCase = async (
   try {
     const base = await load(tree.root);
     const campaigns = campaignsOf(base);
-    const files = listSourceFiles(tree.root, roots, base.languages, widenedExtensions(base));
-
-    const projects = campaigns.campaignRules.some((rule) => rule.perimeter?.kind === "nx")
-      ? listWorkspaceProjects(base.repoRoot, roots)
-      : [];
+    const files = workspace.sourceFiles(tree.root, roots, base.languages, widenedExtensions(base));
 
     const side = baseSideOf(
-      evaluateCampaignsOver(
-        base,
-        campaigns,
-        files,
-        readersOf(base),
-        projects,
-        commandValuesOf(campaigns.clients.commands.outputOf),
-      ),
+      evaluateCampaignsOver(base, campaigns, files, readersOf(base), {
+        projects: () => workspace.projects(base.repoRoot, roots),
+        outputOf: campaigns.clients.commands.outputOf,
+      }),
     );
 
     if (sha !== null) baseSides.write(sha, side);

@@ -56,6 +56,10 @@ describe("makeGitClientLive", () => {
       ["first", ["ledgers/x.json"]],
     ]);
     expect(() => git.commitOf("no-such-ref")).toThrow();
+    // Where the fake must answer alike: an unknown ref reads no file, and a
+    // log since one is refused.
+    expect(git.textAt("no-such-ref", "a.txt")).toBeNull();
+    expect(() => git.commitsTouching(["ledgers"], "no-such-ref")).toThrow();
   });
 
   it("reads the tree at a ref as a file system", () => {

@@ -1,4 +1,4 @@
-import type { LoadedPolicy } from "@goodbones/core";
+import type { LoadedPolicy, SourceFacts } from "@goodbones/core";
 import * as Result from "effect/Result";
 
 import type { CompiledCampaign } from "../core/campaigns.js";
@@ -6,9 +6,11 @@ import { DEFAULT_LEDGER_DIR } from "../manifest/spec.js";
 import type { BaseSidesClient } from "../modules/ledgers/domain/ports/clients/base-sides.client.js";
 import type { GitClient } from "../modules/ledgers/domain/ports/clients/git.client.js";
 import type { MeasureCommandsClient } from "../modules/ledgers/domain/ports/clients/measure-commands.client.js";
+import type { WorkspaceClient } from "../modules/ledgers/domain/ports/clients/workspace.client.js";
 import type { ObjectiveLedgersRepository } from "../modules/ledgers/domain/ports/repositories/objective-ledgers.repository.js";
 import type { PlansRepository } from "../modules/ledgers/domain/ports/repositories/plans.repository.js";
 import type { SectorRecordsRepository } from "../modules/ledgers/domain/ports/repositories/sector-records.repository.js";
+import type { Readers } from "../modules/ledgers/domain/services/campaign-evaluation.service.js";
 import type { CampaignLedgers } from "../modules/ledgers/domain/services/campaign-ledgers.service.js";
 import type { CampaignPredicate } from "../ports/campaign-predicate.js";
 import { NO_REPORTS, type ReportSource } from "../ports/report-source.js";
@@ -32,15 +34,16 @@ export type LedgerRepositories = {
 // against.
 export type LedgerReaders = {
   readonly ledgers: Pick<ObjectiveLedgersRepository, "findOne">;
-  readonly sectorRecords: Pick<SectorRecordsRepository, "findAll">;
+  readonly sectorRecords: Pick<SectorRecordsRepository, "findOne">;
 };
 
 // The other programs the verbs read from: git, the exact mode's cache of
-// a base tree, and a `command` measure's shell.
+// a base tree, a `command` measure's shell, and the walk of a tree.
 export type CampaignClients = {
   readonly git: GitClient;
   readonly baseSides: BaseSidesClient;
   readonly commands: MeasureCommandsClient;
+  readonly workspace: WorkspaceClient;
 };
 
 export type CampaignPolicy = CampaignLedgers & {
@@ -73,7 +76,11 @@ const NO_LEDGERS: LedgerRepositories = {
     save: () => undefined,
     remove: () => undefined,
   },
-  sectorRecords: { findAll: () => Result.succeed([]), save: () => undefined },
+  sectorRecords: {
+    findOne: () => Result.succeed(null),
+    findAll: () => Result.succeed([]),
+    save: () => undefined,
+  },
   plans: { findOne: () => Result.succeed(null), save: () => undefined },
 };
 
@@ -93,6 +100,7 @@ const NO_CLIENTS: CampaignClients = {
   },
   baseSides: { read: () => null, write: () => undefined },
   commands: { outputOf: () => null },
+  workspace: { sourceFiles: () => [], projects: () => [] },
 };
 
 // A campaign-free policy, for a host that loaded the extension against a
@@ -125,3 +133,33 @@ export const campaignsOf = (policy: LoadedPolicy): CampaignPolicy => {
 export const widenedExtensions = (policy: LoadedPolicy): ReadonlyArray<string> => [
   ...new Set(campaignsOf(policy).campaignRules.flatMap((rule) => rule.extensions)),
 ];
+
+// The files read through the policy's file system and parsed by its
+// extractor, each at most once — for a caller that has no walk's caches of
+// its own to lend.
+export const readersOf = (policy: LoadedPolicy): Readers => {
+  const texts = new Map<string, string>();
+  const parsed = new Map<string, SourceFacts>();
+
+  const textOf = (file: string): string => {
+    const cached = texts.get(file);
+
+    if (cached !== undefined) return cached;
+    const text = policy.fileSystem.readText(file) ?? "";
+    texts.set(file, text);
+
+    return text;
+  };
+
+  const factsOf = (file: string): SourceFacts => {
+    const cached = parsed.get(file);
+
+    if (cached !== undefined) return cached;
+    const facts = policy.extractor.factsOf(file, textOf(file));
+    parsed.set(file, facts);
+
+    return facts;
+  };
+
+  return { textOf, factsOf };
+};

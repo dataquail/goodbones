@@ -419,10 +419,12 @@ package's `architecture.yaml` polices a tier from its first file.
   with `node:fs`; the mappers own the bytes on disk. The extension's `load` builds them as the
   family's composition point inside `loadPolicy` and carries them on `CampaignPolicy.repositories`,
   which is what every verb saves through. Beside them it builds the clients — `GitClient`,
-  `BaseSidesClient` (the exact mode's cache under `node_modules/.cache/goodbones/`) and
-  `MeasureCommandsClient` — on `CampaignPolicy.clients`, and `readersAt(ref)`, the same
-  repositories read-only over the tree git holds at a ref; `campaignsExtension({ repositories,
-git, baseSides, commands })` takes fakes in their place. A use-case reads all of it through
+  `BaseSidesClient` (the exact mode's cache under `node_modules/.cache/goodbones/`),
+  `MeasureCommandsClient` and `WorkspaceClient` (the core's walker, which `no-walker-calls`
+  keeps out of `domain/` and `use-cases/`) — on `CampaignPolicy.clients`, and `readersAt(ref)`,
+  the same repositories read-only over the tree git holds at a ref, each record read per sector;
+  `campaignsExtension({ repositories, git, baseSides, commands, workspace })` takes fakes in
+  their place. A use-case reads all of it through
   `load/campaign-policy.ts`, never the extension. The fakes are exported from
   `@goodbones/campaigns/testing`.
 - **What is left**, one layer per pull request, in the order ADR 2 gives: the manifest aggregate; the baseline aggregate; one CLI

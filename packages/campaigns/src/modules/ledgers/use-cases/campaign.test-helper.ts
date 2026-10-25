@@ -8,6 +8,7 @@ import * as Result from "effect/Result";
 
 import { campaignsExtension, type CampaignsExtensionOptions } from "../../../load/extension.js";
 import { makeGitClientFake } from "../infrastructure/clients/git.client-fake.js";
+import { makeWorkspaceClientFake } from "../infrastructure/clients/workspace.client-fake.js";
 import { makeObjectiveLedgersRepositoryFake } from "../infrastructure/repositories/objective-ledgers.repository-fake.js";
 import { makePlansRepositoryFake } from "../infrastructure/repositories/plans.repository-fake.js";
 import { makeSectorRecordsRepositoryFake } from "../infrastructure/repositories/sector-records.repository-fake.js";
@@ -62,6 +63,7 @@ export const fakes = () => ({
     plans: makePlansRepositoryFake(),
   },
   git: makeGitClientFake({ refs: { HEAD: {} } }),
+  workspace: makeWorkspaceClientFake(),
 });
 
 export type Fakes = ReturnType<typeof fakes> & Pick<CampaignsExtensionOptions, "baseSides">;

@@ -135,11 +135,12 @@ children:
         children: {}
         imports:
           reset: true
-          message: "A compatibility shim composes what replaced it: the modules' use-cases and domain, the presenters, and the policy's state. It names nothing else."
-          external: [effect]
+          message: "A compatibility shim composes what replaced it: the modules' use-cases and domain, the presenters, and the policy's state. It names nothing else. Its test names it, the use-cases' fixture and the test framework."
+          external: [effect, vitest]
           allow:
             - "@core/index.ts"
             - "@camp/core/**"
+            - "@camp/compat/**"
             - "@camp/load/campaign-policy.ts"
             - "@camp/modules/*/domain/**"
             - "@camp/modules/*/use-cases/**"
@@ -158,6 +159,7 @@ children:
             members:
               - use: no-talking
               - use: no-file-system-calls
+              - use: no-walker-calls
             children:
               "ports/":
                 message: "domain/ports/ is a container: repositories/, the module's own stores, and clients/, the other programs it reads from."
@@ -268,6 +270,7 @@ children:
             members:
               - use: no-talking
               - use: no-file-system-calls
+              - use: no-walker-calls
             imports:
               reset: true
               message: "A use-case names effect, the core's barrel, its own module's domain (aggregates, services and ports), its sibling results, the family's state on the policy, and — until this package has a kernel — the old pure tiers. Never another use-case: what two do together, a host composes. Never a presenter: a use-case returns a result, and the host renders it. Never an adapter but a mapper, for the path a record is saved at."

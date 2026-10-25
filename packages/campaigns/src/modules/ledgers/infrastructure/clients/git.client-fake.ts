@@ -5,8 +5,9 @@ import type { Diff } from "../../domain/git/diff.value-object.js";
 import type { GitClient } from "../../domain/ports/clients/git.client.js";
 
 // git as a test states it: the diff, each ref's files by path, and the log.
-// A ref the test names no files for is unknown, and asking after it throws,
-// as git would refuse it.
+// It answers where the live client does: a file at a ref the test names no
+// files for reads as `null`, and `commitOf`, `materializeTree` and
+// `commitsTouching` throw on a ref it does not know, as git refuses one.
 export type GitClientFake = GitClient & {
   // The trees `materializeTree` handed out and whether each was disposed.
   readonly materialized: ReadonlyArray<{ readonly ref: string; disposed: boolean }>;
@@ -26,14 +27,6 @@ const EMPTY_DIFF: Diff = { base: null, touched: new Map(), deleted: [], added: [
 export const makeGitClientFake = (state: GitClientFakeState = {}): GitClientFake => {
   const materialized: Array<{ ref: string; disposed: boolean }> = [];
 
-  const filesAt = (ref: string): Readonly<Record<string, string>> => {
-    const files = state.refs?.[ref];
-
-    if (files === undefined) throw new Error(`fatal: unknown ref ${ref}`);
-
-    return files;
-  };
-
   const fileSystemAt = (ref: string): FileSystem => ({
     exists: (file) => state.refs?.[ref]?.[file] !== undefined,
     readText: (file) => state.refs?.[ref]?.[file] ?? null,
@@ -49,7 +42,7 @@ export const makeGitClientFake = (state: GitClientFakeState = {}): GitClientFake
 
   return {
     diff: (base) => ({ ...(state.diff ?? EMPTY_DIFF), base }),
-    textAt: (ref, file) => filesAt(ref)[file] ?? null,
+    textAt: (ref, file) => state.refs?.[ref]?.[file] ?? null,
     commitOf: (ref) => {
       const sha = state.shas?.[ref];
 
@@ -73,7 +66,10 @@ export const makeGitClientFake = (state: GitClientFakeState = {}): GitClientFake
     },
     commitsTouching: (paths, since) => {
       const all = state.commits ?? [];
-      const from = since === null ? 0 : all.findIndex((one) => one.sha === since) + 1;
+      const at = since === null ? -1 : all.findIndex((one) => one.sha === since);
+
+      if (since !== null && at === -1) throw new Error(`fatal: unknown revision ${since}`);
+      const from = at + 1;
 
       return all
         .slice(from)

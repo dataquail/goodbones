@@ -42,42 +42,22 @@ import { type CampaignLedgers, recordOf } from "./campaign-ledgers.service.js";
 
 // Every campaign evaluated over the files it sees: each objective's hits
 // judged against its ledger per sector, an `endState` evaluated per sector
-// with the core's own evaluators. Given what was read — the files' text and
-// facts, the workspace's projects, a `command` measure's output — it reads
-// nothing itself.
+// with the core's own evaluators. It reads no file and runs no program of
+// its own: the files' text and facts come through the `Readers` it is
+// handed, the workspace's projects and a `command` measure's output through
+// `WorkspaceAsks`, and the policy's resolver, file system and parser are
+// passed on to the core's evaluators, which take their ports as arguments.
 
 export type Readers = {
   readonly textOf: (file: string) => string;
   readonly factsOf: (file: string) => SourceFacts;
 };
 
-// The files read through the policy's file system, each read and parsed at
-// most once — for a caller that has no walk's caches of its own to lend.
-export const readersOf = (policy: LoadedPolicy): Readers => {
-  const texts = new Map<string, string>();
-  const parsed = new Map<string, SourceFacts>();
-
-  const textOf = (file: string): string => {
-    const cached = texts.get(file);
-
-    if (cached !== undefined) return cached;
-    const text = policy.fileSystem.readText(file) ?? "";
-    texts.set(file, text);
-
-    return text;
-  };
-
-  const factsOf = (file: string): SourceFacts => {
-    const cached = parsed.get(file);
-
-    if (cached !== undefined) return cached;
-    const facts = policy.extractor.factsOf(file, textOf(file));
-    parsed.set(file, facts);
-
-    return facts;
-  };
-
-  return { textOf, factsOf };
+// What an evaluation asks of the world beyond the files: the workspace's
+// projects, asked only when a perimeter is `nx`, and a command's output.
+export type WorkspaceAsks = {
+  readonly projects: () => ReadonlyArray<WorkspaceProject>;
+  readonly outputOf: (command: string) => string | null;
 };
 
 // What the family carries that an evaluation reads: the rules, what the
@@ -94,7 +74,7 @@ export type EvaluatedFamily = CampaignLedgers & {
 // function — a number about the repository is one number however many
 // sectors ask. A command that could not be spawned, or whose output reads
 // as no number, measures `NaN`, and `check` refuses it.
-export const commandValuesOf = (
+const commandValuesOf = (
   outputOf: (command: string) => string | null,
 ): ((measure: CompiledMeasure) => number) => {
   const outputs = new Map<string, string | null>();
@@ -230,10 +210,15 @@ export const evaluateCampaignsOver = (
   campaigns: EvaluatedFamily,
   files: ReadonlyArray<string>,
   readers: Readers,
-  projects: ReadonlyArray<WorkspaceProject>,
-  commandValueOf: (measure: CompiledMeasure) => number,
-): ReadonlyArray<CampaignEvaluation> =>
-  campaigns.campaignRules.map((rule) => {
+  asks: WorkspaceAsks,
+): ReadonlyArray<CampaignEvaluation> => {
+  const projects = campaigns.campaignRules.some((rule) => rule.perimeter?.kind === "nx")
+    ? asks.projects()
+    : [];
+
+  const commandValueOf = commandValuesOf(asks.outputOf);
+
+  return campaigns.campaignRules.map((rule) => {
     const detectors = [
       ...rule.objectives.flatMap((one) => {
         const detect = detectorOf(one);
@@ -295,3 +280,4 @@ export const evaluateCampaignsOver = (
 
     return evaluation;
   });
+};

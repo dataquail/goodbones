@@ -91,12 +91,21 @@ const headSideOf = (campaigns: CampaignPolicy, rule: CompiledCampaign): HeadSide
   const any = [...ledgers.values(), ...measures.values()].some((one) => one !== undefined);
 
   if (!any) return null;
-  const records = head.sectorRecords.findAll(rule.id);
-  const found = Result.isSuccess(records) ? records.success : [];
+  // Read per sector, when the nudge asks after it: a record absent at HEAD,
+  // or one that does not decode, is no answer for that sector alone.
+  const records = new Map<string, SectorRecord | undefined>();
 
   return {
     overrides: { ledgers, measures },
-    record: (sector) => found.find((one) => one.sector === sector),
+    record: (sector) => {
+      if (!records.has(sector)) {
+        const found = head.sectorRecords.findOne({ campaign: rule.id, sector });
+
+        records.set(sector, Result.isSuccess(found) ? (found.success ?? undefined) : undefined);
+      }
+
+      return records.get(sector);
+    },
   };
 };
 
@@ -593,6 +602,7 @@ export const nudgeChangesUseCase = (
         // The escape: the growth is conceded, with a reason naming the hotfix
         // — and, like any concession, it may send the sector back.
         const written = new Map<string, Ledger>();
+        const writtenMeasures = new Map<string, MeasureLedger>();
         const receipt = { at: policy.now, by, reason: `hotfix: ${hotfix}` };
 
         for (const objective of dimensions) {
@@ -600,25 +610,12 @@ export const nudgeChangesUseCase = (
             if (measures.some((one) => one.objective === objective.id && one.back)) {
               const ledger = measureLedgerOf(campaigns, rule, objective);
 
-              if (ledger !== undefined) {
-                const done = concededMeasuresOf(ledger, evaluation, objective, name, receipt);
+              if (ledger === undefined) continue;
+              const done = concededMeasuresOf(ledger, evaluation, objective, name, receipt);
 
-                if (done.conceded.length > 0) campaigns.repositories.ledgers.save(done.ledger);
-
-                const back = sendBackOf(
-                  campaigns,
-                  rule,
-                  done.conceded.map((one) => one.sector),
-                  { measures: new Map([[objective.id, done.ledger]]) },
-                  { ...receipt, reason: `conceded ${objective.id}: ${receipt.reason}` },
-                );
-
-                for (const record of back.records)
-                  campaigns.repositories.sectorRecords.save(record);
-                const [moved] = back.sent;
-
-                if (moved !== undefined) sentBack = moved;
-              }
+              if (done.conceded.length === 0) continue;
+              writtenMeasures.set(objective.id, done.ledger);
+              campaigns.repositories.ledgers.save(done.ledger);
             }
 
             continue;
@@ -640,7 +637,15 @@ export const nudgeChangesUseCase = (
           campaigns.repositories.ledgers.save(next);
         }
 
-        const back = sendBackOf(campaigns, rule, [name], { ledgers: written }, receipt);
+        // Where every ledger the hotfix wrote places the sector, together:
+        // one record revoked once, whichever dimensions sent it back.
+        const back = sendBackOf(
+          campaigns,
+          rule,
+          [name],
+          { ledgers: written, measures: writtenMeasures },
+          receipt,
+        );
 
         for (const record of back.records) campaigns.repositories.sectorRecords.save(record);
         const [moved] = back.sent;

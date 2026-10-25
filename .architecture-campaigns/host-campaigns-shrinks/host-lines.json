@@ -17,7 +17,7 @@
     "packages/campaigns/src/compat/policy-signatures": {
       "entered": "2026-10-25T13:17:37.565Z",
       "initial": 75,
-      "recorded": 75,
+      "recorded": 84,
       "improved": 0,
       "closed": null,
       "lastImproved": "2026-10-25T13:17:37.565Z"
@@ -25,10 +25,10 @@
     "packages/campaigns/src/modules/ledgers/domain/services/campaign-evaluation.service": {
       "entered": "2026-10-25T13:17:37.565Z",
       "initial": 249,
-      "recorded": 249,
-      "improved": 0,
+      "recorded": 240,
+      "improved": 9,
       "closed": null,
-      "lastImproved": "2026-10-25T13:17:37.565Z"
+      "lastImproved": "2026-10-25T14:51:01.887Z"
     },
     "packages/campaigns/src/modules/ledgers/domain/services/campaign-ledgers.service": {
       "entered": "2026-10-25T13:17:37.565Z",
@@ -81,10 +81,10 @@
     "packages/campaigns/src/modules/ledgers/use-cases/evaluate-campaigns.use-case": {
       "entered": "2026-10-25T13:17:37.565Z",
       "initial": 31,
-      "recorded": 31,
-      "improved": 0,
+      "recorded": 23,
+      "improved": 8,
       "closed": null,
-      "lastImproved": "2026-10-25T13:17:37.565Z"
+      "lastImproved": "2026-10-25T14:51:01.887Z"
     },
     "packages/campaigns/src/modules/ledgers/use-cases/explain-campaign.use-case": {
       "entered": "2026-10-25T13:17:37.565Z",
@@ -105,7 +105,7 @@
     "packages/campaigns/src/modules/ledgers/use-cases/nudge-changes.use-case": {
       "entered": "2026-10-25T13:17:37.565Z",
       "initial": 624,
-      "recorded": 624,
+      "recorded": 630,
       "improved": 0,
       "closed": null,
       "lastImproved": "2026-10-25T13:17:37.565Z"
@@ -121,18 +121,18 @@
     "packages/campaigns/src/modules/ledgers/use-cases/read-base-side.use-case": {
       "entered": "2026-10-25T13:17:37.565Z",
       "initial": 51,
-      "recorded": 51,
-      "improved": 0,
+      "recorded": 40,
+      "improved": 11,
       "closed": null,
-      "lastImproved": "2026-10-25T13:17:37.565Z"
+      "lastImproved": "2026-10-25T14:51:01.887Z"
     },
     "packages/campaigns/src/modules/ledgers/use-cases/replay-history.use-case": {
       "entered": "2026-10-25T13:17:37.565Z",
       "initial": 61,
-      "recorded": 61,
-      "improved": 0,
+      "recorded": 51,
+      "improved": 10,
       "closed": null,
-      "lastImproved": "2026-10-25T13:17:37.565Z"
+      "lastImproved": "2026-10-25T14:51:01.887Z"
     },
     "packages/campaigns/src/modules/ledgers/use-cases/report-campaigns.use-case": {
       "entered": "2026-10-25T13:17:37.565Z",
@@ -205,7 +205,128 @@
       "improved": 0,
       "closed": null,
       "lastImproved": "2026-10-25T13:17:37.565Z"
+    },
+    "packages/campaigns/src/load/campaign-policy": {
+      "entered": "2026-10-25T14:51:01.887Z",
+      "initial": 143,
+      "recorded": 143,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T14:51:01.887Z"
+    },
+    "packages/campaigns/src/modules/ledgers/infrastructure/clients/base-sides.client-live": {
+      "entered": "2026-10-25T14:51:01.887Z",
+      "initial": 28,
+      "recorded": 28,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T14:51:01.887Z"
+    },
+    "packages/campaigns/src/modules/ledgers/infrastructure/clients/git.client-live": {
+      "entered": "2026-10-25T14:51:01.887Z",
+      "initial": 203,
+      "recorded": 203,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T14:51:01.887Z"
+    },
+    "packages/campaigns/src/modules/ledgers/infrastructure/clients/measure-commands.client-live": {
+      "entered": "2026-10-25T14:51:01.887Z",
+      "initial": 16,
+      "recorded": 16,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T14:51:01.887Z"
+    },
+    "packages/campaigns/src/modules/ledgers/infrastructure/clients/workspace.client-live": {
+      "entered": "2026-10-25T14:51:01.887Z",
+      "initial": 8,
+      "recorded": 8,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T14:51:01.887Z"
+    },
+    "packages/campaigns/src/modules/ledgers/use-cases/campaign-explanation.result": {
+      "entered": "2026-10-25T14:51:01.887Z",
+      "initial": 32,
+      "recorded": 32,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T14:51:01.887Z"
+    },
+    "packages/campaigns/src/modules/ledgers/use-cases/clear-objectives.result": {
+      "entered": "2026-10-25T14:51:01.887Z",
+      "initial": 26,
+      "recorded": 26,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T14:51:01.887Z"
+    },
+    "packages/campaigns/src/modules/ledgers/use-cases/concede-objective.result": {
+      "entered": "2026-10-25T14:51:01.887Z",
+      "initial": 9,
+      "recorded": 9,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T14:51:01.887Z"
+    },
+    "packages/campaigns/src/modules/ledgers/use-cases/history.result": {
+      "entered": "2026-10-25T14:51:01.887Z",
+      "initial": 9,
+      "recorded": 9,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T14:51:01.887Z"
+    },
+    "packages/campaigns/src/modules/ledgers/use-cases/nudge.result": {
+      "entered": "2026-10-25T14:51:01.887Z",
+      "initial": 160,
+      "recorded": 160,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T14:51:01.887Z"
+    },
+    "packages/campaigns/src/modules/ledgers/use-cases/sector-moves.result": {
+      "entered": "2026-10-25T14:51:01.887Z",
+      "initial": 14,
+      "recorded": 14,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T14:51:01.887Z"
+    },
+    "packages/campaigns/src/modules/ledgers/use-cases/sector-view.result": {
+      "entered": "2026-10-25T14:51:01.887Z",
+      "initial": 47,
+      "recorded": 47,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T14:51:01.887Z"
+    },
+    "packages/campaigns/src/presentation/lines": {
+      "entered": "2026-10-25T14:51:01.887Z",
+      "initial": 3,
+      "recorded": 3,
+      "improved": 0,
+      "closed": null,
+      "lastImproved": "2026-10-25T14:51:01.887Z"
     }
   },
-  "concessions": []
+  "concessions": [
+    {
+      "sector": "packages/campaigns/src/compat/policy-signatures",
+      "at": "2026-10-25T14:51:32.031Z",
+      "by": "zweidenbach@gmail.com",
+      "from": 75,
+      "to": 84,
+      "reason": "concedeMeasure refuses a holdout objective again, as it did before the verbs were use-cases (review of #150)."
+    },
+    {
+      "sector": "packages/campaigns/src/modules/ledgers/use-cases/nudge-changes.use-case",
+      "at": "2026-10-25T14:51:32.497Z",
+      "by": "zweidenbach@gmail.com",
+      "from": 624,
+      "to": 630,
+      "reason": "HEAD's sector records are read per sector, lazily, and a hotfix revokes once across every dimension it conceded (review of #150)."
+    }
+  ]
 }

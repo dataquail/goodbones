@@ -50,7 +50,7 @@
   "devDependencies": {
     "@commitlint/cli": "^19.8.0",
     "@commitlint/config-conventional": "^19.8.0",
-    "@effect/tsgo": "^0.53.4",
+    "@effect/tsgo": "^0.57.0",
     "@effect/vitest": "4.0.5",
     "@nx/js": "22.7.12",
     "@oxlint/plugins": "1.88.0",

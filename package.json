@@ -53,7 +53,7 @@
     "@effect/tsgo": "^0.53.4",
     "@effect/vitest": "4.0.5",
     "@nx/js": "22.7.12",
-    "@oxlint/plugins": "1.88.0",
+    "@oxlint/plugins": "1.89.0",
     "@swc-node/register": "1.12.1",
     "@swc/core": "1.15.47",
     "@types/node": "^25.9.4",
